@@ -133,3 +133,49 @@ func TestUS100DragOutAndRestore(t *testing.T) {
 		t.Fatal("dragging the skill back did not restore its layout")
 	}
 }
+
+func TestUS100BaseSlayerSpeedSlashAndNormalWavePurchaseReplay(t *testing.T) {
+	cs, w := skillReplayFixture(t)
+	// Raise fixture character to Lv15 with 70 SP (matches live role 48 capture).
+	var st character.State
+	if err := json.Unmarshal(w.role.State, &st); err != nil {
+		t.Fatal(err)
+	}
+	st.Level = 15
+	st.SkillPoints = [2]uint16{70, 570}
+	rawState, err := json.Marshal(st)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := cs.Store.Database().Mutate(func(tx *db100.Tx) error {
+		return tx.Put("characters", "1", map[string]any{
+			"id": 1, "wire_id": 1, "account_id": 1, "profession": 0,
+			"config_version": w.role.ConfigVersion, "state": json.RawMessage(rawState),
+		})
+	}); err != nil {
+		t.Fatal(err)
+	}
+	w.role.State = rawState
+
+	// Exact live captured CMD 29 frame: learn SpeedSlash (282, +1) + NormalWave (20, +1).
+	payload, _ := hex.DecodeString("00021a01000114000001009578a86c00")
+	var sess skillSession
+	plan, err := sess.handle(cs, w, 29, payload, payload)
+	if err != nil {
+		t.Fatalf("live SpeedSlash+NormalWave purchase rejected: %v", err)
+	}
+	if len(plan) != 2 || plan[0].ID != 29 || plan[0].Payload[0] != 1 || plan[1].ID != 19 {
+		t.Fatalf("unexpected plan: %+v", plan)
+	}
+	row, err := cs.Store.LiveCharacter(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got character.State
+	if err := json.Unmarshal(row.State, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got.LearnedSkills[0][282] != 1 || got.LearnedSkills[0][20] != 1 || got.SkillPoints[0] != 35 {
+		t.Fatalf("unexpected learned state after purchase: skills=%v sp=%v", got.LearnedSkills[0], got.SkillPoints)
+	}
+}

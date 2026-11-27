@@ -65,25 +65,31 @@ func (d LearningDefinition) Active() bool {
 
 // Explicit source profession eligibility for unlearned skill definitions.
 // Existing .chr free grants do not depend on manual learning eligibility.
+// In DNF PVF .skl files, [growtype maximum level] is the authoritative per-
+// advancement rank cap (0 means ineligible, >0 means learnable), whereas
+// [skill fitness growtype] only indicates subclass affinity/tab grouping (for
+// example, Male Slayer Lv15 SpeedSlash ID 282 has cap=[60,0,0,0,0,60] with
+// fitness=[5] so base Slayer adv=0 and Ghostblade adv=5 can both learn it).
 func (d LearningDefinition) ForAdvancement(adv int) bool {
-	cap := d.Ints("[growtype maximum level]")
-	if adv < 0 || len(cap) > 0 && (adv >= len(cap) || cap[adv] <= 0) {
+	if adv < 0 || adv > 5 {
 		return false
 	}
 	t := d.Fields["[type]"]
 	if len(t) != 1 || (t[0].Text != "[active]" && t[0].Text != "[passive]") {
 		return false
 	}
-	grow := d.Ints("[skill fitness growtype]")
-	for _, g := range grow {
-		if g == adv {
-			return true
-		}
+	if cap := d.Ints("[growtype maximum level]"); len(cap) > 0 {
+		return adv < len(cap) && cap[adv] > 0
 	}
-	if len(grow) > 0 {
+	if grow := d.Ints("[skill fitness growtype]"); len(grow) > 0 {
+		for _, g := range grow {
+			if g == adv {
+				return true
+			}
+		}
 		return false
 	}
-	return adv >= 0 && adv < len(cap) && cap[adv] > 0
+	return adv >= 1
 }
 func (d LearningDefinition) rankNeed(rank int) int {
 	req := d.Ints("[required level]")
@@ -102,21 +108,19 @@ func (d LearningDefinition) Cost(level, advancement, target int, known map[uint1
 		return 0, fmt.Errorf("unsupported skill advancement/level")
 	}
 	required, max, cost := d.Ints("[required level]"), d.Ints("[maximum level]"), d.Ints("[purchase cost]")
-	if len(required) != 1 || len(max) != 1 || len(cost) != 1 || cost[0] < 0 {
+	if len(required) != 1 || len(max) != 1 || len(cost) == 0 {
+		return 0, fmt.Errorf("skill learning fields unavailable")
+	}
+	priceIdx := target - 1
+	if priceIdx >= len(cost) {
+		priceIdx = len(cost) - 1
+	}
+	price := cost[priceIdx]
+	if price < 0 {
 		return 0, fmt.Errorf("skill learning fields unavailable")
 	}
 	if len(d.Fields["[special purchase cost]"]) > 0 || len(d.Fields["[feature skill type]"]) > 0 {
 		return 0, fmt.Errorf("technique skill learning pending")
-	}
-	grow := d.Ints("[skill fitness growtype]")
-	if len(grow) > 0 {
-		allowed := false
-		for _, v := range grow {
-			allowed = allowed || v == advancement
-		}
-		if !allowed {
-			return 0, fmt.Errorf("skill belongs to another advancement")
-		}
 	}
 	limit := max[0]
 	if caps := d.Ints("[growtype maximum level]"); len(caps) > advancement {
@@ -137,5 +141,5 @@ func (d LearningDefinition) Cost(level, advancement, target int, known map[uint1
 			return 0, fmt.Errorf("skill prerequisite not learned")
 		}
 	}
-	return cost[0], nil
+	return price, nil
 }
