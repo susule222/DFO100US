@@ -114,6 +114,9 @@ func (w *worldSession) settleTutorialReturn() error {
 	if e = w.service.ValidatePosition(w.level, next, w.questAccess()); e != nil {
 		return e
 	}
+	if seriaPos, changed := w.service.SeriaRoomEntry(w.level, next, next, w.questAccess()); changed {
+		next = seriaPos
+	}
 	saved, e := w.service.Store.SaveWorld(ctx, w.account, w.role.ID, w.state, next)
 	if e != nil {
 		return e

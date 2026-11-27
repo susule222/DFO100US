@@ -1,10 +1,12 @@
 package world
 
 import (
+	"context"
 	"dfolan/internal/catalog"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/storage"
 	"errors"
+	"path/filepath"
 	"testing"
 )
 
@@ -76,5 +78,111 @@ func TestSourceSeriaRoundTrip(t *testing.T) {
 	inside.Return.X = 65535
 	if _, e = s.Transition(1, inside, protocol.AreaChangeRequest{Town: 38, Area: 0, X: 561, Y: 234, PreviousTown: 38, PreviousArea: 1}); e == nil {
 		t.Fatal("invalid saved origin accepted")
+	}
+}
+
+func TestSeriaRoomEntryMapsEveryTownToItsSeriaRoom(t *testing.T) {
+	cat, e := catalog.LoadWorld("../../configs/us100/world.generated.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	s := Service{Catalog: cat, Rules: Rules{RequirePortalProximity: false, PortalMargin: 32}}
+	fallback := storage.WorldPosition{Town: 38, Area: 0, X: 561, Y: 234}
+
+	// 1. Elvengard street (38/0) -> Elvengard Seria's Room (38/1) with Return to 38/0.
+	p, changed := s.SeriaRoomEntry(1, storage.WorldPosition{Town: 38, Area: 0, X: 561, Y: 234}, fallback)
+	if !changed || p.Town != 38 || p.Area != 1 || p.Return == nil || p.Return.Town != 38 || p.Return.Area != 0 {
+		t.Fatalf("38/0 -> Seria failed: changed=%v pos=%+v", changed, p)
+	}
+	if !Walkable(cat.Areas["38/1"], p.X, p.Y) || inReturnWarpBounds(cat.Areas["38/1"], p.X, p.Y) {
+		t.Fatalf("38/1 spawn invalid or inside warp: %+v", p)
+	}
+
+	// 2. Elvengard dungeon gate (38/2) -> Elvengard Seria's Room (38/1) with Return to 38/0 (Seria gate).
+	p2, changed := s.SeriaRoomEntry(1, storage.WorldPosition{Town: 38, Area: 2, X: 410, Y: 236}, fallback)
+	if !changed || p2.Town != 38 || p2.Area != 1 || p2.Return == nil || p2.Return.Town != 38 || p2.Return.Area != 0 {
+		t.Fatalf("38/2 -> Seria failed: changed=%v pos=%+v", changed, p2)
+	}
+
+	// 3. Dedicated Seria-room town (Silver Crown 1/1 -> 1/0, Behemoth 4/1 -> 4/0, Beast Central Park 51/1 -> 51/0).
+	for _, tc := range []struct {
+		level      byte
+		cur        storage.WorldPosition
+		wantTown   uint32
+		wantArea   uint32
+	}{
+		{10, storage.WorldPosition{Town: 1, Area: 1, X: 500, Y: 250}, 1, 0},
+		{50, storage.WorldPosition{Town: 4, Area: 1, X: 500, Y: 250}, 4, 0},
+		{100, storage.WorldPosition{Town: 51, Area: 1, X: 500, Y: 250}, 51, 0},
+		{100, storage.WorldPosition{Town: 83, Area: 1, X: 500, Y: 250}, 83, 0},
+		{100, storage.WorldPosition{Town: 98, Area: 1, X: 500, Y: 250}, 98, 0},
+	} {
+		got, ch := s.SeriaRoomEntry(tc.level, tc.cur, fallback)
+		if !ch || got.Town != tc.wantTown || got.Area != tc.wantArea {
+			t.Fatalf("town %d/%d -> got changed=%v %+v, want %d/%d", tc.cur.Town, tc.cur.Area, ch, got, tc.wantTown, tc.wantArea)
+		}
+		if err := s.ValidatePosition(tc.level, got); err != nil {
+			t.Fatalf("town %d/%d Seria spawn failed validation: %v (%+v)", tc.wantTown, tc.wantArea, err, got)
+		}
+	}
+
+	// 4. Town without dedicated Seria map (Death Valley 44/0) -> shared 38/1 with Return to 44/0,
+	//    and walking out of 38/1 returns cleanly to 44/0.
+	dv := storage.WorldPosition{Town: 44, Area: 0, X: 500, Y: 250}
+	if err := s.ValidatePosition(50, dv); err != nil {
+		t.Fatalf("44/0 baseline invalid: %v", err)
+	}
+	got, ch := s.SeriaRoomEntry(50, dv, fallback)
+	if !ch || got.Town != 38 || got.Area != 1 || got.Return == nil || got.Return.Town != 44 || got.Return.Area != 0 {
+		t.Fatalf("44/0 -> shared Seria failed: changed=%v %+v", ch, got)
+	}
+	out, err := s.Transition(50, got, protocol.AreaChangeRequest{Town: 44, Area: 0, X: 746, Y: 157, PreviousTown: 38, PreviousArea: 1})
+	if err != nil || out.Town != 44 || out.Area != 0 || out.X != 500 || out.Y != 250 || out.Return != nil {
+		t.Fatalf("exit shared Seria back to 44/0 failed: out=%+v err=%v", out, err)
+	}
+}
+
+func TestEnterPersistsSeriaRoomSpawn(t *testing.T) {
+	cat, e := catalog.LoadWorld("../../configs/us100/world.generated.json")
+	if e != nil {
+		t.Fatal(e)
+	}
+	ctx := context.Background()
+	store, err := storage.Open(ctx, storage.Config{DBPath: filepath.Join(t.TempDir(), "test.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	acctID, err := store.DevelopmentAccount(ctx, "seria-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := store.CreateCharacter(ctx, storage.Character{AccountID: acctID, Name: "Tester", ConfigVersion: cat.Source.Checksum, State: []byte(`{"level":100}`)}, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := Service{Store: store, Catalog: cat, Rules: Rules{RequirePortalProximity: false, PortalMargin: 32}}
+	spawn := storage.WorldPosition{Town: 38, Area: 0, X: 561, Y: 234}
+
+	// First town entry -> lands in 38/1 (Elvengard Seria's Room) with Return to 38/0.
+	st, err := svc.Enter(ctx, acctID, role.ID, 100, spawn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st.Position.Town != 38 || st.Position.Area != 1 || st.Position.Return == nil || st.Position.Return.Town != 38 || st.Position.Return.Area != 0 {
+		t.Fatalf("first Enter did not spawn in Seria's Room: %+v", st.Position)
+	}
+
+	// Simulate character moving out into Beast Central Park 51/1, then re-entering town -> lands in 51/0!
+	park := storage.WorldPosition{Town: 51, Area: 1, X: 500, Y: 250}
+	if _, err := store.SaveWorld(ctx, acctID, role.ID, st, park); err != nil {
+		t.Fatal(err)
+	}
+	st2, err := svc.Enter(ctx, acctID, role.ID, 100, spawn)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if st2.Position.Town != 51 || st2.Position.Area != 0 {
+		t.Fatalf("re-entry from 51/1 should land in 51/0 Seria's Room, got %+v", st2.Position)
 	}
 }

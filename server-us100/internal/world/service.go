@@ -7,6 +7,8 @@ import (
 	"dfolan/internal/storage"
 	"errors"
 	"fmt"
+	"path"
+	"strings"
 )
 
 type Rules struct {
@@ -155,7 +157,296 @@ func (s *Service) Enter(ctx context.Context, account, id int64, level byte, spaw
 		state.ConfigVersion = s.Catalog.Source.Checksum
 		state.Revision++
 	}
+	// Every town entry places the character in the Seria's Room belonging to
+	// their current town/map (or the shared Seria's Room 38/1 with Return
+	// pointing back to their saved map when that town has no dedicated gate map).
+	if target, changed := s.SeriaRoomEntry(level, state.Position, spawn, QuestAccess{account, id}); changed {
+		saved, saveErr := s.Store.SaveWorld(ctx, account, id, state, target)
+		if saveErr != nil {
+			return state, saveErr
+		}
+		state = saved
+	}
 	return state, s.ValidatePosition(level, state.Position, QuestAccess{account, id})
+}
+
+// SeriaRoomEntry resolves the Seria's Room spawn position corresponding to cur's
+// map/town. Towns with their own dedicated Seria/gate room (e.g. 38/1, 1/0, 4/0,
+// 31/0, 47/0, 60/0, 83/0, 98/0) land directly in that town's Seria room; towns
+// without a separate Seria room map (e.g. Hendon Myre 39, West Coast 40,
+// Alfhlyra 41, Underfoot 42, Storm Pass 43) land in the shared Seria's Room
+// (38/1) with Return set to cur so exiting the door returns to that exact map.
+func (s *Service) SeriaRoomEntry(level byte, cur, fallbackSpawn storage.WorldPosition, owner ...QuestAccess) (storage.WorldPosition, bool) {
+	if curArea, ok := s.Catalog.Areas[catalog.AreaKey(cur.Town, cur.Area)]; ok && isSeriaRoomArea(curArea) {
+		next := cur
+		if !Walkable(curArea, next.X, next.Y) || inReturnWarpBounds(curArea, next.X, next.Y) {
+			if sx, sy, ok := seriaSpawnPoint(curArea); ok {
+				next.X, next.Y = sx, sy
+			}
+		}
+		if curArea.SeriaReturnWarp && !s.validReturnTarget(level, next.Return, owner...) {
+			next.Return = s.seriaReturnOrigin(cur, curArea, fallbackSpawn, level, owner...)
+		}
+		if s.ValidatePosition(level, next, owner...) == nil {
+			return next, !sameWorldPosition(cur, next)
+		}
+		return cur, false
+	}
+
+	// 1. Prefer a dedicated Seria's Room inside the character's own town.
+	if own, ok := s.findTownSeriaRoom(cur.Town); ok {
+		if cand, ok := s.buildSeriaPosition(level, cur, own, fallbackSpawn, owner...); ok {
+			return cand, !sameWorldPosition(cur, cand)
+		}
+	}
+
+	// 2. Otherwise use the shared SeriaReturnWarp room (e.g. Elvengard 38/1)
+	//    with Return bound to the character's current map/town.
+	if shared, ok := s.findSharedSeriaRoom(); ok {
+		if cand, ok := s.buildSeriaPosition(level, cur, shared, fallbackSpawn, owner...); ok {
+			return cand, !sameWorldPosition(cur, cand)
+		}
+	}
+	return cur, false
+}
+
+func (s *Service) buildSeriaPosition(level byte, cur storage.WorldPosition, seria catalog.WorldArea, fallbackSpawn storage.WorldPosition, owner ...QuestAccess) (storage.WorldPosition, bool) {
+	sx, sy, ok := seriaSpawnPoint(seria)
+	if !ok {
+		return storage.WorldPosition{}, false
+	}
+	cand := storage.WorldPosition{Town: seria.Town, Area: seria.Area, X: sx, Y: sy}
+	if seria.SeriaReturnWarp {
+		cand.Return = s.seriaReturnOrigin(cur, seria, fallbackSpawn, level, owner...)
+	}
+	if s.ValidatePosition(level, cand, owner...) != nil {
+		return storage.WorldPosition{}, false
+	}
+	return cand, true
+}
+
+func (s *Service) validReturnTarget(level byte, ret *storage.WorldReturn, owner ...QuestAccess) bool {
+	if ret == nil {
+		return false
+	}
+	return s.ValidatePosition(level, storage.WorldPosition{Town: ret.Town, Area: ret.Area, X: ret.X, Y: ret.Y}, owner...) == nil
+}
+
+func (s *Service) seriaReturnOrigin(cur storage.WorldPosition, seria catalog.WorldArea, fallbackSpawn storage.WorldPosition, level byte, owner ...QuestAccess) *storage.WorldReturn {
+	// If cur is outside the Seria room:
+	// - For another town (e.g. Hendon Myre 39/0, West Coast 40/0), return directly to cur.
+	// - For the same town (e.g. Elvengard 38/2 dungeon gate), prefer the area in that
+	//   town that has a portal into seria (38/0) so exiting Seria's door lands right
+	//   outside Seria's gate instead of inside a dungeon gate.
+	if cur.Town != seria.Town || cur.Area != seria.Area {
+		if cur.Town == seria.Town {
+			if curArea, ok := s.Catalog.Areas[catalog.AreaKey(cur.Town, cur.Area)]; ok && areaHasPortalTo(curArea, seria.Town, seria.Area) {
+				if s.ValidatePosition(level, cur, owner...) == nil {
+					return &storage.WorldReturn{Town: cur.Town, Area: cur.Area, X: cur.X, Y: cur.Y}
+				}
+			}
+			if gateRet := s.townSeriaGateOrigin(seria, fallbackSpawn, level, owner...); gateRet != nil {
+				return gateRet
+			}
+		}
+		if s.ValidatePosition(level, cur, owner...) == nil {
+			return &storage.WorldReturn{Town: cur.Town, Area: cur.Area, X: cur.X, Y: cur.Y}
+		}
+	}
+	if gateRet := s.townSeriaGateOrigin(seria, fallbackSpawn, level, owner...); gateRet != nil {
+		return gateRet
+	}
+	if fallbackSpawn.Town != seria.Town || fallbackSpawn.Area != seria.Area {
+		if s.ValidatePosition(level, fallbackSpawn, owner...) == nil {
+			return &storage.WorldReturn{Town: fallbackSpawn.Town, Area: fallbackSpawn.Area, X: fallbackSpawn.X, Y: fallbackSpawn.Y}
+		}
+	}
+	return nil
+}
+
+func (s *Service) townSeriaGateOrigin(seria catalog.WorldArea, fallbackSpawn storage.WorldPosition, level byte, owner ...QuestAccess) *storage.WorldReturn {
+	if fallbackSpawn.Town == seria.Town && fallbackSpawn.Area != seria.Area {
+		if a, ok := s.Catalog.Areas[catalog.AreaKey(fallbackSpawn.Town, fallbackSpawn.Area)]; ok && areaHasPortalTo(a, seria.Town, seria.Area) {
+			if s.ValidatePosition(level, fallbackSpawn, owner...) == nil {
+				return &storage.WorldReturn{Town: fallbackSpawn.Town, Area: fallbackSpawn.Area, X: fallbackSpawn.X, Y: fallbackSpawn.Y}
+			}
+		}
+	}
+	var best *catalog.WorldArea
+	for _, a := range s.Catalog.Areas {
+		if a.Town != seria.Town || a.Area == seria.Area || !areaHasPortalTo(a, seria.Town, seria.Area) {
+			continue
+		}
+		aCopy := a
+		if best == nil || aCopy.Area < best.Area {
+			best = &aCopy
+		}
+	}
+	if best != nil {
+		for _, p := range best.Portals {
+			if p.Town == seria.Town && p.Area == seria.Area {
+				if x, y, ok := nearestWalkable(*best, p.Bounds[0]+p.Bounds[2]/2, p.Bounds[1]+p.Bounds[3]/2); ok {
+					pos := storage.WorldPosition{Town: best.Town, Area: best.Area, X: x, Y: y}
+					if s.ValidatePosition(level, pos, owner...) == nil {
+						return &storage.WorldReturn{Town: pos.Town, Area: pos.Area, X: pos.X, Y: pos.Y}
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
+func (s *Service) findTownSeriaRoom(town uint32) (catalog.WorldArea, bool) {
+	var best catalog.WorldArea
+	found := false
+	for _, a := range s.Catalog.Areas {
+		if a.Town != town || !isSeriaRoomArea(a) {
+			continue
+		}
+		if !found || preferSeriaArea(a, best) {
+			best = a
+			found = true
+		}
+	}
+	return best, found
+}
+
+func (s *Service) findSharedSeriaRoom() (catalog.WorldArea, bool) {
+	// Prefer Elvengard 38/1 (universal Seria's Room) when present.
+	if a, ok := s.Catalog.Areas[catalog.AreaKey(38, 1)]; ok && a.SeriaReturnWarp && len(a.Walkable) > 0 {
+		return a, true
+	}
+	var best catalog.WorldArea
+	found := false
+	for _, a := range s.Catalog.Areas {
+		if !a.SeriaReturnWarp || len(a.Walkable) == 0 {
+			continue
+		}
+		if !found || a.MinimumLevel < best.MinimumLevel || (a.MinimumLevel == best.MinimumLevel && (a.Town < best.Town || (a.Town == best.Town && a.Area < best.Area))) {
+			best = a
+			found = true
+		}
+	}
+	return best, found
+}
+
+func preferSeriaArea(cand, cur catalog.WorldArea) bool {
+	if cand.SeriaReturnWarp != cur.SeriaReturnWarp {
+		return cand.SeriaReturnWarp
+	}
+	if (cand.Kind == "[gate]") != (cur.Kind == "[gate]") {
+		return cand.Kind == "[gate]"
+	}
+	return cand.Area < cur.Area
+}
+
+func isSeriaRoomArea(a catalog.WorldArea) bool {
+	if len(a.Walkable) == 0 {
+		return false
+	}
+	if a.SeriaReturnWarp {
+		return true
+	}
+	mp := strings.ToLower(strings.ReplaceAll(a.MapPath, "\\", "/"))
+	base := path.Base(mp)
+	if strings.Contains(mp, "seria") {
+		return true
+	}
+	if strings.HasPrefix(base, "gate_") || strings.HasPrefix(base, "(f)gate_") || base == "gate.map" {
+		return true
+	}
+	if a.Kind == "[gate]" {
+		r := a.Walkable[0]
+		if r[0] >= 350 && r[0] <= 520 && r[1] >= 110 && r[1] <= 210 && r[2] >= 140 && r[2] <= 200 && r[3] >= 150 && r[3] <= 240 {
+			return true
+		}
+	}
+	return false
+}
+
+func areaHasPortalTo(a catalog.WorldArea, town, area uint32) bool {
+	for _, p := range a.Portals {
+		if p.Town == town && p.Area == area {
+			return true
+		}
+	}
+	return false
+}
+
+func inReturnWarpBounds(a catalog.WorldArea, x, y uint16) bool {
+	for _, rw := range a.ReturnWarpBounds {
+		if Contains(rw, x, y, 0) {
+			return true
+		}
+	}
+	return false
+}
+
+func seriaSpawnPoint(a catalog.WorldArea) (uint16, uint16, bool) {
+	if len(a.Walkable) == 0 {
+		return 0, 0, false
+	}
+	r := a.Walkable[0]
+	if r[2] < 0 || r[3] < 0 {
+		return 0, 0, false
+	}
+	x := r[0] + r[2]/2
+	y := r[1] + (r[3]*2)/3
+	// Keep spawn cleanly above any bottom return-warp trigger rectangle.
+	for _, rw := range a.ReturnWarpBounds {
+		if y >= rw[1] && rw[1]-12 >= r[1] {
+			y = rw[1] - 12
+		}
+	}
+	if x >= 0 && y >= 0 && x <= 65535 && y <= 65535 && Walkable(a, uint16(x), uint16(y)) {
+		return uint16(x), uint16(y), true
+	}
+	cx, cy := r[0]+r[2]/2, r[1]+r[3]/2
+	if cx >= 0 && cy >= 0 && cx <= 65535 && cy <= 65535 && Walkable(a, uint16(cx), uint16(cy)) {
+		return uint16(cx), uint16(cy), true
+	}
+	return 0, 0, false
+}
+
+func nearestWalkable(a catalog.WorldArea, tx, ty int32) (uint16, uint16, bool) {
+	if tx >= 0 && ty >= 0 && tx <= 65535 && ty <= 65535 && Walkable(a, uint16(tx), uint16(ty)) {
+		return uint16(tx), uint16(ty), true
+	}
+	for _, r := range a.Walkable {
+		if r[2] < 0 || r[3] < 0 {
+			continue
+		}
+		x := tx
+		if x < r[0] {
+			x = r[0]
+		} else if x > r[0]+r[2] {
+			x = r[0] + r[2]
+		}
+		y := ty
+		if y < r[1] {
+			y = r[1]
+		} else if y > r[1]+r[3] {
+			y = r[1] + r[3]
+		}
+		if x >= 0 && y >= 0 && x <= 65535 && y <= 65535 && Walkable(a, uint16(x), uint16(y)) {
+			return uint16(x), uint16(y), true
+		}
+	}
+	return 0, 0, false
+}
+
+func sameWorldPosition(a, b storage.WorldPosition) bool {
+	if a.Town != b.Town || a.Area != b.Area || a.X != b.X || a.Y != b.Y {
+		return false
+	}
+	if (a.Return == nil) != (b.Return == nil) {
+		return false
+	}
+	if a.Return != nil && *a.Return != *b.Return {
+		return false
+	}
+	return true
 }
 
 func checkSourceAreaQuests(a catalog.WorldArea, status map[uint16]string) error {
