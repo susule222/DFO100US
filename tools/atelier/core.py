@@ -930,6 +930,11 @@ def login(server_only=False, account=None):
             _fcu.apply_staged_if_pending()
         except Exception:
             pass
+        try:
+            import localize_event_tooltips as _let
+            _let.apply_staged_if_pending()
+        except Exception:
+            pass
         from game_fonts import ORIGINAL
         directory=pre.client_exe().parent/'Fonts'
         missing=[n for n in ORIGINAL if not (directory/n).is_file()]
