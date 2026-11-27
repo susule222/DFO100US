@@ -925,6 +925,11 @@ def login(server_only=False, account=None):
     if not server_only and client_up():
         raise ValueError('客户端已经打开；不会启动第二个窗口。')
     if not server_only:
+        try:
+            import fix_channel_select_ui as _fcu
+            _fcu.apply_staged_if_pending()
+        except Exception:
+            pass
         from game_fonts import ORIGINAL
         directory=pre.client_exe().parent/'Fonts'
         missing=[n for n in ORIGINAL if not (directory/n).is_file()]
