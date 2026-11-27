@@ -6,6 +6,7 @@ import (
 	"dfolan/internal/inventory"
 	"dfolan/internal/storage"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 )
@@ -60,5 +61,68 @@ func TestPremiumDirectEveryListing(t *testing.T) {
 		if _, e = premiumOrder(b); e == nil {
 			t.Fatal("accepted nonzero padding")
 		}
+	}
+}
+
+func TestCeraShopDanjiPotCartGoldAndAvatarPurchase(t *testing.T) {
+	const sum = "53ed298dbd69f43e28cbe4b3fa09a4c77d02eaf31d579e27e9477663c924fe69"
+	rules, err := inventory.LoadBagRules("../../configs/us100/rules.bag.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := premiumDelivery(catalog.LootCatalog{Source: pvf.ArchiveSnapshot{Checksum: sum}}, rules)
+
+	// Exact live-captured 2-item DANJI Pot 100 EA (3000254) cart request from events.jsonl.
+	liveCartHex := "00000200ff00bec72d000000000000000000ff00bec72d000000000000000000"
+	rawCart, err := hex.DecodeString(liveCartHex)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines, err := premiumOrder(rawCart)
+	if err != nil || len(lines) != 2 {
+		t.Fatalf("live DANJI cart refused: lines=%+v err=%v", lines, err)
+	}
+	for i, l := range lines {
+		if l.Product != 3000254 || l.Template != 590004385 || l.Quantity != 100 || l.Cera != 7900 || l.Gold != 0 {
+			t.Fatalf("line %d mismatch: %+v", i, l)
+		}
+	}
+	st, err := inventory.SaveBag(json.RawMessage("{}"), inventory.Bag{Version: "ordinary-bag-v1", Gold: 500000})
+	if err != nil {
+		t.Fatal(err)
+	}
+	nextState, _, err := apply(storage.Character{State: st, ConfigVersion: sum}, lines)
+	if err != nil {
+		t.Fatalf("DANJI pot delivery failed: %v", err)
+	}
+	bag, err := inventory.ReadBag(nextState)
+	if err != nil || len(bag.Items) != 1 || bag.Items[0].Template != 590004385 || bag.Items[0].Amount != 200 {
+		t.Fatalf("expected 200 stacked DANJI pots, got %+v err=%v", bag.Items, err)
+	}
+
+	// Gold-priced shop item (Avatar Dye Remover 3000819, 300,000 Gold) + Avatar with stat option bytes (3107733, 120 CERA).
+	mixed := make([]byte, 32)
+	mixed[2] = 2
+	// Line 0: 3000819 (gold)
+	mixed[4], mixed[5] = 255, 0
+	binary.LittleEndian.PutUint32(mixed[6:], 3000819)
+	// Line 1: 3107733 (avatar) with non-zero option byte at +6
+	mixed[18], mixed[19] = 255, 1
+	binary.LittleEndian.PutUint32(mixed[20:], 3107733)
+	mixed[24] = 3
+	mixedLines, err := premiumOrder(mixed)
+	if err != nil || len(mixedLines) != 2 || mixedLines[0].Gold != 300000 || mixedLines[1].Kind != "avatar" || mixedLines[1].Cera != 120 {
+		t.Fatalf("mixed gold+avatar order failed: %+v err=%v", mixedLines, err)
+	}
+	nextState2, _, err := apply(storage.Character{State: nextState, ConfigVersion: sum}, mixedLines)
+	if err != nil {
+		t.Fatalf("mixed delivery failed: %v", err)
+	}
+	bag2, err := inventory.ReadBag(nextState2)
+	if err != nil || bag2.Gold != 200000 || len(bag2.Avatars) != 1 || bag2.Avatars[0].Template != 515540507 {
+		t.Fatalf("unexpected mixed bag: gold=%d avatars=%+v err=%v", bag2.Gold, bag2.Avatars, err)
+	}
+	if avPayload, err := inventory.AvatarPayload(nextState2); err != nil || len(avPayload) == 0 {
+		t.Fatalf("avatar payload failed: %v", err)
 	}
 }

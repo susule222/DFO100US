@@ -12,6 +12,8 @@ import (
 type CartLine struct {
 	Product, Template, Gold uint32
 	Cera                    int64
+	Quantity                uint32 `json:"quantity,omitempty"`
+	Kind                    string `json:"kind,omitempty"`
 }
 
 // Exact server listings joined to premiumlist_new.etc; single-reward wrappers
@@ -49,7 +51,10 @@ var shopTerms = map[CartLine]ContractTerm{
 	{Product: 3500015, Template: 10000390, Gold: 0, Cera: 160}:    {92, 15},
 }
 
-func (l CartLine) Contract() (ContractTerm, bool) { v, ok := shopTerms[l]; return v, ok }
+func (l CartLine) Contract() (ContractTerm, bool) {
+	v, ok := shopTerms[CartLine{Product: l.Product, Template: l.Template, Gold: l.Gold, Cera: l.Cera}]
+	return v, ok
+}
 
 var shopPremiumKinds = []byte{22, 27, 73, 79, 92, 118, 120, 125}
 

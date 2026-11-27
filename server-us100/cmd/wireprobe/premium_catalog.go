@@ -1,6 +1,50 @@
 package main
 
-import "dfolan/internal/storage"
+import (
+	"dfolan/internal/storage"
+	_ "embed"
+	"encoding/json"
+)
+
+// Full US100 etc/(r)cerashop.etc product table (8,629 non-zero-price entries:
+// consumables, DANJI pots, packages, dyes, creatures, contracts, and avatars).
+//
+//go:embed cerashop_us100.json
+var ceraShopCatalogJSON []byte
+
+var ceraShopListings = func() map[uint32]storage.CartLine {
+	var raw struct {
+		Source string     `json:"source"`
+		Rows   [][6]int64 `json:"rows"`
+	}
+	if err := json.Unmarshal(ceraShopCatalogJSON, &raw); err != nil {
+		panic(err)
+	}
+	out := make(map[uint32]storage.CartLine, len(raw.Rows))
+	for _, r := range raw.Rows {
+		pid := uint32(r[0])
+		tid := uint32(r[1])
+		qty := uint32(r[2])
+		cera := r[3]
+		gold := uint32(r[4])
+		kind := ""
+		if r[5] == 1 {
+			kind = "avatar"
+		}
+		if qty <= 1 {
+			qty = 0
+		}
+		out[pid] = storage.CartLine{
+			Product:  pid,
+			Template: tid,
+			Cera:     cera,
+			Gold:     gold,
+			Quantity: qty,
+			Kind:     kind,
+		}
+	}
+	return out
+}()
 
 // US100 (r)cerashop.etc, item period or contract, shown states 0/4.
 // Stackable identities verified against list/stackable.lst, not the global equipment/creature namespace.

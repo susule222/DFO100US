@@ -1271,7 +1271,7 @@ func main() {
 						reason := uint16(20)
 						if e.Error() == "insufficient CERA" || e.Error() == "insufficient gold" {
 							reason = 11
-						} else if e.Error() == "bag category is full" {
+						} else if e.Error() == "bag category is full" || e.Error() == "avatar bag is full" {
 							reason = 4
 						}
 						event(map[string]any{"kind": "shop_buy_refused", "product": product, "reason": e.Error(), "character_id": selectedCharacterID, "lines": len(lines)})
@@ -1308,6 +1308,20 @@ func main() {
 					event(map[string]any{"kind": "shop_buy_committed", "product": product, "character_id": selectedCharacterID, "delivery": delivery, "applied": applied, "lines": len(lines)})
 					if sendPayload(0, 14, inv) != nil || sendPayload(0, 53, funds) != nil {
 						return
+					}
+					hasAvatar := false
+					for _, l := range lines {
+						if l.Kind == "avatar" {
+							hasAvatar = true
+							break
+						}
+					}
+					if hasAvatar {
+						if avInv, aerr := inventory.AvatarPayload(latest.State); aerr == nil {
+							if sendPayload(0, 13, avInv) != nil {
+								return
+							}
+						}
 					}
 					changed := map[byte]bool{}
 					for _, l := range lines {

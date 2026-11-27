@@ -14,7 +14,10 @@ func cartListing(id uint32) (storage.CartLine, bool) {
 	if id == neoShopSale.Product {
 		return storage.CartLine{Product: id, Template: neoShopSale.Template, Cera: neoShopSale.Cera}, true
 	}
-	v, ok := premiumListings[id]
+	if v, ok := premiumListings[id]; ok {
+		return v, true
+	}
+	v, ok := ceraShopListings[id]
 	return v, ok
 }
 func premiumOrder(p []byte) ([]storage.CartLine, error) {
@@ -29,13 +32,18 @@ func premiumOrder(p []byte) ([]storage.CartLine, error) {
 	var out []storage.CartLine
 	for i := 0; i < n; i++ {
 		b := p[4+14*i : 18+14*i]
-		if b[0] != 255 || (b[1] != 0 && !(n == 1 && b[1] == 255)) || !allZero(b[6:]) {
+		if b[0] != 255 || (b[1] >= 10 && !(n == 1 && b[1] == 255)) {
 			return nil, fmt.Errorf("unsupported gift or item option")
 		}
 		id := binary.LittleEndian.Uint32(b[2:])
 		l, ok := cartListing(id)
 		if !ok {
 			return nil, fmt.Errorf("unverified sale %d", id)
+		}
+		// Avatar purchases carry chosen stat option bytes in b[6..13];
+		// non-avatar stackable/contract items must keep b[6..13] zero.
+		if l.Kind != "avatar" && !allZero(b[6:]) {
+			return nil, fmt.Errorf("unsupported gift or item option")
 		}
 		out = append(out, l)
 	}
@@ -70,7 +78,25 @@ func premiumDelivery(src catalog.LootCatalog, r inventory.BagRules) storage.Cart
 				return nil, nil, fmt.Errorf("invalid listing")
 			}
 			total += uint64(l.Gold)
-			local.Items[l.Template] = catalog.LootItem{ID: l.Template, Kind: "stackable", StackableType: "[throw]", StackLimit: 1}
+			if l.Kind == "avatar" {
+				continue
+			}
+			qty := l.Quantity
+			if qty == 0 {
+				qty = 1
+			}
+			limit := uint32(1000)
+			if qty > limit {
+				limit = qty
+			}
+			if existing, ok := src.Items[l.Template]; ok && existing.Kind == "stackable" {
+				if existing.StackLimit < limit {
+					existing.StackLimit = limit
+				}
+				local.Items[l.Template] = existing
+			} else {
+				local.Items[l.Template] = catalog.LootItem{ID: l.Template, Kind: "stackable", StackableType: "[throw]", StackLimit: limit}
+			}
 		}
 		if total > uint64(b.Gold) {
 			return nil, nil, fmt.Errorf("insufficient gold")
@@ -82,12 +108,25 @@ func premiumDelivery(src catalog.LootCatalog, r inventory.BagRules) storage.Cart
 				del = append(del, map[string]any{"product": l.Product, "template": l.Template, "contract_kind": term.Kind, "days": term.Days})
 				continue
 			}
+			if l.Kind == "avatar" {
+				var avatarSlots []uint16
+				b, avatarSlots, e = b.AddAvatars([]uint32{l.Template})
+				if e != nil {
+					return nil, nil, e
+				}
+				del = append(del, map[string]any{"product": l.Product, "template": l.Template, "avatar_slot": avatarSlots[0]})
+				continue
+			}
+			qty := l.Quantity
+			if qty == 0 {
+				qty = 1
+			}
 			var slots uint16
-			b, slots, e = b.Add(local, r, l.Template, 1)
+			b, slots, e = b.Add(local, r, l.Template, qty)
 			if e != nil {
 				return nil, nil, e
 			}
-			del = append(del, map[string]any{"product": l.Product, "template": l.Template, "slot": slots})
+			del = append(del, map[string]any{"product": l.Product, "template": l.Template, "quantity": qty, "slot": slots})
 		}
 		state, e := inventory.SaveBag(c.State, b)
 		if e != nil {
