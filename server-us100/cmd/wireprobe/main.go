@@ -2381,6 +2381,7 @@ func main() {
 						return
 					}
 					var userInfoMode byte
+					var userInfoUID uint16
 					if frame.ID == 8 {
 						uid, mode, e := protocol.DecodeUserInfoRequest(plaintext)
 						if e != nil {
@@ -2388,7 +2389,9 @@ func main() {
 							continue
 						}
 						userInfoMode = mode
-						if !((mode == 2 && uid == 0xffff) || (mode == 0 && uid == 0xffff && len(selectedBasic) > 0) || (mode == 1 && uid == 0xffff && len(selectedAddition) > 0)) {
+						userInfoUID = uid
+						nameHistoryOK := mode == 5 && worldState != nil && worldState.role.ID == selectedCharacterID && selectedCharacterID != 0 && (uid == worldState.role.WireID || uid == 0xffff)
+						if !((mode == 2 && uid == 0xffff) || (mode == 0 && uid == 0xffff && len(selectedBasic) > 0) || (mode == 1 && uid == 0xffff && len(selectedAddition) > 0) || nameHistoryOK) {
 							event(map[string]any{"kind": "userinfo_mode_pending", "mode": mode, "uid": uid, "selected_character_id": selectedCharacterID})
 							continue
 						}
@@ -2478,6 +2481,12 @@ func main() {
 									payload, err = characters.EntryAddition(worldState.role)
 								}
 							}
+						} else if userInfoMode == 5 && worldState != nil && worldState.role.ID == selectedCharacterID {
+							roleForHistory := worldState.role
+							if userInfoUID != 0 && userInfoUID != 0xffff {
+								roleForHistory.WireID = userInfoUID
+							}
+							payload, err = nameHistoryPayload(roleForHistory, channelCtx[0], time.Now())
 						} else {
 							payload, err = characters.ListWithFatigue(ctx, developmentAccount, fatigueService, time.Now())
 						}

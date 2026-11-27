@@ -128,3 +128,38 @@ func UserInfoBasicProbe(s EntryBasicProbe) ([]byte, error) {
 	p = append(p, 0, 0, 0, 0, 0, 0)             // 0x143809c9b, 0x143809cc8, 0x143809d8d..0x143809e00
 	return p, nil
 }
+
+// NameHistoryEntry represents one row in the US100 (2.24) Character Name Change
+// History dialog (0x165), populated by NOTI 2 mode 5 (0x14380257c -> 0x142da8480).
+type NameHistoryEntry struct {
+	Name        string
+	ServerGroup byte
+	Timestamp   uint32
+}
+
+// UserInfoNameHistory encodes US100 (2.24) NOTI 2 mode 5:
+//   u8 mode(5), u16 outerCount(1), u8 flag(0), u16 actorID, u8 entryCount,
+//   entryCount * [u32 nameLen + nameBytes (<31B per 0x144e6eec0), u8 serverGroup, u32 unixTime].
+func UserInfoNameHistory(actorID uint16, entries []NameHistoryEntry) ([]byte, error) {
+	if actorID == 0 || actorID == 0xffff {
+		return nil, fmt.Errorf("invalid name history actor id")
+	}
+	if len(entries) > 255 {
+		return nil, fmt.Errorf("too many name history entries")
+	}
+	p := add16([]byte{5}, 1)
+	p = append(p, 0)
+	p = add16(p, actorID)
+	p = append(p, byte(len(entries)))
+	for _, entry := range entries {
+		nb := []byte(entry.Name)
+		if len(nb) == 0 || len(nb) >= 0x1f {
+			return nil, fmt.Errorf("invalid name history length %d", len(nb))
+		}
+		p = add32(p, uint32(len(nb)))
+		p = append(p, nb...)
+		p = append(p, entry.ServerGroup)
+		p = add32(p, entry.Timestamp)
+	}
+	return p, nil
+}

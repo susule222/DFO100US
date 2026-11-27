@@ -166,3 +166,46 @@ func TestWithUserInfoContext(t *testing.T) {
 		}
 	}
 }
+
+func TestUserInfoNameHistoryUS224(t *testing.T) {
+	empty, err := UserInfoNameHistory(10, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantEmpty := []byte{5, 1, 0, 0, 10, 0, 0}
+	if string(empty) != string(wantEmpty) {
+		t.Fatalf("empty mode-5 payload = %x, want %x", empty, wantEmpty)
+	}
+	// WithUserInfoContext must leave mode 5 untouched.
+	if got := WithUserInfoContext(empty, [2]byte{1, 20}); string(got) != string(empty) {
+		t.Fatalf("WithUserInfoContext corrupted mode 5: %x", got)
+	}
+
+	ts := uint32(1795773578)
+	p, err := UserInfoNameHistory(10, []NameHistoryEntry{
+		{Name: "HeroOne", ServerGroup: 1, Timestamp: ts},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 7B header + (4B len + 7B "HeroOne" + 1B server + 4B ts) = 23B.
+	if len(p) != 23 {
+		t.Fatalf("len=%d, want 23", len(p))
+	}
+	if p[0] != 5 || binary.LittleEndian.Uint16(p[1:3]) != 1 || p[3] != 0 || binary.LittleEndian.Uint16(p[4:6]) != 10 || p[6] != 1 {
+		t.Fatalf("unexpected mode-5 header: %x", p[:7])
+	}
+	if binary.LittleEndian.Uint32(p[7:11]) != 7 || string(p[11:18]) != "HeroOne" || p[18] != 1 || binary.LittleEndian.Uint32(p[19:23]) != ts {
+		t.Fatalf("unexpected mode-5 entry: %x", p[7:])
+	}
+
+	if _, err := UserInfoNameHistory(0, nil); err == nil {
+		t.Fatal("accepted actor 0")
+	}
+	if _, err := UserInfoNameHistory(10, []NameHistoryEntry{{Name: "", ServerGroup: 1, Timestamp: ts}}); err == nil {
+		t.Fatal("accepted empty name")
+	}
+	if _, err := UserInfoNameHistory(10, []NameHistoryEntry{{Name: "0123456789012345678901234567890", ServerGroup: 1, Timestamp: ts}}); err == nil {
+		t.Fatal("accepted >=31-byte name")
+	}
+}
