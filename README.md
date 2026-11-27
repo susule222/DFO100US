@@ -1,86 +1,94 @@
-# 美服100服务端 (US100) 搭建项目
+# 美服 100 级服务端（DFO100US）搭建与开发项目
 
-国服 `D:\DNF\client\DNF100`（DNF.exe 37.8.13.0）的模拟端位于 [server-cn100](server-cn100/README.md)，使用该目录内的启动脚本。安装目录和资源指纹见 [DNF100 客户端结构](DNF100客户端结构.md)。
+将美服 DFO 客户端 `D:\DNF\client\100US\DFO`（`v2.24.0.124`，2023-02-27，Lv100 内容）接入本地自研 Go 服务端 `wireprobe-us100` 的完整工程，包含服务端源码、离线客户端补丁（`ngs_stub`）、PVF 导入/本地化工具链及一键启动脚本。
 
-## 目标
-把美服 DFO 客户端 `D:\DNF\client\100US\DFO`（v2.24.0.124, 2023-02-27, Lv100 内容）接入本地服务端，
-参考已跑通的 115us 项目（E:\BaiduNetdiskDownload\115us，v2.38.2.34 客户端 + wireprobe Go 服务端）。
+> 架构与协议资料索引：[架构说明](server-us100/docs/architecture.md) · [重建记录](server-us100/docs/REBUILD-100US.md) · [PVF 本地化说明](server-us100/docs/US100-PVF-LOCALIZATION.md) · [客户端分析](server-us100/docs/CLIENT-US100-ANALYSIS.md) · [DNF100 客户端结构](DNF100客户端结构.md)
 
-## 关键事实
+---
 
-### 客户端 (D:\DNF\client\100US\DFO)
-- 美服 DFO v2.24.0.124，DFO.exe 171MB（Themida 壳，.text 未加密）
-- 与韩服100 客户端同协议代（DNFPB protobuf 58/30 一致）
-- Script.pvf 390MB，RSA+AES 双层包装（与 115us 的 760MB PVF 同格式）
-- NGS：NGClient64.aes（6 个序号导出）+ BlackCipher 目录
-- 启动参数格式：`13?<host>?<port>?probe?000...?0?0?30?0?0?0`（与 v2.38 相同！）
+## 当前开发进度（2026-11-27）
 
-### 服务端 (wireprobe-us100, Go, 骨架来自 115us 参考项目)
-- 主监听（频道握手+游戏）：127.0.0.2:随机端口，先发 channelinfo fixture
-- 频道目录刷新：127.0.0.1:7001（独立 socket，11 字节头 + AES-ECB/zlib）
-- 存储采用项目内的单文件数据库 `server-us100\runtime\us100.db`。首次初始化使用同目录下的 `us100_seed.json`。
-- 会话密钥：channelinfo protobuf field3（1024 字节固定模式），服务端同样使用
-- 线协议：13 字节客户端头 `[0]=type [1:3]=id [3:7]=len [7]=crc8 [11:13]=marker`
-  + 加密 body；服务端 16 字节头（校验和是 **[11] 一个字节**）
+### 1. 基础接入、存储与启动链
+- [x] **客户端离线补丁（`ngs_stub`）**：6 个序号导出桩（`1=0, 5=1`）、`en-US` locale 补丁、`MessageBox` 抑制、NGS 初始化检查绕过（`0x4EC40B7 je→jmp`）及 `WndProc` 窗口关闭保护（RVA `0x38B7350`）
+- [x] **登录与频道选择**：主监听 `127.0.0.2:<随机端口>` + 频道目录刷新 `127.0.0.1:7001`，完成 `channelinfo`、挑战 `318`、预检/登录 `1554`、角色列表（v2.24 95 字节名单行）、创角/删角与改名历史（`CMD 8 mode 5`）
+- [x] **单文件内置存储（`db100`）**：采用项目内 `server-us100/runtime/us100.db`（首次由 `us100_seed.json` 初始化），不再依赖外部数据库守护进程
+- [x] **一键启动与预检**：`一键启动开发环境.cmd` / `启动服务端.cmd` / `启动客户端.cmd` / `停止服务端.cmd` + `tools/us100_preflight.py` 预检 + 自动增量编译（内置 `tools/go`）
 
-### 已跑通（US100 客户端 ↔ 本地服务端）
-1. 客户端接受 `13?127.0.0.2?<port>?probe?...` 参数并连接
-2. 服务端发 channelinfo → 客户端回 318（挑战）→ 1554（precheck，"probe"）
-3. 服务端回 1554/1（login）fixture → 客户端校验通过（会话密钥兼容！）
-4. 客户端发 8（GET_USERINFO）→ 服务端回 2（v2.24 名单行，95 固定字节 + 名称）
-5. 客户端继续发 848/433/637（roster 计数器/佣兵/删除挂起数）
-6. 客户端到角色选择界面，持续发 465（NGS 进程上报，服务端采样忽略）
-7. 客户端发 2（含本机 IP，服务端只记录不处理）
-8. 选角 → 进城 → 走到副本门口（CMD15）→ 选择界面 → 选本 → 房间数据（进行中，
-   见 docs/protocol/next39-dungeon-packets.md 末尾一节）
+### 2. 城镇、角色、任务与副本核心循环
+- [x] **进城与属性恢复**：正常模式发送带角色属性的 `USERINFO mode 1`，城镇 HUD 红球/蓝球 100% 恢复；快捷栏与基础按键同步（`quickslot_flow` / `basic_keys`）
+- [x] **城镇移动与世界/教学流程**：区域移动、地图门禁、城镇 NPC、教学引导与剧情副本（`world_flow` / `tutorial_flow` / `mirkwood_story` / `lorien`）
+- [x] **任务系统**：主线/支线任务接取、进度推进、完成与奖励发放（`quest_flow`）
+- [x] **副本与结算**：多层/多候选房间解析与 US100 副本地图刷新、进图战斗流程、怪物掉落、通关翻牌与结算（`dungeon_flow` / `loot_flow` / `card_flow` / `settlement_flow`）
+- [x] **技能系统**：按转职最大等级门控学习，支持多档 SP 消耗（`skill_flow`）
 
-### 客户端离线补丁（ngs_stub，见 ngs_stub\ngs_stub.c）
-- NGS 6 序号导出桩（ini 可配返回值：1=0, 5=1 必须）
-- en-US locale 补丁（GetACP=1252 等）
-- MessageBox 抑制 + 日志
-- **NGS 初始化检查补丁**：0x4EC40B7 `je→jmp`（跳过 init 失败退出）
-- **窗口保护**：hook 游戏 WndProc（RVA 0x38B7350），吞掉 WM_CLOSE/WM_DESTROY
-  （否则 NGS 失败后窗口被销毁 → D3D CreateDevice 拿无效 hwnd → "Failed to set
-  up the graphics system" → 客户端退出）
+### 3. 装备、分解机、外观、商城与活动
+- [x] **装备与外观同步**：装备/称号穿戴、替换与卸下，城镇内实时同步头顶称号与角色外观（`equipment_flow`）；支持登录器/在线发放称号正常穿戴
+- [x] **分解机与晶块仓库**：装备分解生效，分解产出的无色及各色小晶块正确入库至晶块仓库（`disjoint_flow`）
+- [x] **消耗品与在线管理**：消耗品使用、在线 GM/物品注入监听与菜单交互（`consume_flow` / `online_gm` / `inject_watch` / `menu_flow`）
+- [x] **点券商城与契约**：加载完整 US100 点券商城目录（含堆叠物品与装扮，`premium_catalog` / `premium_cart`）；同步 Neo Premium 契约状态（`NOTI 2 mode 0`）并支持租借武器穿戴（`neo_claim`）
+- [x] **活动系统（推进中）**：已激活 DANJI 罐子活动（`NOTI 108/2279`）并实现开罐协议（`CMD 2052`，`danji_flow`）；通用活动框架（`internal/events` / `storage/activities.go`）持续扩展中
 
-## 目录
-- ngs_stub\    US100 客户端离线补丁（构建：build.bat → 部署到 D:\DNF\client\100US\DFO）
-- tools\       启动/预检/停止 + 侦察与测试脚本（Go 工具链在 tools\go，模块缓存在 tools\gopath）
-  - us100_interactive.py   一键启动（预检 → 检查 db100 → 服务端 → 客户端）
-  - us100_preflight.py     启动前检查（客户端体积、二进制新旧、端口、存储、实例）
-  - us100_stop.py          停止服务端和客户端
-  - unwrap_us100_pvf.py    US100 Script.pvf 外层解密（RSA+AES，密钥取自 DFO.exe）
-  - 其余为侦察期历史脚本（多数仍是只读分析工具）
-- runtime\     运行输出与 US100 数据（interactive\ 本次会话、shots\、cursor\；
-  pvf_source\ US100 内层 PVF、dump\ 客户端内存镜像、us100_equiplst\ 等分析产物。
-  2026-09-23 已清理约 350 个一次性调试残留文件）
-- cn100\       国服 CN100 客户端的 PVF 解密产物与工具，与本工程无关，独立存放
-  （见 cn100\README.md）
-- server-us100\ Go 服务端（cmd\ 各工具默认 -source runtime/pvf_source/Script.inner.pvf）
+### 4. 待完善事项
+- [ ] 更多活动模块与长期运营玩法（`internal/events` 持续接入）
+- [ ] 副本怪物细节与更多高阶副本/团本房间协议补全（参考 [next39-dungeon-packets.md](server-us100/docs/protocol/next39-dungeon-packets.md)）
+- [ ] WFP 网络隔离（按 `APP_ID` 阻断客户端非回环外连）
+- [ ] 替换 `configs/us100/rules.*.json` 中仍沿用 90 级参考数值的部分门禁参数
 
-## 运行方法
+---
 
-- 只启动服务端，在项目目录运行 `python tools/us100_interactive.py 13 normal --no-client`。出现 `server ready` 后，可用 `启动客户端.cmd` 连接本次分配的游戏端口。
-- 同时启动服务端和客户端，双击 `启动服务端.cmd`。启动器会检查构建、客户端、数据库和频道端口。
-- 游戏端口每次可能变化。当前监听地址记录在 `runtime/interactive/ready.json`，本次构建和客户端路径记录在同目录的 `run.json`。
-- 只做启动前检查，运行 `python tools/us100_preflight.py`。默认客户端目录为 `D:\DNF\client\100US\DFO`，也可用 `DFO_CLIENT_DIR` 指向包含 `DFO.exe` 的目录。
-- 前台运行时可在启动器窗口按 Ctrl+C 停止服务端。
+## 关键技术规格
 
-## 待办（2026-09-20 更新）
-- [x] US100 PVF 解包、catalogs 生成、v2.24 名单行布局
-- [x] 频道选择（3 模式）+ 选角 + 进城
-- [x] 启动链重建：预检、存储随启动器拉起、服务端 Job 对象、停止脚本
-- [ ] 副本房间：选择界面出现后选本 → 28/29 布局（已按本客户端读序列重写，
-      待实测）→ 房间内怪物行（24 字节一行，未恢复）
-- [x] 100US 进城恢复角色 HP/MP。正常模式发送带角色属性的 USERINFO mode 1。2026-11-23 在 us100a 的城镇 HUD 实测，红球和蓝球均显示 100%。
-- [ ] WFP 网络隔离（防客户端连官方服）：可照 115us 的 `probe.cpp` 实现
-      （WFP 动态会话 + 按 APP_ID 的非回环 BLOCK + 远连自检）
-- [ ] 版本门禁目前是标签比较：`configs/us100/rules.*.json` 与几个 `*-probe.json`
-      带的是 90 级参考模型数值，不是本客户端恢复值（其文件内已注明）
+### 客户端（`D:\DNF\client\100US\DFO`）
+- 美服 DFO `v2.24.0.124`，`DFO.exe` 约 171 MB（Themida 壳，`.text` 未加密），与韩服 100 级同协议代（DNFPB protobuf 58/30）
+- `Script.pvf` 约 390 MB，RSA + AES 双层包装
+- NGS：`NGClient64.aes`（6 个序号导出）+ `BlackCipher` 目录
+- 启动参数格式：`13?<host>?<port>?probe?000...?0?0?30?0?0?0`
+
+### 服务端（`server-us100`，Go 1.26）
+- 主监听（频道握手 + 游戏）：`127.0.0.2:<随机端口>`，建连先发 `channelinfo`
+- 频道目录刷新：`127.0.0.1:7001`（独立 socket，11 字节头 + AES-ECB / zlib）
+- 会话密钥：`channelinfo` protobuf `field 3`（1024 字节固定模式）
+- 线协议：客户端 13 字节头 `[0]=type [1:3]=id [3:7]=len [7]=crc8 [11:13]=marker` + 加密 body；服务端 16 字节头（校验和位于 `[11]` 单字节）
+
+---
+
+## 目录结构
+
+| 目录 / 文件 | 说明 |
+| --- | --- |
+| `server-us100/` | Go 主服务端（`cmd/wireprobe` 核心服务、`cmd/*` 导入与审计工具、`internal/*` 领域与协议层、`configs/` 配置、`docs/` 协议文档） |
+| `ngs_stub/` | US100 客户端离线补丁源码（`build.bat` 编译并部署至客户端目录） |
+| `tools/` | 启动/预检/停止脚本（`us100_interactive.py`、`us100_preflight.py`、`us100_stop.py`、`us100_client.py`）、PVF 解密与本地化工具 |
+| `runtime/` | 运行期日志、会话状态（`interactive/ready.json`、`run.json`）、本地 PVF 解包与内存镜像（已由 `.gitignore` 排除，不入库） |
+| `一键启动开发环境.cmd` / `启动服务端.cmd` | 一键执行预检、按需重编并拉起服务端与客户端 |
+| `启动客户端.cmd` / `停止服务端.cmd` | 单独拉起客户端接入运行中服务端 / 清理并停止会话 |
+| `100US登录器.exe` | 本地配套登录器与发物工具 |
+
+---
+
+## 快速运行
+
+- **一键启动（服务端 + 客户端）**：双击 `一键启动开发环境.cmd` 或 `启动服务端.cmd`。启动器会自动执行预检、在源码更新时重编 `wireprobe-us100.exe`、打开 `server-us100/runtime/us100.db` 并拉起客户端。
+- **仅启动服务端**：在项目根目录运行：
+  ```bash
+  python tools/us100_interactive.py 13 normal --no-client
+  ```
+  看到 `server ready` 后，再双击 `启动客户端.cmd` 或使用 `100US登录器.exe` 连接（当前端口记录在 `runtime/interactive/ready.json`）。
+- **仅执行启动前预检**：
+  ```bash
+  python tools/us100_preflight.py
+  ```
+  默认客户端路径为 `D:\DNF\client\100US\DFO`，可通过环境变量 `DFO_CLIENT_DIR` 覆盖。
+- **停止服务**：前台按 `Ctrl+C` 或运行 `停止服务端.cmd`。
+
+---
+
+## 分支与版本管理
+
+- `main`：稳定基线分支（初始回滚标签：`v0.1.0-us100-baseline`）
+- `dev` / `DFO100US`：服务端日常功能迭代分支，验收稳定后合入 `main` 并打新标签便于随时回滚
 
 ## 内存注意事项
-- PVF 读取已 mmap（无 390MB 堆复制）、解压块 LRU 上限（64MB）、文本 LRU
-  上限（16MB）、文件表惰性解析、路径索引为排序哈希表；导入器
-  （equipmentbuild 等）设 GOGC=10。最重导入峰值实测 2490MB→902MB。
-- pvfinspect 默认不再写 matches.json（`-index` 才写，且受 `-max-matches`
-  上限），避免数百 MB 中间文件。
+
+- PVF 读取采用 `mmap`（避免 390 MB 堆复制），解压块 LRU 上限 64 MB、文本 LRU 上限 16 MB、文件表惰性解析；批量导入工具（如 `equipmentbuild`）使用 `GOGC=10`，导入峰值由 ~2490 MB 降至 ~902 MB。
+- `pvfinspect` 默认不写 `matches.json`（需显式加 `-index` 并受 `-max-matches` 限制），避免产生数百 MB 中间文件。
