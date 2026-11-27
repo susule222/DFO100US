@@ -21,9 +21,11 @@ from typing import Callable
 import zlib
 
 from PIL import Image, ImageDraw, ImageFont
+import numpy as np
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import us100_ui_atlas as atlas  # noqa: E402
+from us100_quest_act import compress_exact, inflate_exact  # noqa: E402
 
 DEFAULT_CLIENT_PACKS = Path(r"D:\DNF\client\100US\DFO\ImagePacks2")
 DEFAULT_BACKUP_DIR = Path("runtime/event-ui-localize-backup")
@@ -39,6 +41,11 @@ FONT_REG_CANDIDATES = (
     Path(r"C:\Windows\Fonts\msyhbd.ttc"),
     Path(r"C:\Windows\Fonts\simhei.ttf"),
 )
+FONT_COMPACT_CANDIDATES = (
+    Path(r"C:\Windows\Fonts\simsun.ttc"),
+    Path(r"C:\Windows\Fonts\msyh.ttc"),
+    Path(r"C:\Windows\Fonts\simhei.ttf"),
+)
 
 
 @lru_cache(maxsize=64)
@@ -50,54 +57,233 @@ def load_font(size: int, bold: bool = True) -> ImageFont.FreeTypeFont:
     raise FileNotFoundError("No Simplified Chinese TrueType font found in C:\\Windows\\Fonts")
 
 
-def encode_v2_frame(orig_frame: atlas.Frame, im: Image.Image) -> atlas.Frame:
-    """Encode a PIL RGBA image back into a v2 IMG Frame (ARGB8888/BGRA + zlib level 6),
-    preserving exact original width, height, x, y, canvas_w, canvas_h geometry."""
+@lru_cache(maxsize=32)
+def load_compact_font(size: int) -> ImageFont.FreeTypeFont:
+    for path in FONT_COMPACT_CANDIDATES:
+        if path.is_file():
+            return ImageFont.truetype(str(path), size=max(8, size))
+    return load_font(size, bold=False)
+
+
+def encode_pixels_native(im: Image.Image, kind: int) -> bytes:
+    """Encode PIL RGBA image into the frame's exact native Neople pixel layout (kind 14/15/16)."""
     rgba = im.convert("RGBA")
-    w, h, x, y, cw, ch = orig_frame.geometry
-    if (rgba.width, rgba.height) != (w, h):
-        raise ValueError(
-            f"frame size mismatch: expected {(w, h)}, got {(rgba.width, rgba.height)}"
+    if kind == 16:
+        return rgba.tobytes("raw", "BGRA")
+    arr = np.asarray(rgba, dtype=np.uint16)
+    if kind == 15:
+        # ARGB4444
+        val = (
+            ((arr[:, :, 3] >> 4) << 12)
+            | ((arr[:, :, 0] >> 4) << 8)
+            | ((arr[:, :, 1] >> 4) << 4)
+            | (arr[:, :, 2] >> 4)
         )
-    bgra = rgba.tobytes("raw", "BGRA")
-    compressed = zlib.compress(bgra, level=6)
-    meta = struct.pack("<IIIIIiiII", 16, 6, w, h, len(compressed), x, y, cw, ch)
-    return atlas.Frame(meta, compressed)
+        return val.astype("<u2").tobytes()
+    if kind == 14:
+        # ARGB1555
+        val = (
+            ((arr[:, :, 3] >= 128).astype(np.uint16) << 15)
+            | ((arr[:, :, 0] >> 3) << 10)
+            | ((arr[:, :, 1] >> 3) << 5)
+            | (arr[:, :, 2] >> 3)
+        )
+        return val.astype("<u2").tobytes()
+    raise ValueError(f"unsupported v2 IMG pixel kind: {kind}")
 
 
-def patch_img_bytes(
-    source: bytes,
-    frame_patchers: dict[int, Callable[[Image.Image], Image.Image]],
-) -> tuple[bytes, dict[int, Image.Image]]:
-    """Apply per-frame image patchers to a v2 IMG blob and verify lossless round-trip."""
-    frames = atlas.split_img(source)
-    result = frames.copy()
-    rendered: dict[int, Image.Image] = {}
-    for idx, fn in frame_patchers.items():
-        if idx < 0 or idx >= len(frames):
-            raise IndexError(f"frame index {idx} out of range (len={len(frames)})")
-        orig = frames[idx]
-        if not isinstance(orig, atlas.Frame):
-            raise ValueError(f"frame {idx} is a link ({orig}), cannot repaint directly")
-        im = orig.image().convert("RGBA")
-        updated = fn(im).convert("RGBA")
-        encoded = encode_v2_frame(orig, updated)
-        result[idx] = encoded
-        rendered[idx] = updated
-    table = b"".join(
-        f.meta if isinstance(f, atlas.Frame) else struct.pack("<II", 17, f)
-        for f in result
-    )
-    body = b"".join(f.raw for f in result if isinstance(f, atlas.Frame))
-    blob = source[:16] + struct.pack("<I", len(table)) + source[20:32] + table + body
-    roundtrip = atlas.split_img(blob)
-    if roundtrip != result:
-        raise ValueError("v2 IMG round-trip structure verification failed")
-    for idx, expected_im in rendered.items():
-        rt_im = roundtrip[idx].image()
-        if rt_im.tobytes() != expected_im.tobytes():
-            raise ValueError(f"v2 IMG pixel round-trip mismatch at frame {idx}")
-    return blob, rendered
+def draw_compact_button(
+    im: Image.Image,
+    text: str,
+    fill: tuple[int, int, int, int],
+    *,
+    bg_mode: str = "solid",
+    bg_color: tuple[int, int, int, int] | None = None,
+    keep: tuple[int, int, int, int] = (4, 4, 4, 4),
+    size: int = 12,
+) -> Image.Image:
+    """Render crisp 1-bit CJK text onto a flat sampled interior so tight zlib slots fit effortlessly."""
+    out = im.copy().convert("RGBA")
+    kl, kt, kr, kb = keep
+    box = (kl, kt, max(kl + 4, out.width - kr), max(kt + 4, out.height - kb))
+    fill_sampled_bg(out, box, mode=bg_mode, color=bg_color)
+    x0, y0, x1, y1 = box
+    font = load_compact_font(size)
+    mask = Image.new("1", out.size, 0)
+    d = ImageDraw.Draw(mask)
+    bb = d.textbbox((0, 0), text, font=font)
+    lw, lh = bb[2] - bb[0], bb[3] - bb[1]
+    tx = x0 + (x1 - x0 - lw) // 2 - bb[0]
+    ty = y0 + (y1 - y0 - lh) // 2 - bb[1]
+    d.text((tx, ty), text, font=font, fill=1)
+    out.paste(fill, (0, 0), mask)
+    return out
+
+
+def fit_frame_in_place(
+    orig_frame: atlas.Frame,
+    updated_im: Image.Image,
+    compact_candidates: list[Image.Image] | None = None,
+) -> tuple[bytes, Image.Image]:
+    """Compress `updated_im` into `orig_frame`'s EXACT original byte slot (`len(orig_frame.raw)`),
+    preserving 100% of original NPK header, 32-byte SHA-256, NpkIndex.etc offsets, and Frame.meta."""
+    kind, comp, w, h, orig_sz, _x, _y, _cw, _ch = struct.unpack("<IIIIIiiII", orig_frame.meta)
+    if comp != 6:
+        raise ValueError(f"unsupported frame compression {comp} (expected 6/zlib)")
+    if (updated_im.width, updated_im.height) != (w, h):
+        raise ValueError(f"frame size mismatch: expected {(w, h)}, got {(updated_im.width, updated_im.height)}")
+    hdr = orig_frame.raw[:2]
+    expected_len = w * h * (4 if kind == 16 else 2)
+    orig_rgba = orig_frame.image().convert("RGBA")
+    orig_arr = np.asarray(orig_rgba)
+    upd_rgba = updated_im.convert("RGBA")
+    upd_arr = np.asarray(upd_rgba)
+    delta_mask = np.any(orig_arr != upd_arr, axis=2)
+
+    def _try(cand_im: Image.Image) -> tuple[bytes, Image.Image] | None:
+        raw = encode_pixels_native(cand_im, kind)
+        try:
+            blob = compress_exact(raw, orig_sz, hdr)
+        except ValueError:
+            return None
+        if len(blob) != orig_sz or inflate_exact(blob, expected_len) != raw:
+            raise AssertionError("in-place zlib slot verification failed")
+        return blob, atlas.Frame(orig_frame.meta, blob).image().convert("RGBA")
+
+    # 1. Exact lossless encoding first
+    res = _try(upd_rgba)
+    if res is not None:
+        return res
+
+    # 2. Gentle progressive quantization strictly on changed pixels (preserves untouched art bit-for-bit)
+    for step in (4, 8, 16, 24, 32, 48, 64):
+        arr = upd_arr.copy()
+        arr[delta_mask, :3] = np.minimum(
+            255, ((arr[delta_mask, :3].astype(np.int16) + step // 2) // step) * step
+        )
+        res = _try(Image.fromarray(arr, "RGBA"))
+        if res is not None:
+            return res
+
+    # 3. Palette quantization (16/8 colors) strictly on changed pixels
+    for colors in (16, 8):
+        q = upd_rgba.quantize(colors=colors, method=Image.Quantize.FASTOCTREE).convert("RGBA")
+        q_arr = np.asarray(q)
+        arr = orig_arr.copy()
+        arr[delta_mask] = q_arr[delta_mask]
+        res = _try(Image.fromarray(arr, "RGBA"))
+        if res is not None:
+            return res
+
+    # 4. Crisp 1-bit compact button fallback for tight button slots (cleaner than 4-color quantize!)
+    if compact_candidates:
+        for cand_im in compact_candidates:
+            res = _try(cand_im.convert("RGBA"))
+            if res is not None:
+                return res
+            for colors in (16, 8, 4):
+                q = cand_im.convert("RGBA").quantize(colors=colors, method=Image.Quantize.FASTOCTREE).convert("RGBA")
+                res = _try(q)
+                if res is not None:
+                    return res
+
+    # 5. Last resort: 4-color quantization on changed pixels
+    q = upd_rgba.quantize(colors=4, method=Image.Quantize.FASTOCTREE).convert("RGBA")
+    q_arr = np.asarray(q)
+    arr = orig_arr.copy()
+    arr[delta_mask] = q_arr[delta_mask]
+    res = _try(Image.fromarray(arr, "RGBA"))
+    if res is not None:
+        return res
+
+    best = len(zlib.compress(encode_pixels_native(upd_rgba, kind), 9))
+    raise ValueError(f"cannot fit localized frame ({w}x{h}, kind={kind}) in original {orig_sz}-byte slot (min={best})")
+
+
+def verify_npk_header_sha256(data: bytes) -> bool:
+    """Verify Neople NPK 32-byte header SHA-256 located right after the member index table."""
+    if len(data) < 20 or data[:16] != b"NeoplePack_Bill\0":
+        return False
+    count, = struct.unpack_from("<I", data, 16)
+    table_end = 20 + 264 * count
+    if table_end + 32 > len(data):
+        return False
+    first_off = min(struct.unpack_from("<I", data, 20 + 264 * i)[0] for i in range(count))
+    if first_off - table_end < 32:
+        return True  # legacy NPK without 32-byte checksum gap
+    hashed_len = (table_end // 17) * 17
+    expected = hashlib.sha256(data[:hashed_len]).digest()
+    return data[table_end : table_end + 32] == expected
+
+
+def patch_npk_in_place(
+    src_path: Path,
+    img_specs: dict[str, dict[int, Callable[[Image.Image], Image.Image]]],
+) -> tuple[bytes, list[tuple[str, int, Image.Image]]]:
+    """Patch target v2 IMG frames strictly inside their original byte spans inside `src_path`.
+
+    Guarantees ZERO changes to NPK file size, NPK header, 32-byte NPK SHA-256,
+    NpkIndex.etc member offsets/lengths, IMG headers, or 36-byte Frame.meta records.
+    """
+    orig_bytes = src_path.read_bytes()
+    buf = bytearray(orig_bytes)
+    rows = atlas.index(src_path)
+    spans: list[tuple[int, int]] = []
+    preview_items: list[tuple[str, int, Image.Image]] = []
+    seen_member_offsets: set[int] = set()
+
+    for img_name, frame_patchers in img_specs.items():
+        key = img_name.casefold()
+        if key not in rows:
+            raise KeyError(f"{img_name} not found in {src_path.name}")
+        member_off, member_len = rows[key]
+        if member_off in seen_member_offsets:
+            # Shared NPK member (e.g. resource.img and 210902_lialab2_event.img share the same bytes)
+            continue
+        seen_member_offsets.add(member_off)
+
+        raw_img = orig_bytes[member_off : member_off + member_len]
+        table_len, = struct.unpack_from("<I", raw_img, 16)
+        frames = atlas.split_img(raw_img)
+        cursor = member_off + 32 + table_len
+        for idx, frame in enumerate(frames):
+            if not isinstance(frame, atlas.Frame):
+                continue
+            start = cursor
+            end = start + len(frame.raw)
+            cursor = end
+            if idx not in frame_patchers:
+                continue
+            if orig_bytes[start:end] != frame.raw:
+                raise AssertionError(f"byte offset mismatch for {img_name} #{idx}")
+            fn = frame_patchers[idx]
+            orig_im = frame.image().convert("RGBA")
+            updated_im = fn(orig_im.copy())
+            compact_fn = getattr(fn, "compact_fallback", None)
+            compact_cands = compact_fn(orig_im.copy()) if compact_fn else None
+            fitted_blob, decoded_im = fit_frame_in_place(frame, updated_im, compact_cands)
+            buf[start:end] = fitted_blob
+            spans.append((start, end))
+            preview_items.append((img_name, idx, decoded_im))
+        if cursor != member_off + member_len:
+            raise AssertionError(f"IMG tail mismatch for {img_name}")
+
+    # Strict byte-level invariance check outside patched frame payload spans
+    if len(buf) != len(orig_bytes):
+        raise AssertionError("NPK total length changed during in-place patch")
+    pos = 0
+    for left, right in sorted(spans):
+        if left < pos:
+            raise AssertionError("overlapping frame spans")
+        if buf[pos:left] != orig_bytes[pos:left]:
+            raise AssertionError(f"unexpected byte mutation outside frame spans at {pos}..{left}")
+        pos = right
+    if buf[pos:] != orig_bytes[pos:]:
+        raise AssertionError(f"unexpected trailing byte mutation at {pos}..")
+    result = bytes(buf)
+    if not verify_npk_header_sha256(result):
+        raise AssertionError(f"NPK header SHA-256 verification failed for {src_path.name}")
+    return result, preview_items
 
 
 # ---------------------------------------------------------------------------
@@ -406,6 +592,23 @@ def make_button_patcher(
             bold=bold,
         )
 
+    def _compact_fallback(im: Image.Image) -> list[Image.Image]:
+        text_color = disabled_fill if _is_desaturated(im) else fill
+        keep = (keep_left, keep_top, keep_right, keep_bottom)
+        cands = []
+        # Try flat solid interior + crisp 1-bit text, and clear-background variant for overlay labels
+        for c_mode in ("solid", "clear"):
+            if c_mode == "clear" and keep_left > 4:
+                continue
+            for sz in (min(max_size, 13), 12, 11, 10, 9):
+                cands.append(
+                    draw_compact_button(
+                        im, text, text_color, bg_mode=c_mode, bg_color=bg_color, keep=keep, size=sz
+                    )
+                )
+        return cands
+
+    _patch.compact_fallback = _compact_fallback  # type: ignore[attr-defined]
     return _patch
 
 
@@ -1683,20 +1886,13 @@ def build_all(
         src = (backup_dir / npk_name) if (backup_dir and (backup_dir / npk_name).is_file()) else (source_packs_dir / npk_name)
         if not src.is_file():
             raise FileNotFoundError(f"Missing source NPK: {src}")
-        replacements: dict[str, bytes] = {}
-        preview_items: list[tuple[str, int, Image.Image]] = []
-        frame_total = 0
-        for img_name, frame_patchers in img_specs.items():
-            raw_img = atlas.member(src, img_name)
-            patched_img, rendered = patch_img_bytes(raw_img, frame_patchers)
-            replacements[img_name.lower()] = patched_img
-            frame_total += len(rendered)
-            for idx in sorted(rendered):
-                preview_items.append((img_name, idx, rendered[idx]))
-        rebuilt_npk = atlas.rebuild_npk(src, replacements)
+        rebuilt_npk, preview_items = patch_npk_in_place(src, img_specs)
+        frame_total = len(preview_items)
         out_path = build_dir / npk_name
         out_path.write_bytes(rebuilt_npk)
-        # Verify rebuilt NPK parses cleanly & every patched IMG decodes cleanly
+        # Verify rebuilt NPK matches original index layout 100% & every patched IMG decodes cleanly
+        if atlas.index(out_path) != atlas.index(src):
+            raise ValueError(f"NPK index table drifted for {npk_name}")
         for img_name in img_specs:
             atlas.split_img(atlas.member(out_path, img_name))
         if preview_dir is not None:
