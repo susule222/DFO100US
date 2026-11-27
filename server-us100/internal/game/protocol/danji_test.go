@@ -21,6 +21,69 @@ func TestActiveEvents(t *testing.T) {
 	}
 }
 
+func TestActiveEventsDetailed(t *testing.T) {
+	p, err := ActiveEventsDetailed([]ActiveEventEntry{
+		{
+			EventID:        EventIDDanji,
+			HasDetail:      true,
+			EventType:      1,
+			ColorType:      4,
+			Title:          "DANJI",
+			Subtitle:       "Sub",
+			Description:    "Desc",
+			StartTime:      1700000000,
+			EndTime:        1701000000,
+			Link:           "",
+			Notice:         "",
+			ShowOnCalendar: true,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Parse back strictly following DFO_unpacked.exe 0x143851af0 + 0x1438510e0.
+	off := 0
+	if got := binary.LittleEndian.Uint16(p[off : off+2]); got != 1 {
+		t.Fatalf("count=%d, want 1", got)
+	}
+	off += 2
+	if got := binary.LittleEndian.Uint16(p[off : off+2]); got != EventIDDanji {
+		t.Fatalf("eventID=%d, want %d", got, EventIDDanji)
+	}
+	off += 2
+	if p[off] != 1 || p[off+1] != 1 || p[off+2] != 4 {
+		t.Fatalf("detail header=%v, want [1 1 4]", p[off:off+3])
+	}
+	off += 3
+	readStr := func() string {
+		n := int(binary.LittleEndian.Uint32(p[off : off+4]))
+		off += 4
+		s := string(p[off : off+n])
+		off += n
+		return s
+	}
+	if s1, s2, s3 := readStr(), readStr(), readStr(); s1 != "DANJI" || s2 != "Sub" || s3 != "Desc" {
+		t.Fatalf("strings=(%q,%q,%q)", s1, s2, s3)
+	}
+	st := int32(binary.LittleEndian.Uint32(p[off : off+4]))
+	off += 4
+	et := int32(binary.LittleEndian.Uint32(p[off : off+4]))
+	off += 4
+	if st != 1700000000 || et != 1701000000 {
+		t.Fatalf("times=(%d,%d)", st, et)
+	}
+	if s4, s5 := readStr(), readStr(); s4 != "" || s5 != "" {
+		t.Fatalf("tail strings=(%q,%q)", s4, s5)
+	}
+	if p[off] != 1 {
+		t.Fatalf("showOnCalendar=%d, want 1", p[off])
+	}
+	off++
+	if off != len(p)-1 || p[off] != 0 {
+		t.Fatalf("trailing paramCount: off=%d len=%d val=%x", off, len(p), p[off:])
+	}
+}
+
 func TestDanjiStatus(t *testing.T) {
 	p := DanjiStatus(236, 0, 2)
 	if len(p) != 6 {

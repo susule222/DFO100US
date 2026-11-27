@@ -236,5 +236,30 @@ func (w *worldSession) syncGrantedBag(account, id int64, send func(byte, uint16,
 			}
 		}
 	}
+	// Hot-push active events (CMD 1959 server time + NOTI 108 calendar/HUD icons)
+	// and settle newly enabled operational activity perks whenever events.json changes.
+	if w.eventsPath != "" {
+		now := time.Now()
+		pol := w.eventPolicy()
+		if evPayload, evErr := buildActiveEventsPayload(pol, now); evErr == nil && string(evPayload) != w.lastSyncedEvents {
+			if err = send(1, 1959, protocol.UserInfoTimeSyncUS100(uint32(now.Unix()))); err != nil {
+				return err
+			}
+			if err = send(0, 108, evPayload); err != nil {
+				return err
+			}
+			w.lastSyncedEvents = string(evPayload)
+			event(map[string]any{"kind": "gm_active_events_synced", "character_id": id, "bytes": len(evPayload)})
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		autoPkts := w.onActivityLogin(ctx)
+		cancel()
+		for _, pkt := range autoPkts {
+			if err = send(pkt.Kind, pkt.ID, pkt.Payload); err != nil {
+				return err
+			}
+			event(map[string]any{"kind": pkt.Name, "character_id": id, "id": pkt.ID})
+		}
+	}
 	return nil
 }

@@ -11,6 +11,7 @@ import (
 	"dfolan/internal/character"
 	"dfolan/internal/db100"
 	"dfolan/internal/dungeon"
+	"dfolan/internal/events"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/game/wire"
 	"dfolan/internal/inventory"
@@ -2402,10 +2403,15 @@ func main() {
 					} else {
 						plan.GeneralOptions = options
 					}
-					if eventsBody, evErr := protocol.ActiveEvents([]uint16{protocol.EventIDDanji}); evErr != nil {
+					nowEntry := time.Now()
+					plan.TimeSync = protocol.UserInfoTimeSyncUS100(uint32(nowEntry.Unix()))
+					if eventsBody, evErr := buildActiveEventsPayload(events.LoadBestEffort(eventsPath), nowEntry); evErr != nil {
 						event(map[string]any{"kind": "active_events_encode_error", "error": evErr.Error()})
 					} else {
 						plan.Events = eventsBody
+						if worldState != nil {
+							worldState.lastSyncedEvents = string(eventsBody)
+						}
 					}
 					if danjiBody, djErr := danjiStatusOnEntry(characters.Store, developmentAccount); djErr != nil {
 						event(map[string]any{"kind": "danji_status_read_error", "error": djErr.Error()})
@@ -2449,6 +2455,14 @@ func main() {
 					}
 					if entryMileage > 0 {
 						packets = append(packets, outboundPacket{"account_funds_restored", 0, 53, fundsPayload(cera, entryMileage)})
+					}
+					if worldState != nil && eventsPath != "" {
+						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						autoPkts := worldState.onActivityLogin(ctx)
+						cancel()
+						if len(autoPkts) > 0 {
+							packets = append(packets, autoPkts...)
+						}
 					}
 					prepared, e := preparePackets(keys, packets)
 					if e != nil {

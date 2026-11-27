@@ -18,7 +18,159 @@ import (
 const (
 	gabrielContractKind      byte = 73
 	unstableRiftContractKind byte = 125
+
+	// US100 PVF verified Event IDs from UI/Event/InformationButtonInfo.evn
+	// (strictly cc="" or cc="univ" so HUD icons resolve on US100) and list/event.lst.
+	eventIDExpHotTime      uint16 = 520  // btn=269, grp=3, cc="", hot time HUD icon
+	eventIDDropGoldBoost   uint16 = 602  // btn=222, grp=3, cc="", drop/bonus HUD icon
+	eventIDFatigueBurning  uint16 = 619  // btn=254, grp=3, cc="", time/fatigue HUD icon
+	eventIDMileageBonus    uint16 = 367  // btn=167, cc="univ", gift/mileage HUD icon
+	eventIDHellParty       uint16 = 500  // btn=215, grp=3, cc="", forge/hell HUD icon
+	eventIDDailyChallenge  uint16 = 392  // btn=204, grp=3, cc="", daily mission HUD icon
+	eventIDWeeklyDungeon   uint16 = 614  // btn=245, grp=3, cc="", weekly mission HUD icon
+	eventIDDailyCheckin    uint16 = 515  // btn=264, grp=2, cc="", everyday connect HUD icon
+	eventIDSeriaWelcome    uint16 = 512  // btn=249, grp=3, cc="", welcome HUD icon
+	eventIDReturneeCare    uint16 = 607  // list/event.lst ReturnUserAccessEvent.evt
+	eventIDOTPSecurity     uint16 = 525  // list/event.lst SecurityEvent.evt
+	eventIDPCBangBonus     uint16 = 306  // btn=110, grp=3, cc="", PC room HUD icon
 )
+
+// buildActiveEventsPayload builds the full NOTI 108 payload for DANJI plus all
+// currently enabled server activities in events.json. Each entry sets
+// HasDetail=true and ShowOnCalendar=true with a current time window so the
+// client renders them inside EventCalendar.xui and lights up matching HUD
+// notification icons via InformationButtonInfo.evn (0x14384d77a).
+//
+// Wire strings are ASCII because DFO US100's MultiByteToWideChar codepage
+// global (0x14a3ef854) defaults to CP437.
+func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) {
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	startTS := int32(dayStart.AddDate(0, 0, -2).Unix())
+	endTS := int32(dayStart.AddDate(0, 0, 14).Unix())
+
+	makeEntry := func(id uint16, color byte, title, subtitle, desc string) protocol.ActiveEventEntry {
+		return protocol.ActiveEventEntry{
+			EventID:        id,
+			HasDetail:      true,
+			EventType:      1,
+			ColorType:      color,
+			Title:          title,
+			Subtitle:       subtitle,
+			Description:    desc,
+			StartTime:      startTS,
+			EndTime:        endTS,
+			ShowOnCalendar: true,
+		}
+	}
+
+	entries := []protocol.ActiveEventEntry{
+		makeEntry(protocol.EventIDDanji, 4, "DANJI Secret Jar", "DANJI Event", "Open DANJI Pots for rare rewards and stack milestones."),
+	}
+	if pol.ExpEventEnabled && pol.ExpMultiplier > 1.0 {
+		entries = append(entries, makeEntry(
+			eventIDExpHotTime, 1,
+			fmt.Sprintf("EXP Boost Event (x%.1f)", pol.ExpMultiplier),
+			"Combat EXP Event",
+			fmt.Sprintf("Monster and dungeon clear EXP boosted by x%.1f.", pol.ExpMultiplier),
+		))
+	}
+	if (pol.DropEventEnabled && (pol.DropRateMultiplier > 1.0 || pol.GoldMultiplier > 1.0)) ||
+		(pol.CardEventEnabled && pol.CardGoldMultiplier > 1.0) {
+		entries = append(entries, makeEntry(
+			eventIDDropGoldBoost, 4,
+			fmt.Sprintf("Drop & Gold Boost (x%.1f)", math.Max(pol.DropRateMultiplier, math.Max(pol.GoldMultiplier, pol.CardGoldMultiplier))),
+			"Loot & Gold Event",
+			fmt.Sprintf("Drop x%.1f / Gold x%.1f / Clear Card x%.1f.", pol.DropRateMultiplier, pol.GoldMultiplier, pol.CardGoldMultiplier),
+		))
+	}
+	if pol.Fatigue.BurningEnabled || pol.Fatigue.WeekendDouble || pol.Fatigue.ZeroCost || pol.Fatigue.BonusLimit > 0 {
+		title := "Burning Fatigue Event"
+		if pol.Fatigue.ZeroCost {
+			title = "Zero Fatigue Cost Event"
+		} else if pol.Fatigue.WeekendDouble && !pol.Fatigue.BurningEnabled {
+			title = "Weekend Double Fatigue"
+		}
+		entries = append(entries, makeEntry(
+			eventIDFatigueBurning, 1,
+			title,
+			"Fatigue Bonus",
+			fmt.Sprintf("Burning=%v Weekend2x=%v BonusFP=+%d ZeroCost=%v", pol.Fatigue.BurningEnabled, pol.Fatigue.WeekendDouble, pol.Fatigue.BonusLimit, pol.Fatigue.ZeroCost),
+		))
+	}
+	if pol.Mileage.Enabled {
+		entries = append(entries, makeEntry(
+			eventIDMileageBonus, 3,
+			fmt.Sprintf("Mileage Event (+%d/Clear)", pol.Mileage.DungeonClearPoints),
+			"Mileage Shop",
+			fmt.Sprintf("Earn +%d Mileage per clear (Daily cap %d).", pol.Mileage.DungeonClearPoints, pol.Mileage.DailyCap),
+		))
+	}
+	if pol.HellParty.Enabled {
+		entries = append(entries, makeEntry(
+			eventIDHellParty, 4,
+			fmt.Sprintf("Hell Party Event (%d%%)", pol.HellParty.TriggerChance),
+			"Random Hell Party",
+			fmt.Sprintf("Random Hell trigger %d%% with Epic/Mythic drops.", pol.HellParty.TriggerChance),
+		))
+	}
+	if pol.DailyChallenge.Enabled {
+		entries = append(entries, makeEntry(
+			eventIDDailyChallenge, 2,
+			fmt.Sprintf("Daily Challenge (%d Kills / %d Clears)", pol.DailyChallenge.KillTarget, pol.DailyChallenge.ClearTarget),
+			"Daily Mission",
+			fmt.Sprintf("Auto reward: %d Gold + %d Mileage.", pol.DailyChallenge.RewardGold, pol.DailyChallenge.RewardMileage),
+		))
+	}
+	if pol.WeeklyDungeon.Enabled {
+		entries = append(entries, makeEntry(
+			eventIDWeeklyDungeon, 2,
+			fmt.Sprintf("Weekly Dungeon Bonus (%d/Week)", pol.WeeklyDungeon.WeeklyLimit),
+			"Weekly Mission",
+			fmt.Sprintf("Auto reward up to %d clears/week: %d Gold + %d Mileage.", pol.WeeklyDungeon.WeeklyLimit, pol.WeeklyDungeon.RewardGold, pol.WeeklyDungeon.RewardMileage),
+		))
+	}
+	if pol.Extra.DailyCheckinEnabled {
+		entries = append(entries, makeEntry(
+			eventIDDailyCheckin, 3,
+			"Daily Check-in Event",
+			"Attendance",
+			"Daily login auto-reward: 100k Gold, 20 Ryan Cores, 10 Mileage.",
+		))
+	}
+	if pol.Extra.SeriaWelcomeEnabled {
+		entries = append(entries, makeEntry(
+			eventIDSeriaWelcome, 3,
+			"Seria's Welcome Event",
+			"Adventurer Gift",
+			"Welcome gift: 300k Gold, 30 Remy's Touch, 20 Mileage.",
+		))
+	}
+	if pol.Extra.ReturneeCareEnabled {
+		entries = append(entries, makeEntry(
+			eventIDReturneeCare, 2,
+			"Returnee Care Event",
+			"Weekly Supply",
+			"Weekly care gift: 500k Gold, 50 Harmonious Crystals, 30 Mileage.",
+		))
+	}
+	if pol.Extra.OTPSecurityEnabled {
+		entries = append(entries, makeEntry(
+			eventIDOTPSecurity, 2,
+			"Security Protection Bonus",
+			"Daily Security",
+			"Daily security reward: 50k Gold, 10 Kaleido Boxes, 5 Mileage.",
+		))
+	}
+	if pol.Extra.PCBangBonusEnabled {
+		entries = append(entries, makeEntry(
+			eventIDPCBangBonus, 4,
+			"PC Bang Bonus (+30 FP / +20% EXP)",
+			"PC Room Benefit",
+			"Active PC Bang perks: +30 Daily Fatigue and +20% Combat EXP.",
+		))
+	}
+	return protocol.ActiveEventsDetailed(entries)
+}
 
 func fundsPayload(cera, mileage uint64) []byte {
 	if cera > math.MaxInt32 {
@@ -50,8 +202,13 @@ func (w *worldSession) grantActivityReward(ctx context.Context, eventKey, model 
 		return nil, nil
 	}
 	var out []outboundPacket
-	if gold > 0 || (template > 0 && amount > 0) {
-		saved, applied, err := w.characters.Store.CommitCharacterEvent(ctx, w.account, w.role.ID, w.role.ConfigVersion, eventKey, model, func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
+	hasBagChange := gold > 0 || (template > 0 && amount > 0)
+	if !hasBagChange && mileage <= 0 {
+		return nil, nil
+	}
+	saved, applied, err := w.characters.Store.CommitCharacterEvent(ctx, w.account, w.role.ID, w.role.ConfigVersion, eventKey, model, func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
+		state := current.State
+		if hasBagChange {
 			bag, err := inventory.ReadBag(current.State)
 			if err != nil {
 				return nil, nil, err
@@ -64,42 +221,37 @@ func (w *worldSession) grantActivityReward(ctx context.Context, eventKey, model 
 				bag.Gold = uint32(nextGold)
 			}
 			if template > 0 && amount > 0 {
-				if _, ok := w.loot.Catalog.Items[template]; ok {
-					bag, _, err = bag.Add(w.loot.Catalog, w.loot.BagRules, template, amount)
-				} else {
-					limit := uint32(1000)
-					if amount > limit {
-						limit = amount
-					}
-					local := catalog.LootCatalog{
-						Source: w.loot.Catalog.Source,
-						Items: map[uint32]catalog.LootItem{
-							template: {ID: template, Kind: "stackable", StackableType: "[throw]", StackLimit: limit},
-						},
-					}
-					bag, _, err = bag.Add(local, w.loot.BagRules, template, amount)
+				local := catalog.LootCatalog{
+					Source: w.loot.Catalog.Source,
+					Items: map[uint32]catalog.LootItem{
+						template: localCatalogEntry(w.loot.Catalog, template, amount),
+					},
 				}
+				bag, _, err = bag.Add(local, w.loot.BagRules, template, amount)
 				if err != nil {
 					return nil, nil, err
 				}
 			}
-			state, err := inventory.SaveBag(current.State, bag)
+			state, err = inventory.SaveBag(current.State, bag)
 			if err != nil {
 				return nil, nil, err
 			}
-			receipt, err := json.Marshal(map[string]any{"gold": gold, "template": template, "amount": amount})
-			return state, receipt, err
-		})
-		if err != nil {
-			return nil, err
 		}
-		if applied {
-			saved.WireID = w.role.WireID
-			w.role = saved
-			if bag, err := inventory.ReadBag(saved.State); err == nil {
-				if upd, err := protocol.US224InventoryUpdate(bag.Rows()); err == nil {
-					out = append(out, outboundPacket{"activity_reward_inventory", 0, 14, upd})
-				}
+		receipt, err := json.Marshal(map[string]any{"gold": gold, "template": template, "amount": amount, "mileage": mileage})
+		return state, receipt, err
+	})
+	if err != nil {
+		return nil, err
+	}
+	if !applied {
+		return nil, nil
+	}
+	if hasBagChange {
+		saved.WireID = w.role.WireID
+		w.role = saved
+		if bag, err := inventory.ReadBag(saved.State); err == nil {
+			if upd, err := protocol.US224InventoryUpdate(bag.Rows()); err == nil {
+				out = append(out, outboundPacket{"activity_reward_inventory", 0, 14, upd})
 			}
 		}
 	}
@@ -112,6 +264,45 @@ func (w *worldSession) grantActivityReward(ctx context.Context, eventKey, model 
 		}
 	}
 	return out, nil
+}
+
+// onActivityLogin settles automatic operational activity perks (Daily Check-in,
+// Seria's Welcome, Returnee Care, OTP Security) idempotently on world entry or
+// live hot-reload whenever enabled in events.json.
+func (w *worldSession) onActivityLogin(ctx context.Context) []outboundPacket {
+	if w == nil || w.characters == nil || w.loot == nil || w.role.ID == 0 {
+		return nil
+	}
+	ev := w.eventPolicy()
+	now := time.Now()
+	day := w.activityDay(now)
+	week := ev.WeeklyCycleKey(now)
+	var out []outboundPacket
+
+	type autoGrant struct {
+		enabled  bool
+		key      string
+		model    string
+		gold     uint32
+		template uint32
+		amount   uint32
+		mileage  int64
+	}
+	grants := []autoGrant{
+		{ev.Extra.DailyCheckinEnabled, fmt.Sprintf("auto_daily_checkin:%s", day), "us100-auto-daily-checkin-v1", 100000, 10327281, 20, 10},
+		{ev.Extra.SeriaWelcomeEnabled, "auto_seria_welcome", "us100-auto-seria-welcome-v1", 300000, 2660671, 30, 20},
+		{ev.Extra.ReturneeCareEnabled, fmt.Sprintf("auto_returnee_care:%s", week), "us100-auto-returnee-care-v1", 500000, 10327282, 50, 30},
+		{ev.Extra.OTPSecurityEnabled, fmt.Sprintf("auto_otp_security:%s", day), "us100-auto-otp-security-v1", 50000, 15, 10, 5},
+	}
+	for _, g := range grants {
+		if !g.enabled {
+			continue
+		}
+		if pkts, err := w.grantActivityReward(ctx, g.key, g.model, g.gold, g.template, g.amount, g.mileage, day, 0); err == nil {
+			out = append(out, pkts...)
+		}
+	}
+	return out
 }
 
 func (w *worldSession) onActivityKill(ctx context.Context) []outboundPacket {

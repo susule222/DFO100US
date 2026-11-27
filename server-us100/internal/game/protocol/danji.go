@@ -40,6 +40,80 @@ func ActiveEvents(eventIDs []uint16) ([]byte, error) {
 	return p, nil
 }
 
+// ActiveEventEntry describes one active event entry inside NOTI 108 (0x6c).
+// Verified against DFO_unpacked.exe parser 0x143851af0 and EventCalendar.xui
+// populator 0x14383d230 / row renderer 0x1438c6e80:
+//   - ColorType: 1=orange, 2=light blue, 3=green, 4=gold
+//   - Title -> EventInfo+0x38 (rendered in Event Calendar rows)
+//   - StartTime/EndTime -> EventInfo+0x60/+0x68 (Unix seconds)
+//   - ShowOnCalendar -> EventInfo+0xe8 (must be true to appear in Event Calendar)
+type ActiveEventEntry struct {
+	EventID        uint16
+	HasDetail      bool
+	EventType      byte
+	ColorType      byte
+	Title          string
+	Subtitle       string
+	Description    string
+	StartTime      int32
+	EndTime        int32
+	Link           string
+	Notice         string
+	ShowOnCalendar bool
+}
+
+func appendNoti108String(dst []byte, s string) []byte {
+	const maxLen = 0xffe
+	if len(s) > maxLen {
+		s = s[:maxLen]
+	}
+	dst = add32(dst, uint32(len(s)))
+	return append(dst, s...)
+}
+
+// ActiveEventsDetailed encodes full NOTI 108 (0x6c) including optional
+// EventCalendar metadata (0x143851bf8..0x143851dbc) and the Part-2 parameter
+// count terminator (u8 0 at 0x1438511bf).
+func ActiveEventsDetailed(entries []ActiveEventEntry) ([]byte, error) {
+	if len(entries) > 65535 {
+		return nil, fmt.Errorf("too many active events: %d", len(entries))
+	}
+	p := make([]byte, 0, 3+len(entries)*64)
+	p = add16(p, uint16(len(entries)))
+	for _, ev := range entries {
+		p = add16(p, ev.EventID)
+		if !ev.HasDetail {
+			p = append(p, 0)
+			continue
+		}
+		p = append(p, 1) // hasDetail = 1
+		evType := ev.EventType
+		if evType == 0 {
+			evType = 1
+		}
+		color := ev.ColorType
+		if color == 0 || color > 4 {
+			color = 1
+		}
+		p = append(p, evType, color)
+		p = appendNoti108String(p, ev.Title)
+		p = appendNoti108String(p, ev.Subtitle)
+		p = appendNoti108String(p, ev.Description)
+		p = add32(p, uint32(ev.StartTime))
+		p = add32(p, uint32(ev.EndTime))
+		p = appendNoti108String(p, ev.Link)
+		p = appendNoti108String(p, ev.Notice)
+		if ev.ShowOnCalendar {
+			p = append(p, 1)
+		} else {
+			p = append(p, 0)
+		}
+	}
+	// Part 2 (0x1438510e0 -> 0x1438511bf): u8 paramCount = 0.
+	p = append(p, 0)
+	return p, nil
+}
+
 // DanjiStatus encodes NOTI 2279 (0x8e7, handler 0x140399480), which reads 6 raw
 // bytes into global 0x1495b4a20:
 //   - [0..3]: u32 current DANJI Stack gauge (0..942 in NewLostTreasure.evt)

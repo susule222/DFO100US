@@ -29,6 +29,7 @@ type entryPayloads struct {
 	AccountMaterials                                                          []byte
 	GeneralOptions                                                            []byte
 	AccountOptions                                                            []byte
+	TimeSync                                                                  []byte
 	Events                                                                    []byte
 	DanjiStatus                                                               []byte
 	WornUpdate                                                                []byte
@@ -76,6 +77,9 @@ func (p entryPayloads) packets() []outboundPacket {
 		{"account_materials_restored", 0, 1140, p.AccountMaterials},
 		// Restore the saved scale before the first town scene, not after world entry.
 		{"general_options_initialized", 0, 173, p.GeneralOptions},
+		// Sync server clock (CMD 1959) before NOTI 108 so EventCalendar renders
+		// today's real date and active event date ranges instead of 1970-01-01.
+		{"server_time_synced", 1, 1959, p.TimeSync},
 		{"active_events_initialized", 0, 108, p.Events},
 		{"danji_status_initialized", 0, 2279, p.DanjiStatus},
 		{"user_area_sent", 0, 23, p.UserArea},

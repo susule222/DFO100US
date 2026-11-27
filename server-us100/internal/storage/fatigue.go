@@ -78,8 +78,17 @@ func rolloverFatigueTx(tx *db100.Tx, account, id int64, day string, limit uint16
 	if _, err := tx.Get("us224_account_premium", idKey(account), &ends); err != nil {
 		return FatigueState{}, err
 	}
-	if end := ends[NeoPremiumPlusKind]; end > 0 && end > now.Unix() && out.Limit < 273 {
-		out.Limit = 273
+	if end := ends[NeoPremiumPlusKind]; end > 0 && end > now.Unix() {
+		// Neo Premium Plus adds +117 daily fatigue (156 -> 273) on top of
+		// active server fatigue event bonuses (weekend double, bonus FP, PC Bang).
+		next := uint32(out.Limit) + 117
+		if next < 273 {
+			next = 273
+		}
+		if next > 999 {
+			next = 999
+		}
+		out.Limit = uint16(next)
 	}
 	return out, nil
 }
