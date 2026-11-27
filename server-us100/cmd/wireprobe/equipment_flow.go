@@ -116,7 +116,7 @@ func (s *equipmentSession) handle(service *inventory.WearService, w *worldSessio
 	if touchesTownVisualSlot(r) && w.activeDungeon == nil && !w.selectingDungeon && w.role.WireID != 0 && w.role.WireID != 0xffff && w.role.Name != "" {
 		charSvc := w.characters
 		if charSvc == nil {
-			charSvc = &character.Service{Equipment: service.Catalog}
+			charSvc = &character.Service{Equipment: service.Catalog, Store: service.Store}
 		}
 		appearanceBody, err := charSvc.EntryBasicProbe(saved, w.channelCtx)
 		if err != nil {

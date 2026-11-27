@@ -12,10 +12,11 @@ import (
 // actor id failed with an access violation at DFO.exe+0x4F1F2A0.
 // Native row reader: 0x143807f80 (reads block, then u16 actor id).
 type EntryBasicProbe struct {
-	ActorServerID uint16
-	Context       [2]byte
-	Fame          uint32
-	Character     CharacterRow
+	ActorServerID  uint16
+	Context        [2]byte
+	Fame           uint32
+	NeoPremiumKind byte // 0x143805930: active Neo Premium kind (0x75/0x76/0x78) sets [userInfo+0x35c]=1 so [Rental Service] gear is wearable
+	Character      CharacterRow
 }
 
 const (
@@ -104,7 +105,7 @@ func UserInfoBasicProbe(s EntryBasicProbe) ([]byte, error) {
 	p = add32(p, 0)              // 0x1438085d4
 	p = append(p, 0)             // 0x143808618 -> [tmp+0x344]
 	p = append(addName(add32(p, 0), ""), 0) // 0x143803320: u32 + str + u8
-	p = append(p, 0)                        // 0x143805930: u8
+	p = append(p, s.NeoPremiumKind)         // 0x143805930: u8 ([userInfo+0x430]=kind, [userInfo+0x35c]=kind!=0)
 	p = add32(add32(p, 0), 0)               // 0x143808645, 0x14380865e
 	p = add16(add32(addName(p, ""), 0), 0)  // 0x143803e00: str + u32 + u16
 	p = add32(p, 0)                         // 0x143808680

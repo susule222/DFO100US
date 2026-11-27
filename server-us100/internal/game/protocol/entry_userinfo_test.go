@@ -73,6 +73,19 @@ func TestEntryBasicNativeBoundaries(t *testing.T) {
 		if p[198+len(name)] != 1 || p[233+len(name)] != 1 || p[247+len(name)] != 0xff {
 			t.Fatalf("tail sentinels = %#x,%#x,%#x", p[198+len(name)], p[233+len(name)], p[247+len(name)])
 		}
+		if p[175+len(name)] != 0 {
+			t.Fatalf("default neo premium byte = %#x want 0", p[175+len(name)])
+		}
+		if prem, err := UserInfoBasicProbe(EntryBasicProbe{
+			ActorServerID:  503,
+			Context:        [2]byte{4, 7},
+			NeoPremiumKind: 0x76,
+			Character:      CharacterRow{Name: name, Profession: 3, Level: 1},
+		}); err != nil {
+			t.Fatal(err)
+		} else if prem[175+len(name)] != 0x76 {
+			t.Fatalf("neo premium byte = %#x want 0x76", prem[175+len(name)])
+		}
 	}
 }
 

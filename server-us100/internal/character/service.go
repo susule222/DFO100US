@@ -220,15 +220,29 @@ func (s *Service) EntryBasicProbe(role storage.Character, channelContext [2]byte
 	}
 	appearance := mode0Appearance(bag)
 	var fame uint32
+	var neoPremiumKind byte
 	if s != nil {
 		fame = s.Equipment.BagAdventurerFame(bag)
+		if s.Store != nil && role.AccountID > 0 {
+			if active, perr := s.Store.ActivePremiumKinds(role.AccountID, time.Now()); perr == nil {
+				switch {
+				case active[storage.NeoPremiumPlusKind]:
+					neoPremiumKind = storage.NeoPremiumPlusKind
+				case active[120]:
+					neoPremiumKind = 120
+				case active[117]:
+					neoPremiumKind = 117
+				}
+			}
+		}
 	} else {
 		fame = (*inventory.EquipmentCatalog)(nil).BagAdventurerFame(bag)
 	}
 	return protocol.UserInfoBasicProbe(protocol.EntryBasicProbe{
-		ActorServerID: role.WireID,
-		Context:       channelContext,
-		Fame:          fame,
+		ActorServerID:  role.WireID,
+		Context:        channelContext,
+		Fame:           fame,
+		NeoPremiumKind: neoPremiumKind,
 		Character: protocol.CharacterRow{
 			Name:        role.Name,
 			Profession:  role.Profession,
