@@ -1694,6 +1694,27 @@ func main() {
 					}
 					continue
 				}
+				if worldState != nil && bootstrapped && frame.ID == protocol.CmdUseStackableAction && lootService != nil {
+					if !verified {
+						event(map[string]any{"kind": "item_action_rejected", "reason": "checksum failed"})
+						continue
+					}
+					plan, e := worldState.useStackableAction(plaintext, frame.Raw)
+					if e != nil {
+						event(map[string]any{"kind": "item_action_refused", "character_id": worldState.role.ID, "reason": e.Error()})
+						if e = sendPayload(1, protocol.CmdUseStackableAction, protocol.UseStackableActionRefused(4)); e != nil {
+							return
+						}
+						continue
+					}
+					for _, packet := range plan {
+						if e = sendPayload(packet.Kind, packet.ID, packet.Payload); e != nil {
+							return
+						}
+						event(map[string]any{"kind": packet.Name, "character_id": worldState.role.ID, "id": packet.ID})
+					}
+					continue
+				}
 				if characters != nil && bootstrapped && frame.ID == 143 {
 					if !verified || selectedCharacterID == 0 {
 						event(map[string]any{"kind": "tutorial_rejected", "reason": "invalid checksum or no selected character"})

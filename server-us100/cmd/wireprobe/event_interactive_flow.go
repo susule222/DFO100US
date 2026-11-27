@@ -411,9 +411,11 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 		if stage > 3 || node > 4 {
 			return []outboundPacket{{"event_512_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
 		}
-		if st.Ev512Pickaxes > 0 && st.Ev512Stages[stage] <= node {
+		// Ev512Stages[stage] is a per-node bitmask (0x145214710: (mask & (1<<node)) != 0).
+		bit := uint32(1) << node
+		if st.Ev512Pickaxes > 0 && (st.Ev512Stages[stage]&bit) == 0 {
 			st.Ev512Pickaxes--
-			st.Ev512Stages[stage] = node + 1
+			st.Ev512Stages[stage] |= bit
 			if reward, ok := ev512Rewards[stage*10+node]; ok {
 				key := fmt.Sprintf("ev512_mine:%d:%d", stage, node)
 				if err := grantItem(key, "us100-ev512-mining-v1", reward); err != nil {

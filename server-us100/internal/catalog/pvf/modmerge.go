@@ -459,6 +459,7 @@ func parseStrLines(text string) ([]string, map[string]string) {
 	order := []string{}
 	kv := map[string]string{}
 	for _, line := range strings.Split(text, "\n") {
+		line = strings.ReplaceAll(line, "\x00", "")
 		line = strings.TrimRight(line, "\r")
 		if line == "" {
 			continue
@@ -511,7 +512,12 @@ func (a *Archive) mergeStrTable(relPath string, layers []MergeLayer) ([]byte, er
 		b.WriteString(kv[k])
 		b.WriteString("\r\n")
 	}
-	return encodeUTF16LE(b.String()), nil
+	// DFO.exe's .uv.str PVF loader (0x1450bf8c1) calls wcslen() directly on the
+	// raw DataType-3 buffer; native US100 .uv.str entries always end with two
+	// UTF-16LE NUL code units (00 00 00 00). Omitting them makes wcslen walk into
+	// the next chunk entry and abort loading the entire string table.
+	encoded := encodeUTF16LE(b.String())
+	return append(encoded, 0, 0, 0, 0), nil
 }
 
 func (a *Archive) replaceBothStringPools(names, newStrA, newStrW []byte) ([]byte, error) {
@@ -688,7 +694,8 @@ func (a *Archive) MergeModPlan(plan MergePlan, output string) (MergeReport, erro
 					}
 				}
 			} else if ext == ".xui" {
-				data = encodeUTF16LE(decodeModText(raw))
+				// Native US100 .xui entries are NUL-terminated UTF-16LE (trailing 00 00).
+				data = append(encodeUTF16LE(decodeModText(raw)), 0, 0)
 			} else {
 				data = raw
 			}

@@ -116,7 +116,7 @@ func TestInteractiveEventInitAndRewardClaims(t *testing.T) {
 		t.Fatalf("Ev520 claim expected NOTI 14 + claimed NOTI 2222, got inv=%v 2222=%v", gotInv, got2222)
 	}
 
-	// 3. Mine Event 512 stage 0 node 0 via CMD 680 -> decrements pickaxe & grants 50007754
+	// 3. Mine Event 512 stage 0 node 0, then node 3, then node 1 (bitmask 1<<node)
 	pkts512, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(512, 0, 0), now)
 	if err != nil {
 		t.Fatal(err)
@@ -127,13 +127,29 @@ func TestInteractiveEventInitAndRewardClaims(t *testing.T) {
 			gotMiningInv = true
 		}
 		if p.ID == protocol.NotiEv512DungeonMining {
-			if binary.LittleEndian.Uint32(p.Payload[0:4]) == 9 && binary.LittleEndian.Uint32(p.Payload[4:8]) == 1 {
+			if binary.LittleEndian.Uint32(p.Payload[0:4]) == 9 && binary.LittleEndian.Uint32(p.Payload[4:8]) == (1<<0) {
 				got2155 = true
 			}
 		}
 	}
 	if !gotMiningInv || !got2155 {
 		t.Fatalf("Ev512 mine expected NOTI 14 + NOTI 2155(pickaxes=9,stage0=1), got inv=%v 2155=%v", gotMiningInv, got2155)
+	}
+	if _, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(512, 0, 3), now); err != nil {
+		t.Fatal(err)
+	}
+	pkts512Node1, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(512, 0, 1), now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var gotBitmask bool
+	for _, p := range pkts512Node1 {
+		if p.ID == protocol.NotiEv512DungeonMining && binary.LittleEndian.Uint32(p.Payload[4:8]) == ((1<<0)|(1<<3)|(1<<1)) {
+			gotBitmask = true
+		}
+	}
+	if !gotBitmask {
+		t.Fatalf("Ev512 out-of-order mining did not preserve bitmask (1<<0|1<<3|1<<1)")
 	}
 
 	// 4. Event 515 check-in (action=3) + claim day 1 (action=1, day=1)
@@ -213,6 +229,38 @@ func TestInteractiveEventInitAndRewardClaims(t *testing.T) {
 	for tmpl, ok := range wantTemplates {
 		if !ok {
 			t.Fatalf("expected claimed reward template %d in character bag", tmpl)
+		}
+	}
+
+	// 8. Use claimed Event 619 item (10326700) via CMD 507 (0x1fb) and verify ACK 507 + bag decrement
+	var elixirSlot uint16
+	for _, it := range bag.Items {
+		if it.Template == 10326700 {
+			elixirSlot = it.Slot
+			break
+		}
+	}
+	cmd507 := make([]byte, 32)
+	binary.LittleEndian.PutUint16(cmd507[0:2], elixirSlot)
+	cmd507[2] = 0
+	binary.LittleEndian.PutUint32(cmd507[7:11], 0x10c) // [epic drop buff event action]
+	plan507, err := w.useStackableAction(cmd507, []byte("cmd507-elixir-1"))
+	if err != nil {
+		t.Fatalf("useStackableAction CMD 507 failed: %v", err)
+	}
+	if len(plan507) != 2 || plan507[0].ID != protocol.CmdUseStackableAction || plan507[1].ID != 14 {
+		t.Fatalf("unexpected CMD 507 plan: %+v", plan507)
+	}
+	if plan507[0].Payload[0] != 1 || binary.LittleEndian.Uint16(plan507[0].Payload[1:3]) != elixirSlot || binary.LittleEndian.Uint32(plan507[0].Payload[4:8]) != 0x10c {
+		t.Fatalf("unexpected ACK 507 payload: %x", plan507[0].Payload)
+	}
+	bagAfter507, err := inventory.ReadBag(w.role.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, it := range bagAfter507.Items {
+		if it.Slot == elixirSlot {
+			t.Fatalf("expected slot %d to be consumed after CMD 507, still present: %+v", elixirSlot, it)
 		}
 	}
 }

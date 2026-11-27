@@ -18,8 +18,9 @@ import (
 //   - NOTI 2215 (0x8a7, 0x140422af0): Event 515 Everyday Connect Attendance state (11 bytes)
 //   - NOTI 2222 (0x8ae, 0x140421120): Event 520 Reverse Hot Time state (12 bytes)
 const (
-	CmdEventAction uint16 = 680
-	CmdEventQuery  uint16 = 681
+	CmdUseStackableAction uint16 = 507 // 0x1fb: special [action type] stackable use (0x143a01190)
+	CmdEventAction        uint16 = 680
+	CmdEventQuery         uint16 = 681
 
 	NotiEv388MissionWeekly   uint16 = 1783
 	NotiEv388MissionDaily    uint16 = 1784
@@ -64,6 +65,48 @@ func ActiveEventsDetailedWithParams(entries []ActiveEventEntry, params []EventIn
 		}
 	}
 	return p, nil
+}
+
+// UseStackableActionRequest is a decoded CMD 507 (0x1fb) special stackable use
+// request (e.g. [epic drop buff event action] items 10326700..10326704).
+// Wire layout verified from 0x143a0eff3 / live capture:
+//   [0..1] u16 slot, [2] u8 invenList, [3..6] u32 arg0, [7..10] u32 actionType, ...
+type UseStackableActionRequest struct {
+	Slot       uint16
+	List       byte
+	Arg0       uint32
+	ActionType uint32
+}
+
+func DecodeUseStackableAction(p []byte) (UseStackableActionRequest, error) {
+	var r UseStackableActionRequest
+	if len(p) < 11 {
+		return r, fmt.Errorf("use stackable action requires at least 11 bytes, got %d", len(p))
+	}
+	r.Slot = binary.LittleEndian.Uint16(p[0:2])
+	r.List = p[2]
+	r.Arg0 = binary.LittleEndian.Uint32(p[3:7])
+	r.ActionType = binary.LittleEndian.Uint32(p[7:11])
+	return r, nil
+}
+
+// UseStackableActionSuccess encodes ACK 507 (0x1fb, handler 0x143a01190):
+// u8 success=1, u16 slot, u8 invenList, u32 actionType.
+func UseStackableActionSuccess(r UseStackableActionRequest) []byte {
+	p := make([]byte, 0, 8)
+	p = append(p, 1)
+	p = add16(p, r.Slot)
+	p = append(p, r.List)
+	p = add32(p, r.ActionType)
+	return p
+}
+
+// UseStackableActionRefused encodes a failed ACK 507 (0x1fb).
+func UseStackableActionRefused(code uint16) []byte {
+	p := make([]byte, 0, 3)
+	p = append(p, 0)
+	p = add16(p, code)
+	return p
 }
 
 // EventCommand is a decoded CMD 680 (0x2a8) or CMD 681 (0x2a9) request.

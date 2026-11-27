@@ -645,14 +645,24 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
         extracted = _extract_entries(inner_source, ext_dir)
 
         orig_evt_tokens = json.loads(extracted['evt_tokens'].read_text(encoding='utf-8'))
-        orig_str_kv = _parse_str_table_utf16(extracted['str_bin'].read_bytes())
+        orig_str_raw = extracted['str_bin'].read_bytes()
+        orig_str_kv = _parse_str_table_utf16(orig_str_raw)
         orig_xui_raw = extracted['xui_bin'].read_bytes()
 
         patched_evt_tokens, evt_stats = patch_eventlistwindow_tokens(orig_evt_tokens)
         patched_xui_bytes, xui_stats = patch_eventdesignwindow_xui_bytes(orig_xui_raw)
-        str_needs_update = any(orig_str_kv.get(k) != v for k, v in wanted_str_kv.items())
+        str_needs_update = (
+            not orig_str_raw.endswith(b'\x00\x00\x00\x00')
+            or '\x00' in orig_str_raw[:-4].decode('utf-16-le')
+            or any(orig_str_kv.get(k) != v for k, v in wanted_str_kv.items())
+        )
+        xui_needs_update = (
+            xui_stats['bg_patched'] > 0
+            or not orig_xui_raw.endswith(b'\x00\x00')
+            or '\x00' in orig_xui_raw[:-2].decode('utf-16-le')
+        )
 
-        if not evt_stats['changed'] and not str_needs_update and xui_stats['bg_patched'] == 0 and inner_override is None:
+        if not evt_stats['changed'] and not str_needs_update and not xui_needs_update and inner_override is None:
             return {'status': 'already_fixed', 'sha256': before_sha, 'evt_stats': evt_stats, 'xui_stats': xui_stats}
 
         evt_src = tmp / 'eventlistwindow.evt'
@@ -689,8 +699,14 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
         verify_dir.mkdir()
         verified = _extract_entries(merged_inner, verify_dir)
         v_evt_tokens = json.loads(verified['evt_tokens'].read_text(encoding='utf-8'))
-        v_str_kv = _parse_str_table_utf16(verified['str_bin'].read_bytes())
-        v_xui_text = verified['xui_bin'].read_bytes().decode('utf-16-le')
+        v_str_raw = verified['str_bin'].read_bytes()
+        if not v_str_raw.endswith(b'\x00\x00\x00\x00') or '\x00' in v_str_raw[:-4].decode('utf-16-le'):
+            raise RuntimeError(f'合并后 {STR_ENTRY} UTF-16LE NUL 终止符异常（缺少末尾 NUL 或存在内部 NUL）')
+        v_str_kv = _parse_str_table_utf16(v_str_raw)
+        v_xui_raw = verified['xui_bin'].read_bytes()
+        if not v_xui_raw.endswith(b'\x00\x00') or '\x00' in v_xui_raw[:-2].decode('utf-16-le'):
+            raise RuntimeError(f'合并后 {XUI_ENTRY} UTF-16LE NUL 终止符异常（缺少末尾 NUL 或存在内部 NUL）')
+        v_xui_text = v_xui_raw.decode('utf-16-le')
 
         if len(v_evt_tokens) != len(patched_evt_tokens):
             raise RuntimeError(f'合并后 {EVT_ENTRY} token 数不匹配：{len(v_evt_tokens)} != {len(patched_evt_tokens)}')

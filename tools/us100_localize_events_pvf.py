@@ -175,7 +175,7 @@ def compute_missing_patches(
     return diff
 
 
-def _extract_tables(inner_pvf: Path, out_dir: Path) -> dict[str, dict[str, str]]:
+def _extract_tables(inner_pvf: Path, out_dir: Path) -> tuple[dict[str, dict[str, str]], dict[str, bytes]]:
     go_bin = core.pre.GO_BIN
     env = dict(os.environ)
     env['GOPATH'] = str(ROOT / 'tools' / 'gopath')
@@ -194,12 +194,15 @@ def _extract_tables(inner_pvf: Path, out_dir: Path) -> dict[str, dict[str, str]]
     if res.returncode != 0:
         raise RuntimeError('pvfinspect 提取失败：' + (res.stderr or res.stdout or '')[-600:])
     tables: dict[str, dict[str, str]] = {}
+    raws: dict[str, bytes] = {}
     for idx, entry in enumerate(TARGET_ENTRIES):
         bf = out_dir / f'{idx:02d}-{Path(entry).name}.bin'
         if not bf.is_file():
             raise FileNotFoundError(f'PVF 缺少词条表：{entry}')
-        tables[entry] = parse_uv_str_utf16(bf.read_bytes())
-    return tables
+        raw = bf.read_bytes()
+        raws[entry] = raw
+        tables[entry] = parse_uv_str_utf16(raw)
+    return tables, raws
 
 
 def _backup_live_pvf(live_pvf: Path, before_sha: str) -> Path:
@@ -255,11 +258,15 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
         tmp = Path(tmpdir)
         ext_dir = tmp / 'extracted'
         ext_dir.mkdir()
-        orig_tables = _extract_tables(inner_source, ext_dir)
+        orig_tables, orig_raws = _extract_tables(inner_source, ext_dir)
         orig_counts = {k: len(v) for k, v in orig_tables.items()}
 
         needed = compute_missing_patches(orig_tables)
-        if not needed and inner_override is None:
+        bad_nul = [
+            k for k, raw in orig_raws.items()
+            if not raw.endswith(b'\x00\x00\x00\x00') or '\x00' in raw[:-4].decode('utf-16-le')
+        ]
+        if not needed and not bad_nul and inner_override is None:
             return {
                 'status': 'already_localized',
                 'sha256': before_sha,
@@ -295,9 +302,12 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
         # Strict post-merge read-back verification across all 3 .uv.str tables
         verify_dir = tmp / 'verify'
         verify_dir.mkdir()
-        verified_tables = _extract_tables(merged_inner, verify_dir)
+        verified_tables, verified_raws = _extract_tables(merged_inner, verify_dir)
         verified_counts: dict[str, int] = {}
         for entry_path, patches in ALL_PATCHES.items():
+            v_raw = verified_raws[entry_path]
+            if not v_raw.endswith(b'\x00\x00\x00\x00') or '\x00' in v_raw[:-4].decode('utf-16-le'):
+                raise RuntimeError(f'合并后 {entry_path} UTF-16LE NUL 终止符异常（缺少末尾 NUL 或存在内部 NUL）')
             v_kv = verified_tables[entry_path]
             verified_counts[entry_path] = len(v_kv)
             if len(v_kv) < orig_counts[entry_path]:

@@ -273,11 +273,14 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
         extracted = _extract_entries(inner_source, ext_dir)
 
         orig_tokens = json.loads(extracted['evn_tokens'].read_text(encoding='utf-8'))
-        orig_str_kv = _parse_str_table_utf16(extracted['str_bin'].read_bytes())
+        orig_str_raw = extracted['str_bin'].read_bytes()
+        orig_str_kv = _parse_str_table_utf16(orig_str_raw)
 
         patched_tokens, stats = patch_evn_tokens(orig_tokens)
-        str_needs_update = any(
-            orig_str_kv.get(key) != label for _, (key, label) in EVENT_TOOLTIPS.items()
+        str_needs_update = (
+            not orig_str_raw.endswith(b'\x00\x00\x00\x00')
+            or '\x00' in orig_str_raw[:-4].decode('utf-16-le')
+            or any(orig_str_kv.get(key) != label for _, (key, label) in EVENT_TOOLTIPS.items())
         )
         if stats['patched_blocks'] == 0 and not str_needs_update and inner_override is None:
             return {'status': 'already_localized', 'sha256': before_sha, 'stats': stats}
@@ -312,7 +315,10 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
         verify_dir.mkdir()
         verified = _extract_entries(merged_inner, verify_dir)
         v_tokens = json.loads(verified['evn_tokens'].read_text(encoding='utf-8'))
-        v_str_kv = _parse_str_table_utf16(verified['str_bin'].read_bytes())
+        v_str_raw = verified['str_bin'].read_bytes()
+        if not v_str_raw.endswith(b'\x00\x00\x00\x00') or '\x00' in v_str_raw[:-4].decode('utf-16-le'):
+            raise RuntimeError(f'合并后 {STR_ENTRY} UTF-16LE NUL 终止符异常（缺少末尾 NUL 或存在内部 NUL）')
+        v_str_kv = _parse_str_table_utf16(v_str_raw)
 
         if len(v_tokens) != len(patched_tokens):
             raise RuntimeError(f'合并后 token 数不匹配：{len(v_tokens)} != {len(patched_tokens)}')

@@ -19,7 +19,7 @@ func buildMinimalDFO20260901(t *testing.T, dir string) string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	strData := encodeUTF16LE("name_1>Base Sword\r\nname_2>Old Shield\r\n")
+	strData := append(encodeUTF16LE("name_1>Base Sword\r\nname_2>Old Shield"), 0, 0, 0, 0)
 
 	f1 := fileItem{nameOffset: pb.addASCII("equipment.lst"), pathOffset: pb.addASCII("list"), chunkIndex: 0, dataOffset: 0, dataSize: len(lstData), dataType: 1}
 	f2 := fileItem{nameOffset: pb.addASCII("equipment.uv.str"), pathOffset: pb.addASCII("string"), chunkIndex: 0, dataOffset: len(lstData), dataSize: len(strData), dataType: 3}
@@ -175,12 +175,20 @@ func TestMergeModPlanReplaceAddLstAndStr(t *testing.T) {
 		t.Fatalf("chinese inline name not found in compiled script: %+v", equToks)
 	}
 
-	// Verify .str merge preserved name_1, overrode name_2, added name_3
+	// Verify .str merge preserved name_1, overrode name_2, added name_3, kept
+	// native UTF-16LE double-NUL EOF termination, and stripped any interior NULs
+	// from the base file so DFO.exe wcslen() reads every appended key.
 	rawStr, err := m.ReadRaw("string/equipment.uv.str")
 	if err != nil {
 		t.Fatal(err)
 	}
-	txt := decodeUTF16LE(rawStr)
+	if len(rawStr) < 4 || rawStr[len(rawStr)-4] != 0 || rawStr[len(rawStr)-3] != 0 || rawStr[len(rawStr)-2] != 0 || rawStr[len(rawStr)-1] != 0 {
+		t.Fatalf("merged .str missing trailing UTF-16LE NUL terminator: tail=%x", rawStr[max(0, len(rawStr)-8):])
+	}
+	txt := decodeUTF16LE(rawStr[:len(rawStr)-4])
+	if strings.ContainsRune(txt, 0) {
+		t.Fatalf("merged .str contains interior NUL before EOF: %q", txt)
+	}
 	for _, want := range []string{"name_1>Base Sword", "name_2>神话之盾", "name_3>新增武器"} {
 		if !strings.Contains(txt, want) {
 			t.Fatalf("missing %q in merged .str:\n%s", want, txt)
