@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"dfolan/internal/catalog"
@@ -169,6 +168,37 @@ func localCatalogEntry(src catalog.LootCatalog, tpl, qty uint32) catalog.LootIte
 	}
 }
 
+func localCatalogEntryWithHint(src catalog.LootCatalog, r inventory.BagRules, tpl, qty uint32, hintType string) catalog.LootItem {
+	item := localCatalogEntry(src, tpl, qty)
+	if safe := resolveBagTab(r, item.StackableType); safe != "" && src.Items[tpl].Kind == "stackable" {
+		return item
+	}
+	st := resolveBagTab(r, hintType)
+	if st == "" {
+		st = resolveBagTab(r, item.StackableType)
+	}
+	if st == "" {
+		st = "[throw]"
+	}
+	item.StackableType = st
+	return item
+}
+
+func resolveBagTab(r inventory.BagRules, st string) string {
+	if st == "" {
+		return ""
+	}
+	if _, ok := r.Slots[st]; ok {
+		return st
+	}
+	if alias, ok := r.SlotAliases[st]; ok {
+		if _, ok2 := r.Slots[alias]; ok2 {
+			return st
+		}
+	}
+	return ""
+}
+
 type boosterEntry struct {
 	Template uint32
 	Count    uint32
@@ -309,19 +339,23 @@ func openBoosterBox(
 	var isChoice bool
 	var category uint32
 	var chosen uint32
+	var chosenList []uint32
 	switch {
 	case len(plaintext) == 8:
 		openCount = binary.LittleEndian.Uint16(plaintext[2:4])
 		category = binary.LittleEndian.Uint32(plaintext[4:8])
-	case len(plaintext) == 12:
+	case len(plaintext) >= 12 && len(plaintext)%4 == 0 && len(plaintext) <= 128:
 		openCount = binary.LittleEndian.Uint16(plaintext[2:4])
 		category = binary.LittleEndian.Uint32(plaintext[4:8])
-		chosen = binary.LittleEndian.Uint32(plaintext[8:12])
-		isChoice = true
-	case len(plaintext) == 16 && bytes.Equal(plaintext[12:], make([]byte, 4)):
-		openCount = binary.LittleEndian.Uint16(plaintext[2:4])
-		category = binary.LittleEndian.Uint32(plaintext[4:8])
-		chosen = binary.LittleEndian.Uint32(plaintext[8:12])
+		for off := 8; off+4 <= len(plaintext); off += 4 {
+			v := binary.LittleEndian.Uint32(plaintext[off : off+4])
+			if v != 0 {
+				chosenList = append(chosenList, v)
+			}
+		}
+		if len(chosenList) > 0 {
+			chosen = chosenList[0]
+		}
 		isChoice = true
 	}
 	if openCount == 0 || openCount > 100 {
@@ -416,61 +450,75 @@ func openBoosterBox(
 		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{display}, applied, map[byte]bool{kind: true}, false)
 	}
 
-	// Resolve source-backed [booster selection] (DANJI weapon/body avatars & Neo look boxes),
-	// multi-reward [booster] (DANJI aura/creature boxes), and legacy DANJI tables.
+	// Universal US100 PVF booster/selection/package resolution (41,394+ boxes),
+	// with compiled DANJI/Neo tables as fallback when BoosterCatalog is not loaded.
 	var awards []boosterAward
-	if def, ok := danjiAvatarSelectionBoxes[box]; ok {
-		resolved, rerr := resolveSelectionBox(def, category, chosen, isChoice, openCount)
-		if rerr != nil {
-			return role, nil, box, chosen, 0, false, fmt.Errorf("box %d: %w", box, rerr)
-		}
-		awards = resolved
-	} else if fixedMulti, ok := danjiFixedMultiBoosters[box]; ok && !isChoice {
-		for _, it := range fixedMulti {
-			awards = append(awards, boosterAward{
-				Template: it.Template,
-				Quantity: it.Quantity * uint32(openCount),
-				Avatar:   it.Avatar,
-			})
-		}
-	} else if isChoice {
-		opts, ok := danjiSelectionTables[box]
-		if !ok {
-			return role, nil, box, chosen, 0, false, fmt.Errorf("unsupported selection box %d", box)
-		}
-		perQty, ok := opts[chosen]
-		if !ok {
-			return role, nil, box, chosen, 0, false, fmt.Errorf("invalid choice %d for box %d", chosen, box)
-		}
-		awards = append(awards, boosterAward{Template: chosen, Quantity: perQty * uint32(openCount)})
-	} else {
-		// DANJI [booster] fixed & weighted random boxes
-		pool, ok := danjiBoosterTables[box]
-		if !ok {
-			return role, nil, box, 0, 0, false, fmt.Errorf("unsupported booster box %d", box)
-		}
-		totals := map[uint32]uint32{}
-		var order []uint32
-		for i := uint16(0); i < openCount; i++ {
-			pick := pickBoosterEntry(pool, nextRand)
-			if _, seen := totals[pick.Template]; !seen {
-				order = append(order, pick.Template)
+	if lootSvc.Boosters != nil {
+		if cbox, ok := lootSvc.Boosters.Boxes[box]; ok {
+			resolved, rerr := resolveCatalogBoosterBox(cbox, category, chosenList, isChoice, openCount, nextRand)
+			if rerr != nil {
+				return role, nil, box, chosen, 0, false, fmt.Errorf("box %d: %w", box, rerr)
 			}
-			totals[pick.Template] += pick.Count
+			awards = resolved
 		}
-		for _, tpl := range order {
-			awards = append(awards, boosterAward{Template: tpl, Quantity: totals[tpl]})
+	}
+	if len(awards) == 0 {
+		if def, ok := danjiAvatarSelectionBoxes[box]; ok {
+			resolved, rerr := resolveSelectionBox(def, category, chosen, isChoice, openCount)
+			if rerr != nil {
+				return role, nil, box, chosen, 0, false, fmt.Errorf("box %d: %w", box, rerr)
+			}
+			awards = resolved
+		} else if fixedMulti, ok := danjiFixedMultiBoosters[box]; ok && !isChoice {
+			for _, it := range fixedMulti {
+				awards = append(awards, boosterAward{
+					Template: it.Template,
+					Quantity: it.Quantity * uint32(openCount),
+					Avatar:   it.Avatar,
+				})
+			}
+		} else if isChoice {
+			opts, ok := danjiSelectionTables[box]
+			if !ok {
+				return role, nil, box, chosen, 0, false, fmt.Errorf("unsupported selection box %d", box)
+			}
+			perQty, ok := opts[chosen]
+			if !ok {
+				return role, nil, box, chosen, 0, false, fmt.Errorf("invalid choice %d for box %d", chosen, box)
+			}
+			awards = append(awards, boosterAward{Template: chosen, Quantity: perQty * uint32(openCount)})
+		} else {
+			// DANJI [booster] fixed & weighted random boxes
+			pool, ok := danjiBoosterTables[box]
+			if !ok {
+				return role, nil, box, 0, 0, false, fmt.Errorf("unsupported booster box %d", box)
+			}
+			totals := map[uint32]uint32{}
+			var order []uint32
+			for i := uint16(0); i < openCount; i++ {
+				pick := pickBoosterEntry(pool, nextRand)
+				if _, seen := totals[pick.Template]; !seen {
+					order = append(order, pick.Template)
+				}
+				totals[pick.Template] += pick.Count
+			}
+			for _, tpl := range order {
+				awards = append(awards, boosterAward{Template: tpl, Quantity: totals[tpl]})
+			}
 		}
 	}
 
 	contractDays := map[byte]int64{}
 	var avatarIDs []uint32
+	var equipAwards []boosterAward
 	var bagAwards []boosterAward
 	for _, a := range awards {
 		if a.Avatar {
 			for i := uint32(0); i < a.Quantity; i++ {
 				avatarIDs = append(avatarIDs, a.Template)
 			}
+		} else if a.Equipment {
+			equipAwards = append(equipAwards, a)
 		} else if kind, days, ok := directContractItem(a.Template); ok {
 			contractDays[kind] += days * int64(a.Quantity)
 		} else {
@@ -493,10 +541,32 @@ func openBoosterBox(
 				return nil, nil, e
 			}
 		}
+		if len(equipAwards) > 0 {
+			eqSlots := lootSvc.BagRules.EquipmentSlots
+			if eqSlots[0] == 0 {
+				eqSlots = [2]uint16{9, 64}
+			}
+			for _, a := range equipAwards {
+				if lootSvc.Equipment != nil {
+					if nb, _, eqErr := b.AddEquipment(lootSvc.Equipment, eqSlots, a.Template, a.Quantity); eqErr == nil {
+						b = nb
+						continue
+					}
+				}
+				dur := a.Durability
+				if dur == 0 {
+					dur = 35
+				}
+				b, _, e = b.AddRawEquipment(eqSlots, a.Template, dur, a.Quantity)
+				if e != nil {
+					return nil, nil, e
+				}
+			}
+		}
 		if len(bagAwards) > 0 {
 			local := catalog.LootCatalog{Source: lootSvc.Catalog.Source, Items: map[uint32]catalog.LootItem{}}
 			for _, a := range bagAwards {
-				local.Items[a.Template] = localCatalogEntry(lootSvc.Catalog, a.Template, a.Quantity)
+				local.Items[a.Template] = localCatalogEntryWithHint(lootSvc.Catalog, lootSvc.BagRules, a.Template, a.Quantity, a.StackableType)
 			}
 			for _, a := range bagAwards {
 				b, _, e = b.Add(local, lootSvc.BagRules, a.Template, a.Quantity)
@@ -525,6 +595,179 @@ func openBoosterBox(
 		}
 	}
 	return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, awards, applied, changedKinds, len(avatarIDs) > 0)
+}
+
+func catalogToBoosterAward(a catalog.BoosterAward, mult uint32) boosterAward {
+	q := a.Quantity
+	if q == 0 {
+		q = 1
+	}
+	return boosterAward{
+		Template:      a.Template,
+		Quantity:      q * mult,
+		Avatar:        a.Kind == "a",
+		Equipment:     a.Kind == "e",
+		StackableType: a.StackableType,
+		Durability:    a.Durability,
+	}
+}
+
+func pickCatalogEntry(pool []catalog.BoosterAward, nextRand func(uint32) uint32) catalog.BoosterAward {
+	if len(pool) == 1 {
+		return pool[0]
+	}
+	var total uint32
+	for _, it := range pool {
+		w := it.Weight
+		if w == 0 {
+			w = 1
+		}
+		total += w
+	}
+	if total == 0 {
+		return pool[0]
+	}
+	r := nextRand(total)
+	var acc uint32
+	for _, it := range pool {
+		w := it.Weight
+		if w == 0 {
+			w = 1
+		}
+		acc += w
+		if r < acc {
+			return it
+		}
+	}
+	return pool[len(pool)-1]
+}
+
+func resolveCatalogBoosterBox(
+	box catalog.BoosterBox,
+	category uint32,
+	chosenList []uint32,
+	isChoice bool,
+	openCount uint16,
+	nextRand func(uint32) uint32,
+) ([]boosterAward, error) {
+	if box.Mode == "sel" {
+		if box.SelectNum == 0 {
+			items, ok := box.Categories[category]
+			if isChoice && len(chosenList) > 0 {
+				want := chosenList[0]
+				matched := false
+				if ok {
+					for _, it := range items {
+						if it.Template == want {
+							matched = true
+							break
+						}
+					}
+				}
+				if !matched {
+					for _, catItems := range box.Categories {
+						for _, it := range catItems {
+							if it.Template == want {
+								items = catItems
+								ok = true
+								matched = true
+								break
+							}
+						}
+						if matched {
+							break
+						}
+					}
+				}
+			}
+			if !ok || len(items) == 0 {
+				return nil, fmt.Errorf("invalid category %d", category)
+			}
+			out := make([]boosterAward, 0, len(items))
+			for _, it := range items {
+				out = append(out, catalogToBoosterAward(it, uint32(openCount)))
+			}
+			return out, nil
+		}
+		// SelectNum >= 1: pick 1 or N distinct choices
+		if len(chosenList) > 0 {
+			wantN := box.SelectNum
+			if wantN <= 0 {
+				wantN = 1
+			}
+			if len(chosenList) > wantN {
+				chosenList = chosenList[:wantN]
+			}
+			out := make([]boosterAward, 0, len(chosenList))
+			for _, want := range chosenList {
+				var found *catalog.BoosterAward
+				if items, ok := box.Categories[category]; ok {
+					for i := range items {
+						if items[i].Template == want {
+							found = &items[i]
+							break
+						}
+					}
+				}
+				if found == nil {
+					for _, items := range box.Categories {
+						for i := range items {
+							if items[i].Template == want {
+								found = &items[i]
+								break
+							}
+						}
+						if found != nil {
+							break
+						}
+					}
+				}
+				if found == nil {
+					return nil, fmt.Errorf("invalid choice %d (category %d)", want, category)
+				}
+				out = append(out, catalogToBoosterAward(*found, uint32(openCount)))
+			}
+			return out, nil
+		}
+		if items, ok := box.Categories[category]; ok && len(items) == 1 {
+			return []boosterAward{catalogToBoosterAward(items[0], uint32(openCount))}, nil
+		}
+		return nil, fmt.Errorf("missing item selection (category %d)", category)
+	}
+
+	// "bst" or "pkg": draw 1 weighted pick per group for each opened box.
+	if len(box.Groups) == 0 {
+		return nil, fmt.Errorf("empty booster box")
+	}
+	type aggKey struct {
+		tpl    uint32
+		avatar bool
+		equip  bool
+	}
+	totals := map[aggKey]boosterAward{}
+	var order []aggKey
+	for i := uint16(0); i < openCount; i++ {
+		for _, grp := range box.Groups {
+			if len(grp) == 0 {
+				continue
+			}
+			pick := pickCatalogEntry(grp, nextRand)
+			aw := catalogToBoosterAward(pick, 1)
+			k := aggKey{tpl: aw.Template, avatar: aw.Avatar, equip: aw.Equipment}
+			if cur, seen := totals[k]; seen {
+				cur.Quantity += aw.Quantity
+				totals[k] = cur
+			} else {
+				order = append(order, k)
+				totals[k] = aw
+			}
+		}
+	}
+	out := make([]boosterAward, 0, len(order))
+	for _, k := range order {
+		out = append(out, totals[k])
+	}
+	return out, nil
 }
 
 func resolveSelectionBox(def selectionBoxDef, category, chosen uint32, isChoice bool, openCount uint16) ([]boosterAward, error) {
@@ -609,9 +852,12 @@ func resolveSelectionBox(def selectionBoxDef, category, chosen uint32, isChoice 
 }
 
 type boosterAward struct {
-	Template uint32 `json:"template"`
-	Quantity uint32 `json:"quantity"`
-	Avatar   bool   `json:"avatar,omitempty"`
+	Template      uint32 `json:"template"`
+	Quantity      uint32 `json:"quantity"`
+	Avatar        bool   `json:"avatar,omitempty"`
+	Equipment     bool   `json:"equipment,omitempty"`
+	StackableType string `json:"-"`
+	Durability    uint16 `json:"-"`
 }
 
 func contractBoosterAward(box, openCount uint32) boosterAward {

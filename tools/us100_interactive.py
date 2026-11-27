@@ -323,6 +323,7 @@ def main():
             '-progression-catalog', str(CFG_US100 / 'progression.generated.json'),
             '-progression-rules', str(CFG_US100 / 'rules.experience.json'),
             '-loot-catalog', str(atelier/'loot.json' if atelier else CFG_US100/'loot.generated.json'),
+            '-booster-catalog', str(CFG_US100 / 'boosters.generated.json.gz'),
             '-loot-rules', str(CFG_US100 / 'rules.drop.json'),
             '-bag-rules', str(CFG_US100 / 'rules.bag.json'),
             '-card-rules', str(CFG_US100 / 'rules.cards.json'),

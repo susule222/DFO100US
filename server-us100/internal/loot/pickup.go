@@ -21,6 +21,7 @@ type Service struct {
 	BagRules   inventory.BagRules
 	Tables     Tables
 	Equipment  *inventory.EquipmentCatalog
+	Boosters   *catalog.BoosterCatalog
 	CardPolicy *CardRules
 }
 type PickupReceipt struct {

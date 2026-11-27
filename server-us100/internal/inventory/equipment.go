@@ -257,3 +257,35 @@ func (b Bag) AddEquipment(c *EquipmentCatalog, slots [2]uint16, id, count uint32
 	}
 	return b, available, nil
 }
+
+// AddRawEquipment places count copies of equipment template id (with source
+// PVF durability) into free slots in the equipment tab (slots[0]..slots[1]).
+// Used by PVF-backed booster/selection/package boxes whose reward items may
+// not be in the monster-drop equipment.generated.json pool (e.g. Lv.100 event
+// weapons, epics, titles).
+func (b Bag) AddRawEquipment(slots [2]uint16, id uint32, durability uint16, count uint32) (Bag, []uint16, error) {
+	if id == 0 || slots[0] == 0 || slots[0] > slots[1] || count == 0 || count > uint32(slots[1]-slots[0]+1) {
+		return b, nil, fmt.Errorf("invalid equipment award")
+	}
+	occupied := map[uint16]bool{}
+	for _, i := range b.Items {
+		occupied[i.Slot] = true
+	}
+	for _, i := range b.Equipment {
+		occupied[i.Slot] = true
+	}
+	var available []uint16
+	for n := uint32(slots[0]); n <= uint32(slots[1]) && len(available) < int(count); n++ {
+		if !occupied[uint16(n)] {
+			available = append(available, uint16(n))
+		}
+	}
+	if len(available) != int(count) {
+		return b, nil, fmt.Errorf("equipment bag is full")
+	}
+	b.Equipment = append([]BagEquipment(nil), b.Equipment...)
+	for _, n := range available {
+		b.Equipment = append(b.Equipment, BagEquipment{Slot: n, Template: id, Durability: durability})
+	}
+	return b, available, nil
+}

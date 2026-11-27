@@ -304,6 +304,7 @@ func main() {
 	tutorialRoutesFile := flag.String("tutorial-routes", "", "source per-job starting route table")
 	tutorialDungeonsFile := flag.String("tutorial-dungeons", "", "source starting-route dungeon catalog")
 	gateSetFile := flag.String("gate-set", "configs/us100/gate-set.json", "which optional packets the dungeon gate sends (JSON); see cmd/wireprobe/gate_set.go")
+	boosterCatalogFile := flag.String("booster-catalog", "", "source PVF booster/selection/package catalog (JSON or .json.gz)")
 	accountName := flag.String("account", "probe", "account the gateway serves")
 	requireAccount := flag.Bool("require-account", false, "require an existing database and pre-created account instead of auto-creating")
 	gmDir := flag.String("launcher-gm", "", "optional local desktop GM inbox and room drop policy")
@@ -679,6 +680,26 @@ func main() {
 			log.Fatal("loot source mismatch")
 		}
 		lootService = &loot.Service{Store: characters.Store, Catalog: c, Rules: r, BagRules: bag, Tables: tables}
+		boosterPath := *boosterCatalogFile
+		if boosterPath == "" {
+			for _, cand := range []string{
+				filepath.Join(filepath.Dir(*lootCatalogFile), "boosters.generated.json.gz"),
+				filepath.Join("configs", "us100", "boosters.generated.json.gz"),
+			} {
+				if _, statErr := os.Stat(cand); statErr == nil {
+					boosterPath = cand
+					break
+				}
+			}
+		}
+		if boosterPath != "" {
+			bc, be := catalog.LoadBoosters(boosterPath)
+			if be != nil {
+				log.Fatal(be)
+			}
+			lootService.Boosters = bc
+			log.Printf("booster catalog: loaded %d boxes from %s", len(bc.Boxes), boosterPath)
+		}
 		cards, e := loot.LoadCardRules(*cardRulesFile)
 		if e != nil {
 			log.Fatal(e)
