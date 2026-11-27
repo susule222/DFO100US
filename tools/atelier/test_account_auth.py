@@ -203,6 +203,51 @@ class AccountAuthAndDbGateTests(unittest.TestCase):
         self.assertTrue(core.verify_password(encoded, 'password'))
         self.assertFalse(core.verify_password(encoded, 'wrong'))
 
+    def test_migrate_account_data_transfers_characters_and_account_tables(self):
+        # Seed legacy dev account 41 with characters, currency, premiums, danji, options, receipts
+        self.db_file.write_text(json.dumps({
+            'magic': 'US100DB1',
+            'version': 1,
+            'revision': 5,
+            'tables': {
+                'meta': {'seq:accounts': 41},
+                'accounts': {
+                    '41': {'id': 41, 'username': 'probe-us100', 'password_hash': None, 'development_only': True},
+                },
+                'characters': {
+                    '47': {'id': 47, 'account_id': 41, 'wire_id': 1, 'name': '角色1'},
+                    '48': {'id': 48, 'account_id': 41, 'wire_id': 2, 'name': '角色2'},
+                },
+                'account_currency': {'41': {'account_id': 41, 'cera': 71170, 'mileage': 50}},
+                'us224_account_premium': {'41': {'118': 1799999999}},
+                'us224_account_materials': {'41': {'3034': 5}},
+                'danji_stack_v224': {'41': {'stack': 123}},
+                'character_options_v224': {'41/48': {'opt': 1}},
+                'neo_daily_claims': {'41/2026-11-27': {'character_id': 48}},
+                'cashshop_receipts': {'41/buy64/48/abc': {'Account': 41, 'Character': 48}},
+                'admin_grants': {'g1': {'account_id': 41, 'request': {'account_id': 41}}},
+            },
+        }), encoding='utf-8')
+        core.create_account('1111', '1111', '1111')
+        res = core.migrate_account_data('probe-us100', '1111', backup=True)
+        self.assertEqual(res['src_id'], 41)
+        self.assertEqual(res['dst_id'], 42)
+        self.assertEqual(res['characters'], 2)
+        self.assertEqual(res['live_characters'], 2)
+        self.assertTrue(Path(res['backup_path']).is_file())
+        self.assertEqual(core.roles('1111'), [(47, '角色1'), (48, '角色2')])
+        self.assertEqual(core.roles('probe-us100'), [])
+        self.assertEqual(core.account_cera('1111'), 71170)
+        self.assertEqual(core.account_mileage('1111'), 50)
+        self.assertIn(118, core.account_contracts('1111'))
+        doc = json.loads(self.db_file.read_text(encoding='utf-8'))
+        self.assertIn('42', doc['tables']['danji_stack_v224'])
+        self.assertEqual(doc['tables']['danji_stack_v224']['42']['stack'], 123)
+        self.assertIn('42/48', doc['tables']['character_options_v224'])
+        self.assertIn('42/2026-11-27', doc['tables']['neo_daily_claims'])
+        self.assertEqual(doc['tables']['cashshop_receipts']['42/buy64/48/abc']['Account'], 42)
+        self.assertEqual(doc['tables']['admin_grants']['g1']['account_id'], 42)
+
 
 if __name__ == '__main__':
     unittest.main()

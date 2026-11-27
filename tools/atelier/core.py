@@ -202,6 +202,171 @@ def create_account(username, password, confirm_password=None):
     }
 
 
+def migrate_account_data(src_username, dst_username, backup=True):
+    """Re-assign characters and all account-scoped tables from src_username to dst_username."""
+    if client_up():
+        raise ValueError('游戏客户端正在运行，请先退出游戏后再迁移存档。')
+    if gateway() is not None:
+        stop_server()
+
+    db = db_path()
+    if not db.is_file():
+        raise ValueError(f'数据库文件不存在：{db}')
+    doc = read(db)
+    tables = doc.setdefault('tables', {})
+    accounts = tables.get('accounts', {})
+
+    def _find_acct(name):
+        want = (name or '').strip().lower()
+        for row in accounts.values():
+            if isinstance(row, dict) and str(row.get('username') or '').strip().lower() == want:
+                return int(row['id']), str(row['username'])
+        return None, None
+
+    src_id, src_name = _find_acct(src_username)
+    dst_id, dst_name = _find_acct(dst_username)
+    if src_id is None:
+        raise ValueError(f'源账号「{src_username}」不存在。')
+    if dst_id is None:
+        raise ValueError(f'目标账号「{dst_username}」不存在。')
+    if src_id == dst_id:
+        raise ValueError('源账号与目标账号相同，无需迁移。')
+
+    backup_path = None
+    if backup:
+        stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+        backup_path = db.with_name(f'{db.name}.bak.{stamp}')
+        file_copy(db, backup_path)
+
+    src_key, dst_key = str(src_id), str(dst_id)
+    src_prefix, dst_prefix = f'{src_key}/', f'{dst_key}/'
+    stats = {'characters': 0, 'live_characters': 0, 'tables_moved': {}}
+
+    # 1. Characters (re-assign account_id; keep wire_ids conflict-free)
+    chars = tables.get('characters', {})
+    max_wire = 0
+    for row in chars.values():
+        if isinstance(row, dict) and int(row.get('account_id', 0) or 0) == dst_id:
+            max_wire = max(max_wire, int(row.get('wire_id', 0) or 0))
+    src_chars = sorted(
+        (row for row in chars.values() if isinstance(row, dict) and int(row.get('account_id', 0) or 0) == src_id),
+        key=lambda r: (int(r.get('wire_id', 0) or 0), int(r.get('id', 0) or 0)),
+    )
+    for row in src_chars:
+        row['account_id'] = dst_id
+        if max_wire > 0:
+            max_wire += 1
+            row['wire_id'] = max_wire
+        stats['characters'] += 1
+        if not row.get('deleted_at'):
+            stats['live_characters'] += 1
+
+    # 2. Single-key account tables (key == str(account_id))
+    def _move_exact(table_name, merge_fn=None):
+        tbl = tables.get(table_name)
+        if not isinstance(tbl, dict) or src_key not in tbl:
+            return
+        src_val = tbl.pop(src_key)
+        if dst_key in tbl and merge_fn is not None:
+            tbl[dst_key] = merge_fn(tbl[dst_key], src_val)
+        else:
+            if merge_fn is not None:
+                tbl[dst_key] = merge_fn(None, src_val)
+            else:
+                tbl[dst_key] = src_val
+        stats['tables_moved'][table_name] = 1
+
+    def _merge_currency(dst_val, src_val):
+        out = dict(src_val or {})
+        out['account_id'] = dst_id
+        if isinstance(dst_val, dict):
+            out['cera'] = int(dst_val.get('cera', 0) or 0) + int(out.get('cera', 0) or 0)
+            out['mileage'] = int(dst_val.get('mileage', 0) or 0) + int(out.get('mileage', 0) or 0)
+        return out
+
+    def _merge_premium(dst_val, src_val):
+        out = dict(dst_val or {})
+        for k, v in (src_val or {}).items():
+            out[k] = max(int(out.get(k, 0) or 0), int(v or 0))
+        return out
+
+    def _merge_materials(dst_val, src_val):
+        out = dict(dst_val or {})
+        for k, v in (src_val or {}).items():
+            out[k] = int(out.get(k, 0) or 0) + int(v or 0)
+        return out
+
+    def _merge_danji(dst_val, src_val):
+        out = dict(src_val or {})
+        if isinstance(dst_val, dict):
+            out['stack'] = int(dst_val.get('stack', 0) or 0) + int(out.get('stack', 0) or 0)
+        return out
+
+    def _fix_acct_field(dst_val, src_val):
+        out = dict(src_val or {})
+        if 'account_id' in out:
+            out['account_id'] = dst_id
+        return out
+
+    _move_exact('account_currency', _merge_currency)
+    _move_exact('account_mileage_daily', _fix_acct_field)
+    _move_exact('us224_account_premium', _merge_premium)
+    _move_exact('us224_account_materials', _merge_materials)
+    _move_exact('danji_stack_v224', _merge_danji)
+    _move_exact('account_basic_keys_v224')
+    _move_exact('account_game_options_v224')
+
+    # 3. Prefix-keyed account tables (key == "<account_id>/...")
+    for tname in (
+        'character_options_v224',
+        'character_target_equipment_v224',
+        'neo_daily_claims',
+        'cashshop_receipts',
+        'premium_cart_receipts',
+        'shop_contract_reconciliation',
+    ):
+        tbl = tables.get(tname)
+        if not isinstance(tbl, dict):
+            continue
+        moved = 0
+        for old_k in [k for k in list(tbl.keys()) if k.startswith(src_prefix)]:
+            val = tbl.pop(old_k)
+            new_k = dst_prefix + old_k[len(src_prefix):]
+            if isinstance(val, dict):
+                if val.get('Account') == src_id:
+                    val['Account'] = dst_id
+                if val.get('account_id') == src_id:
+                    val['account_id'] = dst_id
+            tbl[new_k] = val
+            moved += 1
+        if moved:
+            stats['tables_moved'][tname] = moved
+
+    # 4. admin_grants audit records
+    grants = tables.get('admin_grants')
+    if isinstance(grants, dict):
+        moved = 0
+        for row in grants.values():
+            if isinstance(row, dict) and row.get('account_id') == src_id:
+                row['account_id'] = dst_id
+                if isinstance(row.get('request'), dict) and row['request'].get('account_id') == src_id:
+                    row['request']['account_id'] = dst_id
+                moved += 1
+        if moved:
+            stats['tables_moved']['admin_grants'] = moved
+
+    doc['revision'] = int(doc.get('revision', 0) or 0) + 1
+    atomic(db, doc)
+    return {
+        'src_id': src_id,
+        'src_username': src_name,
+        'dst_id': dst_id,
+        'dst_username': dst_name,
+        'backup_path': str(backup_path) if backup_path else None,
+        **stats,
+    }
+
+
 def authenticate_account(username, password):
     """Verify username and password against us100.db and activate the session."""
     user = (username or '').strip()
