@@ -3,6 +3,7 @@ package loot
 import (
 	"context"
 	"dfolan/internal/dungeon"
+	"dfolan/internal/events"
 	"dfolan/internal/inventory"
 	"dfolan/internal/storage"
 	"encoding/json"
@@ -111,16 +112,28 @@ func (s *Service) FreezeCardsAt(ctx context.Context, role storage.Character, d *
 	if e != nil {
 		return p, e
 	}
+	cardMult := events.LoadBestEffort(s.EventsPath).EffectiveCardGoldMultiplier()
+	scaleCard := func(v uint32) uint32 {
+		if cardMult <= 1.0 || v == 0 {
+			return v
+		}
+		scaled := math.Floor(float64(v) * cardMult)
+		if scaled > float64(math.MaxUint32) {
+			return math.MaxUint32
+		}
+		return uint32(scaled)
+	}
+	gold = scaleCard(gold)
 	var neoBonus, vipBonus uint32
 	if active, err := s.Store.ActivePremiumKinds(role.AccountID, now); err == nil {
 		if active[storage.NeoPremiumPlusKind] {
 			if g, gErr := CardGold(s.Tables, r, seed^0x9e3779b9, level, 0); gErr == nil {
-				neoBonus = g
+				neoBonus = scaleCard(g)
 			}
 		}
 		if active[storage.VIPContractKind] {
 			if g, gErr := CardGold(s.Tables, r, seed^0x517cc1b7, level, 0); gErr == nil {
-				vipBonus = g
+				vipBonus = scaleCard(g)
 			}
 		}
 	} else {

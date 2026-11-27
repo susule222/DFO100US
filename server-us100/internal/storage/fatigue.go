@@ -62,6 +62,10 @@ func rolloverFatigueTx(tx *db100.Tx, account, id int64, day string, limit uint16
 		r = fatigueRow{CharacterID: id, Day: day, DailyLimit: int(limit)}
 	} else if day > r.Day {
 		r.Day, r.Used, r.UsedMax, r.DailyLimit = day, 0, 0, int(limit)
+	} else if int(limit) != r.DailyLimit && limit > 0 {
+		// Allow live fatigue events (weekend double / bonus FP / PC Bang) to
+		// update today's cap immediately while preserving today's usage.
+		r.DailyLimit = int(limit)
 	}
 	r.UpdatedAt = nowStamp()
 	if e = tx.Put("character_fatigue", idKey(id), r); e != nil {

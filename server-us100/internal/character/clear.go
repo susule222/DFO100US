@@ -46,10 +46,26 @@ func (s *ProgressionService) Clear(ctx context.Context, role storage.Character, 
 	if e != nil {
 		return fail(e)
 	}
+	expMult := s.expMultiplier(ctx, role, now)
 	saved, applied, e := s.Store.CommitCharacterEvent(ctx, role.AccountID, role.ID, s.Catalog.Source.Checksum, key, s.Rules.Model, func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
 		gain, e := progression.DungeonClear(s.Catalog, run.Definition, 0, rank)
 		if e != nil {
 			return nil, nil, e
+		}
+		if expMult > 1.0 {
+			scaledBase := math.Floor(float64(gain.Base) * expMult)
+			if scaledBase > float64(math.MaxUint32) {
+				scaledBase = float64(math.MaxUint32)
+			}
+			scaledScore := math.Floor(float64(gain.Score) * expMult)
+			if scaledScore > float64(math.MaxUint32) {
+				scaledScore = float64(math.MaxUint32)
+			}
+			if scaledBase+scaledScore > float64(math.MaxUint32) {
+				scaledScore = float64(math.MaxUint32) - scaledBase
+			}
+			gain.Base = uint32(scaledBase)
+			gain.Score = uint32(scaledScore)
 		}
 		baseTotal := uint64(gain.Base) + uint64(gain.Score)
 		var neoBonus, growthBonus uint32

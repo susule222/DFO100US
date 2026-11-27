@@ -25,8 +25,56 @@ type Session struct {
 	Unowned          map[uint16]bool
 	Visited          map[uint32][]protocol.DungeonMonster
 	NextEntity       uint16
+	HasHellRoom      bool
+	HellRoom         [2]byte
 	completionTarget uint16
 	completed        bool
+}
+
+// AssignRandomHell picks a non-start combat room as a native NOTI 28 Random Hell
+// room according to the configured trigger chance (0..100) and minimum level.
+func (s *Session) AssignRandomHell(seed uint32, chance, minLevel int) bool {
+	if s == nil || chance <= 0 || int(s.Definition.BasisLevel) < minLevel {
+		return false
+	}
+	if chance < 100 && int(seed%100) >= chance {
+		return false
+	}
+	var cands []catalog.DungeonRoom
+	for _, r := range s.Maze.Rooms {
+		if r.X == s.Maze.Start[0] && r.Y == s.Maze.Start[1] {
+			continue
+		}
+		if r.X == s.Maze.Boss[0] && r.Y == s.Maze.Boss[1] {
+			continue
+		}
+		cands = append(cands, r)
+	}
+	if len(cands) == 0 {
+		for _, r := range s.Maze.Rooms {
+			if r.X == s.Maze.Boss[0] && r.Y == s.Maze.Boss[1] {
+				cands = append(cands, r)
+			}
+		}
+	}
+	if len(cands) == 0 {
+		return false
+	}
+	sort.Slice(cands, func(i, j int) bool {
+		if cands[i].X != cands[j].X {
+			return cands[i].X < cands[j].X
+		}
+		return cands[i].Y < cands[j].Y
+	})
+	chosen := cands[int((seed>>8)%uint32(len(cands)))]
+	s.HasHellRoom = true
+	s.HellRoom = [2]byte{chosen.X, chosen.Y}
+	return true
+}
+
+// IsHellRoom reports whether the currently loaded room is the run's Random Hell room.
+func (s *Session) IsHellRoom() bool {
+	return s != nil && s.HasHellRoom && s.Room.X == s.HellRoom[0] && s.Room.Y == s.HellRoom[1]
 }
 
 func Select(c catalog.DungeonCatalog, r protocol.DungeonSelection, level byte, accepted map[uint16]bool) (*Session, error) {

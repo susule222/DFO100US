@@ -155,7 +155,13 @@ func (s *Store) CompletePremiumCart(ctx context.Context, account, role int64, ke
 			return e
 		}
 		if cost > 0 {
-			if e = tx.Put("account_currency", idKey(account), currencyRow{AccountID: account, Cera: bal - cost, UpdatedAt: nowStamp()}); e != nil {
+			cur, e := currencyRowTx(tx, account)
+			if e != nil {
+				return e
+			}
+			cur.Cera = bal - cost
+			cur.UpdatedAt = nowStamp()
+			if e = tx.Put("account_currency", idKey(account), cur); e != nil {
 				return e
 			}
 		}

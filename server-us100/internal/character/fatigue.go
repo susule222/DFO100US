@@ -2,6 +2,7 @@ package character
 
 import (
 	"context"
+	"dfolan/internal/events"
 	"dfolan/internal/storage"
 	"encoding/json"
 	"fmt"
@@ -18,9 +19,10 @@ type FatigueRules struct {
 	Source     string `json:"source"`
 }
 type FatigueService struct {
-	Store    *storage.Store
-	Rules    FatigueRules
-	Location *time.Location
+	Store      *storage.Store
+	Rules      FatigueRules
+	Location   *time.Location
+	EventsPath string
 }
 
 func LoadFatigueService(s *storage.Store, path string) (*FatigueService, error) {
@@ -39,7 +41,10 @@ func LoadFatigueService(s *storage.Store, path string) (*FatigueService, error) 
 	if e != nil {
 		return nil, e
 	}
-	return &FatigueService{s, r, l}, nil
+	return &FatigueService{Store: s, Rules: r, Location: l}, nil
+}
+func (s *FatigueService) Day(now time.Time) string {
+	return s.day(now)
 }
 func (s *FatigueService) day(now time.Time) string {
 	local := now.In(s.Location)
@@ -48,13 +53,21 @@ func (s *FatigueService) day(now time.Time) string {
 	}
 	return local.Format("2006-01-02")
 }
+func (s *FatigueService) effectiveLimit(now time.Time) uint16 {
+	ev := events.LoadBestEffort(s.EventsPath)
+	return ev.EffectiveFatigueLimit(s.Rules.DailyLimit, now)
+}
+func (s *FatigueService) EffectiveRoomCost(exempt bool) uint16 {
+	if exempt {
+		return 0
+	}
+	ev := events.LoadBestEffort(s.EventsPath)
+	return ev.EffectiveRoomCost(s.Rules.RoomCost)
+}
 func (s *FatigueService) State(ctx context.Context, account, id int64, now time.Time) (storage.FatigueState, error) {
-	return s.Store.LoadFatigueAt(ctx, account, id, s.day(now), s.Rules.DailyLimit, now)
+	return s.Store.LoadFatigueAt(ctx, account, id, s.day(now), s.effectiveLimit(now), now)
 }
 func (s *FatigueService) EnterRoom(ctx context.Context, account, id int64, run string, room uint32, exempt bool, now time.Time) (storage.FatigueState, bool, error) {
-	cost := s.Rules.RoomCost
-	if exempt {
-		cost = 0
-	}
-	return s.Store.ConsumeRoomFatigueAt(ctx, account, id, s.day(now), s.Rules.DailyLimit, run, room, cost, now)
+	cost := s.EffectiveRoomCost(exempt)
+	return s.Store.ConsumeRoomFatigueAt(ctx, account, id, s.day(now), s.effectiveLimit(now), run, room, cost, now)
 }

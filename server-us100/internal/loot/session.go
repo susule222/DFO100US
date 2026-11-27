@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"dfolan/internal/catalog"
 	"dfolan/internal/dungeon"
+	"dfolan/internal/events"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/inventory"
 	"encoding/binary"
@@ -22,6 +23,11 @@ type Drop struct {
 type Session struct {
 	Abyss              *AbyssRule
 	GlobalDrop         *GlobalDropPolicy
+	HellParty          *events.HellPartyPolicy
+	DropMultiplier     float64
+	GoldMultiplier     float64
+	UnstableRiftActive bool
+	hellRoomDropped    bool
 	mu                 sync.Mutex
 	Catalog            catalog.LootCatalog
 	Tables             Tables
@@ -75,14 +81,23 @@ func (s *Session) Death(d *dungeon.Session, entity uint16) ([]protocol.SceneDrop
 		diff = byte(len(s.Rules.DifficultyBonus) - 1)
 	}
 	rollLevel := monster.Level
-	if s.GlobalDrop != nil && s.Catalog.MaximumGrade > 3 && uint32(rollLevel)+3 > s.Catalog.MaximumGrade {
+	if (s.GlobalDrop != nil || (s.HellParty != nil && s.HellParty.Enabled)) && s.Catalog.MaximumGrade > 3 && uint32(rollLevel)+3 > s.Catalog.MaximumGrade {
 		rollLevel = byte(s.Catalog.MaximumGrade - 3)
 	}
-	result, e := Roll(s.Catalog, s.Tables, s.Rules, s.Equipment.DropPool(), seed, rollLevel, monster.Rank, diff)
+	dropMult := s.DropMultiplier
+	if dropMult <= 0 {
+		dropMult = 1.0
+	}
+	goldMult := s.GoldMultiplier
+	if goldMult <= 0 {
+		goldMult = 1.0
+	}
+	result, e := RollWithMultipliers(s.Catalog, s.Tables, s.Rules, s.Equipment.DropPool(), seed, rollLevel, monster.Rank, diff, dropMult, goldMult)
 	if e != nil {
 		return nil, e
 	}
 	s.GlobalDrop.apply(d, monster, s.Equipment, s.Catalog, &result)
+	s.applyHellPartyDrop(d, monster, &result)
 	s.Abyss.bonus(d.Room.Map, &result)
 	if d.NextEntity == 0 || uint64(d.NextEntity)+uint64(len(result.Awards)) >= 65535 || uint64(s.next)+uint64(len(result.Awards)) >= 65535 {
 		return nil, fmt.Errorf("drop identity exhausted")
@@ -117,6 +132,49 @@ func (s *Session) Death(d *dungeon.Session, entity uint16) ([]protocol.SceneDrop
 // always wins and gear is only assumed for identities it does not claim.
 func (s *Session) stackable(id uint32) bool {
 	return id == 0 || s.Catalog.Items[id].Kind == "stackable"
+}
+
+// applyHellPartyDrop bursts Hell Party epic/mythic drops when the last combat
+// monster in the NOTI 28 Random Hell room is defeated.
+func (s *Session) applyHellPartyDrop(d *dungeon.Session, monster *protocol.DungeonMonster, result *Outcome) {
+	if s.hellRoomDropped || s.HellParty == nil || !s.HellParty.Enabled || !d.IsHellRoom() || s.Equipment == nil || monster == nil || monster.NonCombat {
+		return
+	}
+	for _, m := range d.Monsters {
+		if !m.NonCombat && !d.Dead[m.Entity] {
+			return
+		}
+	}
+	s.hellRoomDropped = true
+	count := s.HellParty.DropCount
+	if count < 1 {
+		count = 1
+	}
+	if s.UnstableRiftActive {
+		count++
+	}
+	if count > 6 {
+		count = 6
+	}
+	pool := s.Equipment.RewardPool()
+	if len(pool) == 0 {
+		return
+	}
+	rng := RNG{Seed: result.NextSeed}
+	helper := &GlobalDropPolicy{
+		Lv100Abyss: Lv100AbyssPolicy{
+			Enabled:      true,
+			EpicWeight:   s.HellParty.EpicWeight,
+			MythicWeight: s.HellParty.MythicWeight,
+			PoolMode:     "lv100_all",
+		},
+	}
+	for i := 0; i < count; i++ {
+		if id := helper.pickLv100AbyssItem(&rng, pool, s.Catalog); id != 0 {
+			result.Awards = append(result.Awards, Award{id, 1})
+		}
+	}
+	result.NextSeed = rng.Seed
 }
 
 func (s *Session) Owned(d *dungeon.Session, account, character int64, actor uint16, object uint32) (Drop, error) {

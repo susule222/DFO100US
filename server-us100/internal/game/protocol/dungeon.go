@@ -246,6 +246,8 @@ type DungeonInfoState struct {
 	ID               uint32
 	Difficulty, Maze byte
 	Boss             [2]byte
+	HasRandomHell    bool
+	RandomHell       [2]byte
 }
 
 // DungeonInfo encodes the ordinary solo branch of US100 NOTI28. The group
@@ -257,7 +259,11 @@ func DungeonInfo(s DungeonInfoState) []byte {
 	p[4] = s.Difficulty
 	p[7] = s.Maze
 	p[8], p[9] = s.Boss[0], s.Boss[1]
-	p[10], p[11] = 0xff, 0xff // no random-hell room
+	if s.HasRandomHell {
+		p[10], p[11] = s.RandomHell[0], s.RandomHell[1]
+	} else {
+		p[10], p[11] = 0xff, 0xff // no random-hell room
+	}
 	binary.LittleEndian.PutUint16(p[16:], 0x000c)
 	binary.LittleEndian.PutUint32(p[19:], 0xffffffff) // skip seed application
 	return p

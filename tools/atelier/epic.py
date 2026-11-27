@@ -14,6 +14,7 @@ from PySide6.QtWidgets import (QApplication,QComboBox,QDialog,QFileDialog,QFormL
     QScrollArea,QSpinBox,QTabWidget,QVBoxLayout,QWidget)
 
 import core
+from activity_page import ActivityCenterPage
 from character_page import CharacterPage
 from drop_page import DropConfigPage
 from epic_data import read_cards
@@ -678,12 +679,17 @@ class EpicWindow(LauncherMainWindow):
         self.character_page=CharacterPage(self)
         return self.character_page
 
+    def build_activities(self):
+        self.activity_page=ActivityCenterPage(self)
+        return self.activity_page
+
     def switch_page(self,index):
         super().switch_page(index)
         if index==1:self._render_page()
         if index==3:self.fitting.activate()
         if index==4:self.refresh_mods();self.font_panel.refresh()
         if index==5:self.character_page.activate()
+        if index==6:self.activity_page.activate()
 
     def build_mods(self):
         page,lay=panel('Mod 工坊')

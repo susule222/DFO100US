@@ -562,7 +562,7 @@ class LauncherMainWindow(QMainWindow):
         side_layout.addSpacing(6)
 
         self.nav_btns: List[QPushButton] = []
-        self._nav_icon_names = ["login", "items", "abyss", "wardrobe", "mods", "character"]
+        self._nav_icon_names = ["login", "items", "abyss", "wardrobe", "mods", "character", "events"]
         nav_titles = [
             " 登录与启动",
             " 物品可视化添加",
@@ -570,6 +570,7 @@ class LauncherMainWindow(QMainWindow):
             " 时装试衣间",
             " Mod 工坊",
             " 角色属性",
+            " 活动中心",
         ]
         for idx, (text, iname) in enumerate(zip(nav_titles, self._nav_icon_names)):
             btn = QPushButton(text)
@@ -632,6 +633,7 @@ class LauncherMainWindow(QMainWindow):
         self.stack.addWidget(self.build_wardrobe())
         self.stack.addWidget(self.build_mods())
         self.stack.addWidget(self.build_character())
+        self.stack.addWidget(self.build_activities())
         main_layout.addWidget(self.stack, 1)
 
     def switch_page(self, index: int):

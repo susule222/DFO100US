@@ -39,6 +39,7 @@ type GrantResult struct {
 type currencyRow struct {
 	AccountID int64  `json:"account_id"`
 	Cera      int64  `json:"cera"`
+	Mileage   int64  `json:"mileage,omitempty"`
 	UpdatedAt string `json:"updated_at"`
 }
 
@@ -146,8 +147,13 @@ func (s *Store) ApplyGrant(ctx context.Context, g Grant, mutate func(Character) 
 			if cera+g.Cera < 0 {
 				return fmt.Errorf("cera adjustment refused (balance would go negative?)")
 			}
+			cur, e := currencyRowTx(tx, g.AccountID)
+			if e != nil {
+				return e
+			}
 			cera += g.Cera
-			cur := currencyRow{AccountID: g.AccountID, Cera: cera, UpdatedAt: nowStamp()}
+			cur.Cera = cera
+			cur.UpdatedAt = nowStamp()
 			if e = tx.Put("account_currency", idKey(g.AccountID), cur); e != nil {
 				return e
 			}
@@ -285,7 +291,13 @@ func (s *Store) CompleteCashSale(ctx context.Context, account, role int64, key s
 			return e
 		}
 		receipt = CashReceipt{account, role, key, sale, bal - sale.Cera, del}
-		if e = tx.Put("account_currency", idKey(account), currencyRow{AccountID: account, Cera: receipt.CeraAfter, UpdatedAt: nowStamp()}); e != nil {
+		cur, e := currencyRowTx(tx, account)
+		if e != nil {
+			return e
+		}
+		cur.Cera = receipt.CeraAfter
+		cur.UpdatedAt = nowStamp()
+		if e = tx.Put("account_currency", idKey(account), cur); e != nil {
 			return e
 		}
 		if e = tx.Put("cashshop_receipts", k, receipt); e != nil {

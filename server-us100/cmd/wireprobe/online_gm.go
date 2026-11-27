@@ -6,6 +6,7 @@ import (
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/game/wire"
 	"dfolan/internal/inventory"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -189,6 +190,48 @@ func (w *worldSession) syncGrantedBag(account, id int64, send func(byte, uint16,
 			if p, err := protocol.AvailableQuests(w.level, available); err == nil {
 				if err = send(0, 21, p); err != nil {
 					return err
+				}
+			}
+		}
+	}
+	// Sync account CERA & Mileage (NOTI 53), active contracts (NOTI 66), and live fatigue (NOTI 36)
+	// only when values changed so ordinary item grants keep minimal packet traffic while
+	// launcher activity/contract/mileage changes take effect immediately without relogging.
+	if w.loot != nil && w.loot.Store != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		cera, mileage, berr := w.loot.Store.AccountBalances(ctx, account)
+		cancel()
+		if berr == nil && (cera != w.lastSyncedCera || mileage != w.lastSyncedMileage) {
+			if err = send(0, 53, fundsPayload(cera, mileage)); err != nil {
+				return err
+			}
+			w.lastSyncedCera, w.lastSyncedMileage = cera, mileage
+		}
+		if entries, perr := w.loot.Store.NeoPremiumSeconds(account); perr == nil {
+			sig, _ := json.Marshal(entries)
+			if len(entries) > 0 && string(sig) != w.lastSyncedPremium {
+				for _, v := range entries {
+					msg := binary.LittleEndian.AppendUint64([]byte{2, 0, v.Kind}, v.Seconds)
+					if err = send(0, 66, msg); err != nil {
+						return err
+					}
+				}
+				w.lastSyncedPremium = string(sig)
+			}
+		}
+	}
+	if w.fatigue != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		fp, ferr := w.fatigue.State(ctx, account, id, time.Now())
+		cancel()
+		if ferr == nil {
+			cur := [3]uint16{fp.Used, fp.Limit, fp.UsedMax}
+			if cur != w.lastSyncedFatigue {
+				if fpBody, e := protocol.Fatigue(fp.Used, fp.Limit, fp.UsedMax); e == nil {
+					if err = send(0, 36, fpBody); err != nil {
+						return err
+					}
+					w.lastSyncedFatigue = cur
 				}
 			}
 		}

@@ -25,10 +25,24 @@ type CharacterOp struct {
 	Action      string `json:"action"` // currency | level | advancement | bag | quest
 
 	// currency
-	CeraMode string `json:"cera_mode,omitempty"` // add | set
-	Cera     int64  `json:"cera,omitempty"`
-	GoldMode string `json:"gold_mode,omitempty"` // add | set
-	Gold     int64  `json:"gold,omitempty"`
+	CeraMode    string `json:"cera_mode,omitempty"`    // add | set
+	Cera        int64  `json:"cera,omitempty"`
+	MileageMode string `json:"mileage_mode,omitempty"` // add | set
+	Mileage     int64  `json:"mileage,omitempty"`
+	GoldMode    string `json:"gold_mode,omitempty"`    // add | set
+	Gold        int64  `json:"gold,omitempty"`
+
+	// contract / activity ops
+	ContractKind       byte                `json:"contract_kind,omitempty"` // 22/27/73/79/92/118/120/125 or 255=all
+	ContractDays       int64               `json:"contract_days,omitempty"` // 0=clear, >0=extend days
+	ActivityKey        string              `json:"activity_key,omitempty"`
+	ClaimDate          string              `json:"claim_date,omitempty"`
+	MileageCost        int64               `json:"mileage_cost,omitempty"`
+	RewardGold         uint32              `json:"reward_gold,omitempty"`
+	RewardMileage      int64               `json:"reward_mileage,omitempty"`
+	RewardItems        []storage.GrantItem `json:"reward_items,omitempty"`
+	RewardContracts    []byte              `json:"reward_contracts,omitempty"`
+	RewardContractDays int64               `json:"reward_contract_days,omitempty"`
 
 	// level / sp / tp
 	Level      int     `json:"level,omitempty"`
@@ -66,6 +80,7 @@ type OpReceipt struct {
 	CharacterID    int64  `json:"character_id,omitempty"`
 	Summary        string `json:"summary"`
 	CeraBalance    uint64 `json:"cera_balance,omitempty"`
+	MileageBalance uint64 `json:"mileage_balance,omitempty"`
 	GoldAfter      uint32 `json:"gold_after,omitempty"`
 	Level          byte   `json:"level,omitempty"`
 	Experience     uint64 `json:"experience,omitempty"`
@@ -164,6 +179,14 @@ func (s *Service) ApplyOp(ctx context.Context, op CharacterOp) (OpReceipt, bool,
 			return s.execQuest(atx, role, op)
 		case "avatar":
 			return s.execAvatar(role, op)
+		case "contract":
+			return s.execContract(atx, op)
+		case "mileage_redeem":
+			return s.execMileageRedeem(atx, role, op)
+		case "activity_claim":
+			return s.execActivityClaim(atx, role, op)
+		case "refresh_sync":
+			return s.execRefreshSync(atx, role, op)
 		default:
 			return nil, nil, fmt.Errorf("unsupported character op action %q", op.Action)
 		}
@@ -184,8 +207,8 @@ func (s *Service) ApplyOp(ctx context.Context, op CharacterOp) (OpReceipt, bool,
 }
 
 func (s *Service) execCurrency(atx *storage.AdminTx, role *storage.Character, op CharacterOp) (json.RawMessage, json.RawMessage, error) {
-	if op.CeraMode == "" && op.GoldMode == "" {
-		return nil, nil, fmt.Errorf("currency op requires cera_mode or gold_mode")
+	if op.CeraMode == "" && op.GoldMode == "" && op.MileageMode == "" {
+		return nil, nil, fmt.Errorf("currency op requires cera_mode, mileage_mode or gold_mode")
 	}
 	var parts []string
 	rec := OpReceipt{ID: op.ID, Action: "currency", CharacterID: op.CharacterID}
@@ -210,10 +233,34 @@ func (s *Service) execCurrency(atx *storage.AdminTx, role *storage.Character, op
 			return nil, nil, err
 		}
 		ceraCur = next
-		rec.RelogHint = true
 		parts = append(parts, fmt.Sprintf("点券余额 → %d", next))
 	}
 	rec.CeraBalance = uint64(ceraCur)
+
+	mileageCur, err := atx.AccountMileage()
+	if err != nil {
+		return nil, nil, err
+	}
+	if op.MileageMode != "" {
+		var next int64
+		switch op.MileageMode {
+		case "add":
+			next = mileageCur + op.Mileage
+		case "set":
+			next = op.Mileage
+		default:
+			return nil, nil, fmt.Errorf("invalid mileage_mode %q", op.MileageMode)
+		}
+		if next < 0 || next > math.MaxUint32 {
+			return nil, nil, fmt.Errorf("商城积分超出范围 (0..%d)", uint32(math.MaxUint32))
+		}
+		if err = atx.SetAccountMileage(next); err != nil {
+			return nil, nil, err
+		}
+		mileageCur = next
+		parts = append(parts, fmt.Sprintf("商城积分 → %d", next))
+	}
+	rec.MileageBalance = uint64(mileageCur)
 
 	var newState json.RawMessage
 	if op.GoldMode != "" {

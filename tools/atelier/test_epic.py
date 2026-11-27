@@ -32,7 +32,7 @@ class EpicChecks(unittest.TestCase):
 
     def test_original_cards_pagination_and_real_filter(self):
         w=self.w
-        self.assertEqual(w.stack.count(),6)
+        self.assertEqual(w.stack.count(),7)
         self.assertEqual(w.grid_layout.count(),12)
         w.next_btn.click();self.assertEqual(w.current_page,2)
         item=next(i for i in w.items if i.category=='武器' and '鬼剑士(男)' in i.jobs)
@@ -215,6 +215,37 @@ class EpicChecks(unittest.TestCase):
         self.assertEqual((adv_job['advancement'],adv_job['reset_skills']),(3,True))
         # Verify receipt formatting for op_receipt
         self.assertIn('角色属性已生效：Lv.100',w.grant_text({'op_receipt':{'action':'level','summary':'Lv.100'}}))
+
+    def test_activity_center_page_toggles_and_ops(self):
+        w=self.w
+        orig_submit=core.submit_op
+        with patch.object(core,'submit_op',side_effect=lambda a,p,reason='':orig_submit(a,p,reason=reason,directory=self.data)), \
+             patch.object(core,'account_mileage',return_value=500), \
+             patch.object(core,'account_contracts',return_value={118:86400*7}), \
+             patch.object(QMessageBox,'question',return_value=QMessageBox.Yes):
+            w.switch_page(6)
+            ap=w.activity_page
+            self.assertEqual(ap.badge_mileage.text(),'500')
+            # Apply recommended preset -> saves events.json + enqueues refresh_sync
+            ap.apply_recommended_preset()
+            saved=core.read(self.data/'events.json')
+            self.assertTrue(saved['exp_event_enabled'])
+            self.assertEqual(saved['exp_multiplier'],2.0)
+            self.assertTrue(saved['hell_party']['enabled'])
+            self.assertTrue(saved['daily_challenge']['enabled'])
+            self.assertTrue(saved['weekly_dungeon']['enabled'])
+            self.assertTrue(saved['mileage']['enabled'])
+            # Activate all contracts, redeem first mileage item, claim daily check-in
+            ap.apply_contract(255,30)
+            ap.mileage_table.selectRow(0)
+            ap.redeem_selected_mileage_item()
+            ap.claim_extra_activity(ap.tabs.widget(3) and __import__('activity_page').EXTRA_ACTIVITY_CARDS[0])
+            # Toggle global drop shortcut
+            ap._toggle_global_drop(True)
+            self.assertTrue((self.data/'global_drop.json').is_file())
+        jobs=[core.read(p) for p in (self.data/'pending').glob('*.json')]
+        actions=sorted(d['action'] for d in jobs)
+        self.assertEqual(actions,['activity_claim','contract','mileage_redeem','refresh_sync'])
 
 
 if __name__=='__main__':unittest.main()

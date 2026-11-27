@@ -68,6 +68,69 @@ def account_cera(username='probe-us100'):
     return max(0, int(row.get('cera', 0) or 0))
 
 
+def account_mileage(username='probe-us100'):
+    tables = _load_db_tables()
+    aid = None
+    for a in tables.get('accounts', {}).values():
+        if a.get('username') == username:
+            aid = a.get('id')
+            break
+    if aid is None:
+        return 0
+    row = tables.get('account_currency', {}).get(str(aid), {})
+    return max(0, int(row.get('mileage', 0) or 0))
+
+
+def account_contracts(username='probe-us100'):
+    tables = _load_db_tables()
+    aid = None
+    for a in tables.get('accounts', {}).values():
+        if a.get('username') == username:
+            aid = a.get('id')
+            break
+    if aid is None:
+        return {}
+    raw = tables.get('us224_account_premium', {}).get(str(aid), {})
+    now = int(time.time())
+    out = {}
+    if isinstance(raw, dict):
+        for k, end_ts in raw.items():
+            try:
+                kind = int(k)
+                rem = int(end_ts) - now
+                if rem > 0:
+                    out[kind] = rem
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def activity_progress(role_id):
+    tables = _load_db_tables()
+    row = tables.get('character_activity_progress', {}).get(str(role_id))
+    if not isinstance(row, dict):
+        return {
+            'day': '', 'daily_kills': 0, 'daily_clears': 0,
+            'daily_kill_claimed': False, 'daily_clear_claimed': False,
+            'week': '', 'weekly_clears': 0,
+            'total_kills': 0, 'total_clears': 0, 'total_hell_clears': 0,
+            'claims': {},
+        }
+    return {
+        'day': str(row.get('day') or ''),
+        'daily_kills': int(row.get('daily_kills', 0) or 0),
+        'daily_clears': int(row.get('daily_clears', 0) or 0),
+        'daily_kill_claimed': bool(row.get('daily_kill_claimed', False)),
+        'daily_clear_claimed': bool(row.get('daily_clear_claimed', False)),
+        'week': str(row.get('week') or ''),
+        'weekly_clears': int(row.get('weekly_clears', 0) or 0),
+        'total_kills': int(row.get('total_kills', 0) or 0),
+        'total_clears': int(row.get('total_clears', 0) or 0),
+        'total_hell_clears': int(row.get('total_hell_clears', 0) or 0),
+        'claims': dict(row.get('claims') or {}),
+    }
+
+
 def roles():
     tables = _load_db_tables()
     accounts = {a['id'] for a in tables.get('accounts', {}).values() if a.get('username') == 'probe-us100'}
@@ -118,7 +181,10 @@ def character_snapshot(role_id):
 
 
 def submit_op(action, payload, reason='GM 角色属性操作', directory=DATA):
-    if action not in ('currency', 'level', 'advancement', 'bag', 'quest', 'avatar'):
+    if action not in (
+        'currency', 'level', 'advancement', 'bag', 'quest', 'avatar',
+        'contract', 'mileage_redeem', 'activity_claim', 'refresh_sync',
+    ):
         raise ValueError(f'不支持的操作类型: {action}')
     body = dict(payload)
     body['action'] = action
@@ -328,6 +394,151 @@ def save_global_drop(policy, directory=DATA):
     payload['version'] = 1
     atomic(directory / 'global_drop.json', payload)
     return directory / 'global_drop.json'
+
+
+CONTRACT_SPECS = (
+    (118, 'Neo 尊享特权 Plus', '273疲劳 · +10%通关经验 · 翻牌金币 · 每日礼盒/租赁武器'),
+    (120, 'VIP 会员契约', '通关额外黄金翻牌金币奖励'),
+    (22,  '霸王之契约', '可穿戴高于自身等级 +10 级装备'),
+    (27,  '达人之契约', '可学习高于自身等级 +5 级技能'),
+    (79,  '成长之契约', '+20% 通关经验 · +20% 怪物基础掉落率'),
+    (92,  '晶体契约', '晶体契约计时与客户端槽位激活'),
+    (73,  '加百利之契约', '通关有 35% 概率触发加百利额外材料与金币补给'),
+    (125, '不稳定裂缝契约', '深渊派对房间额外增加 +1 件史诗/神话掉落判定'),
+)
+
+# Verified US100 PVF etc/mileageshop.etc & stackable catalog rewards
+MILEAGE_SHOP_ITEMS = (
+    (590704678, '[M] 忠实材料礼袋', 10, 1, 'etc/mileageshop.etc 官方积分商品'),
+    (590704679, '[M] 忠实材料礼袋 (10个装)', 100, 1, 'etc/mileageshop.etc 官方积分商品'),
+    (50020670,  '3倍成长药剂 [30分钟]', 10, 1, 'etc/mileageshop.etc 刷图升级加速'),
+    (10000844,  '账号绑定大喇叭', 5, 1, 'etc/mileageshop.etc'),
+    (590704706, '[M] 神器符文自选礼盒', 75, 1, 'etc/mileageshop.etc 官方积分商品'),
+    (590704707, '[M] 圣痕护石自选礼盒', 150, 1, 'etc/mileageshop.etc 官方积分商品'),
+    (10326026,  '[M] 胜·深渊之鳞装备自选礼盒', 250, 1, 'etc/mileageshop.etc 换装装备'),
+    (10326027,  '[M] 胜·深渊之鳞武器S自选礼盒', 500, 1, 'etc/mileageshop.etc 换装武器'),
+    (10307650,  '[M] 稀有装扮属性变更券', 200, 1, 'etc/mileageshop.etc'),
+    (10334101,  '[M] 一次性材质转换器', 300, 1, 'etc/mileageshop.etc'),
+    (10327281,  '炉岩核 ×50', 20, 50, 'US100 强化/养成通用材料'),
+    (10327282,  '协调结晶体 ×30', 30, 30, 'US100 增幅/养成通用材料'),
+)
+
+
+def default_events_policy(active=False):
+    return {
+        'version': 1,
+        'exp_event_enabled': bool(active),
+        'exp_multiplier': 2.0 if active else 1.0,
+        'drop_event_enabled': bool(active),
+        'drop_rate_multiplier': 2.0 if active else 1.0,
+        'gold_multiplier': 2.0 if active else 1.0,
+        'card_event_enabled': bool(active),
+        'card_gold_multiplier': 2.0 if active else 1.0,
+        'fatigue': {
+            'weekend_double': bool(active),
+            'bonus_limit': 0,
+            'zero_cost': False,
+            'burning_enabled': bool(active),
+        },
+        'mileage': {
+            'enabled': bool(active),
+            'dungeon_clear_points': 2,
+            'daily_cap': 50,
+            'shop_rebate_percent': 5,
+        },
+        'hell_party': {
+            'enabled': bool(active),
+            'trigger_chance': 35,
+            'min_dungeon_level': 1,
+            'drop_count': 2,
+            'epic_weight': 85,
+            'mythic_weight': 15,
+        },
+        'daily_challenge': {
+            'enabled': bool(active),
+            'kill_target': 15,
+            'clear_target': 3,
+            'reward_gold': 200000,
+            'reward_mileage': 10,
+            'reward_template': 10327281,
+            'reward_amount': 30,
+        },
+        'weekly_dungeon': {
+            'enabled': bool(active),
+            'weekly_limit': 6,
+            'reset_weekday': 2,
+            'reward_gold': 500000,
+            'reward_mileage': 15,
+            'reward_template': 10327282,
+            'reward_amount': 20,
+        },
+        'contracts': {
+            'growth_drop_bonus': bool(active),
+            'gabriel_bonus': bool(active),
+            'unstable_rift_bonus': bool(active),
+        },
+        'extra': {
+            'daily_checkin_enabled': True,
+            'seria_welcome_enabled': True,
+            'returnee_care_enabled': True,
+            'otp_security_enabled': True,
+            'pcbang_bonus_enabled': False,
+        },
+    }
+
+
+def load_events_policy(directory=None):
+    directory = DATA if directory is None else directory
+    p = directory / 'events.json'
+    if not p.is_file():
+        return default_events_policy(active=False), False
+    raw = read(p)
+    out = default_events_policy(active=False)
+    out['exp_event_enabled'] = bool(raw.get('exp_event_enabled', False))
+    out['exp_multiplier'] = max(1.0, min(10.0, float(raw.get('exp_multiplier', 1.0) or 1.0)))
+    out['drop_event_enabled'] = bool(raw.get('drop_event_enabled', False))
+    out['drop_rate_multiplier'] = max(1.0, min(10.0, float(raw.get('drop_rate_multiplier', 1.0) or 1.0)))
+    out['gold_multiplier'] = max(1.0, min(10.0, float(raw.get('gold_multiplier', 1.0) or 1.0)))
+    out['card_event_enabled'] = bool(raw.get('card_event_enabled', False))
+    out['card_gold_multiplier'] = max(1.0, min(5.0, float(raw.get('card_gold_multiplier', 1.0) or 1.0)))
+    for section in ('fatigue', 'mileage', 'hell_party', 'daily_challenge', 'weekly_dungeon', 'contracts', 'extra'):
+        src = raw.get(section)
+        if isinstance(src, dict):
+            for k, default_v in out[section].items():
+                if k in src:
+                    if isinstance(default_v, bool):
+                        out[section][k] = bool(src[k])
+                    elif isinstance(default_v, int):
+                        out[section][k] = int(src[k])
+                    else:
+                        out[section][k] = src[k]
+    return out, True
+
+
+def save_events_policy(policy, directory=None):
+    directory = DATA if directory is None else directory
+    if not isinstance(policy, dict):
+        raise ValueError('无效的服务器活动配置')
+    payload = default_events_policy(active=False)
+    payload['exp_event_enabled'] = bool(policy.get('exp_event_enabled', False))
+    payload['exp_multiplier'] = round(max(1.0, min(10.0, float(policy.get('exp_multiplier', 1.0) or 1.0))), 2)
+    payload['drop_event_enabled'] = bool(policy.get('drop_event_enabled', False))
+    payload['drop_rate_multiplier'] = round(max(1.0, min(10.0, float(policy.get('drop_rate_multiplier', 1.0) or 1.0))), 2)
+    payload['gold_multiplier'] = round(max(1.0, min(10.0, float(policy.get('gold_multiplier', 1.0) or 1.0))), 2)
+    payload['card_event_enabled'] = bool(policy.get('card_event_enabled', False))
+    payload['card_gold_multiplier'] = round(max(1.0, min(5.0, float(policy.get('card_gold_multiplier', 1.0) or 1.0))), 2)
+    for section in ('fatigue', 'mileage', 'hell_party', 'daily_challenge', 'weekly_dungeon', 'contracts', 'extra'):
+        src = policy.get(section)
+        if isinstance(src, dict):
+            for k, default_v in payload[section].items():
+                if k in src:
+                    if isinstance(default_v, bool):
+                        payload[section][k] = bool(src[k])
+                    elif isinstance(default_v, int):
+                        payload[section][k] = int(src[k])
+    payload['version'] = 1
+    atomic(directory / 'events.json', payload)
+    return directory / 'events.json'
 
 
 def client_up():

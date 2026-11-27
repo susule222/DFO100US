@@ -474,7 +474,7 @@ func (w *worldSession) selectDungeon(p []byte) (*dungeon.Session, []outboundPack
 	if e != nil {
 		return nil, nil, e
 	}
-	if w.fatigue != nil && !s.Definition.NoFatigue && w.fatigue.Rules.RoomCost > 0 {
+	if w.fatigue != nil && w.fatigue.EffectiveRoomCost(s.Definition.NoFatigue) > 0 {
 		fp, err := w.fatigue.State(ctx, w.account, w.role.ID, time.Now())
 		if err != nil {
 			return nil, nil, err
@@ -486,6 +486,9 @@ func (w *worldSession) selectDungeon(p []byte) (*dungeon.Session, []outboundPack
 	var seed uint32
 	if e = binary.Read(rand.Reader, binary.LittleEndian, &seed); e != nil {
 		return nil, nil, e
+	}
+	if ev := w.eventPolicy(); ev.HellParty.Enabled {
+		s.AssignRandomHell(seed, ev.HellParty.TriggerChance, ev.HellParty.MinDungeonLevel)
 	}
 	start, e := protocol.StartMapUS100(protocol.StartMapState{Position: s.Maze.Start, Seed: seed, Map: s.Room.Map, Monsters: s.Monsters})
 	if e != nil {
@@ -500,7 +503,7 @@ func (w *worldSession) selectDungeon(p []byte) (*dungeon.Session, []outboundPack
 		plan = append(plan, outboundPacket{"solo_party_initialized", 0, 9, party})
 	}
 	plan = append(plan, []outboundPacket{
-		{"dungeon_info_sent", 0, 28, protocol.DungeonInfo(protocol.DungeonInfoState{ID: r.ID, Difficulty: r.Difficulty, Maze: s.Maze.Index, Boss: s.Maze.Boss})},
+		{"dungeon_info_sent", 0, 28, protocol.DungeonInfo(protocol.DungeonInfoState{ID: r.ID, Difficulty: r.Difficulty, Maze: s.Maze.Index, Boss: s.Maze.Boss, HasRandomHell: s.HasHellRoom, RandomHell: s.HellRoom})},
 		{"dungeon_start_map_sent", 0, 29, start},
 	}...)
 	return s, plan, nil
@@ -646,6 +649,18 @@ func (w *worldSession) monsterDeath(p []byte) ([]outboundPacket, error) {
 				if gd, gdErr := loot.LoadGlobalDrop(w.loot.GlobalDropPath, w.loot.Equipment, w.loot.Catalog); gdErr == nil {
 					w.drops.GlobalDrop = gd
 				}
+				ev := w.eventPolicy()
+				var activeContracts map[byte]bool
+				if w.characters != nil {
+					activeContracts, _ = w.characters.Store.ActivePremiumKinds(w.account, time.Now())
+				}
+				w.drops.DropMultiplier = ev.EffectiveDropMultiplier(activeContracts[storage.GrowthContractKind])
+				w.drops.GoldMultiplier = ev.EffectiveGoldMultiplier()
+				w.drops.UnstableRiftActive = ev.Contracts.UnstableRiftBonus && activeContracts[unstableRiftContractKind]
+				if ev.HellParty.Enabled {
+					hp := ev.HellParty
+					w.drops.HellParty = &hp
+				}
 			}
 			rows, err := w.drops.Death(w.activeDungeon, uint16(r.Entity))
 			if err != nil {
@@ -685,6 +700,11 @@ func (w *worldSession) monsterDeath(p []byte) ([]outboundPacket, error) {
 			}
 			plan = append(plan, outboundPacket{"level_available_quests", 0, 21, available})
 		}
+	}
+	if !unowned {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		plan = append(plan, w.onActivityKill(ctx)...)
+		cancel()
 	}
 	completed, err := w.completeDungeon()
 	if err != nil {

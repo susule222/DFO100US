@@ -44,11 +44,13 @@ func (a *AdminTx) SetAccountCera(v int64) error {
 	if v < 0 || v > math.MaxUint32 {
 		return fmt.Errorf("cera balance out of range (0..%d)", uint32(math.MaxUint32))
 	}
-	return a.tx.Put("account_currency", idKey(a.account), currencyRow{
-		AccountID: a.account,
-		Cera:      v,
-		UpdatedAt: nowStamp(),
-	})
+	cur, err := currencyRowTx(a.tx, a.account)
+	if err != nil {
+		return err
+	}
+	cur.Cera = v
+	cur.UpdatedAt = nowStamp()
+	return a.tx.Put("account_currency", idKey(a.account), cur)
 }
 
 func (a *AdminTx) Quests() ([]QuestState, error) {

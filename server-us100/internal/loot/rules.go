@@ -158,7 +158,17 @@ type Outcome struct {
 // generation weights are still unrecovered, so selection inside that window is
 // uniform rather than dictionary-weighted. This is not official-server parity.
 func Roll(c catalog.LootCatalog, t Tables, r Rules, pool []inventory.EquipmentDrop, seed uint32, level, rank, difficulty byte) (Outcome, error) {
+	return RollWithMultipliers(c, t, r, pool, seed, level, rank, difficulty, 1.0, 1.0)
+}
+
+func RollWithMultipliers(c catalog.LootCatalog, t Tables, r Rules, pool []inventory.EquipmentDrop, seed uint32, level, rank, difficulty byte, dropMult, goldMult float64) (Outcome, error) {
 	var out Outcome
+	if dropMult <= 0 || math.IsNaN(dropMult) || math.IsInf(dropMult, 0) {
+		dropMult = 1.0
+	}
+	if goldMult <= 0 || math.IsNaN(goldMult) || math.IsInf(goldMult, 0) {
+		goldMult = 1.0
+	}
 	if len(t.Rank) != 20 || t.RarityColumns < 2 || len(t.Rarity) != t.RarityColumns*RarityRows ||
 		len(t.Probability)%7 != 0 || len(t.Gold)%3 != 0 || len(t.Grade)%3 != 0 || r.Denominator == 0 {
 		return out, fmt.Errorf("invalid drop model tables")
@@ -199,7 +209,7 @@ func Roll(c catalog.LootCatalog, t Tables, r Rules, pool []inventory.EquipmentDr
 	rng := RNG{seed}
 	diff := r.DifficultyBonus[difficulty]
 	rate := func(category int) uint32 {
-		n := math.Floor(prob[category] * t.Rank[category*4+int(rank)] * diff)
+		n := math.Floor(prob[category] * t.Rank[category*4+int(rank)] * diff * dropMult)
 		if n < 0 {
 			return 0
 		}
@@ -212,9 +222,12 @@ func Roll(c catalog.LootCatalog, t Tables, r Rules, pool []inventory.EquipmentDr
 	if gold[2] > 0 {
 		amount += (int64(rng.Next(uint32(gold[2])*2+1)) - int64(gold[2])) * int64(gold[1]) / 100
 	}
-	a := math.Floor(float64(amount) * diff)
-	if a < 1 || a > math.MaxUint32 {
-		return out, fmt.Errorf("gold amount overflow")
+	a := math.Floor(float64(amount) * diff * goldMult)
+	if a < 1 {
+		a = 1
+	}
+	if a > math.MaxUint32 {
+		a = math.MaxUint32
 	}
 	if rng.Next(r.Denominator) < rate(0) && enabled["gold"] {
 		out.Awards = append(out.Awards, Award{0, uint32(a)})

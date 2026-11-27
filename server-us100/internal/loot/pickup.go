@@ -14,6 +14,7 @@ import (
 type Service struct {
 	AbyssPath      string
 	GlobalDropPath string
+	EventsPath     string
 	Store          *storage.Store
 	Catalog    catalog.LootCatalog
 	Rules      Rules

@@ -342,6 +342,17 @@ def _draw_icon(p: QPainter, name: str, s: float, active: bool, dark_fg: bool) ->
         p.drawArc(QRectF(s * 0.20, s * 0.22, s * 0.60, s * 0.60), 130 * 16, 280 * 16)
         p.drawLine(QPointF(c, s * 0.14), QPointF(c, s * 0.48))
 
+    elif name == 'events':
+        # Radiant festival star & celebratory crown emblem
+        p.setPen(pen)
+        p.setBrush(QColor(255, 210, 80, 44) if active else QColor(190, 155, 85, 24))
+        p.drawEllipse(QPointF(c, c), s * 0.40, s * 0.40)
+        p.setPen(QPen(QColor('#fff7d1') if active else QColor('#d6bd82'), max(0.8, s * 0.03)))
+        p.setBrush(fill)
+        p.drawPolygon(_star_poly(c, c, s * 0.30, s * 0.12, 4))
+        p.setPen(Qt.NoPen)
+        p.drawEllipse(QPointF(s * 0.78, s * 0.22), s * 0.06, s * 0.06)
+
 
 @lru_cache(maxsize=128)
 def render_pixmap(name: str, size: int = 20, active: bool = True, dark_fg: bool = False) -> QPixmap:

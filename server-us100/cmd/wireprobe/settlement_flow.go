@@ -85,5 +85,6 @@ func (w *worldSession) dungeonResult(p []byte) ([]outboundPacket, error) {
 		}
 		plan = append(plan, outboundPacket{"clear_available_quests", 0, 21, available})
 	}
+	plan = append(plan, w.onActivityClear(ctx)...)
 	return plan, nil
 }
