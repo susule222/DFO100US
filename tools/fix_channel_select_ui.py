@@ -31,6 +31,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import xml.etree.ElementTree as ET
 
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent
@@ -153,6 +154,8 @@ def patch_channel_xui_bytes(raw: bytes) -> tuple[bytes, dict]:
         raise ValueError(f'residual out-of-bounds ChannelBase.img refs: {stats}')
     if stats['after_channelbase_refs'] != 0:
         raise ValueError(f'unexpected residual ChannelBase.img refs: {stats}')
+    # Verify XML well-formedness (stripping the PVF trailing NUL code unit).
+    ET.fromstring(patched.rstrip('\x00').lstrip('\ufeff'))
     return patched.encode('utf-16-le'), stats
 
 
@@ -217,7 +220,7 @@ def apply_staged_if_pending() -> str | None:
     return '已自动应用频道选择界面修复补丁（消除红叉与错位框）'
 
 
-def build_and_apply(stage_only: bool = False) -> dict:
+def build_and_apply(stage_only: bool = False, inner_override: Path | None = None) -> dict:
     client_dir = core.pre.client_exe().parent
     live_pvf = client_dir / 'Script.pvf'
     if not live_pvf.is_file():
@@ -226,7 +229,10 @@ def build_and_apply(stage_only: bool = False) -> dict:
     before_sha = core.digest(live_pvf)
     fp = lr.pvf_fingerprint(live_pvf)
     is_inner = bool(fp and fp.get('inner'))
-    inner_source = live_pvf if is_inner else lr.ensure_inner_pvf(live_pvf, fp)
+    if inner_override is not None:
+        inner_source = Path(inner_override).resolve()
+    else:
+        inner_source = live_pvf if is_inner else lr.ensure_inner_pvf(live_pvf, fp)
     merger = _ensure_merger_binary()
 
     STAGE_DIR.mkdir(parents=True, exist_ok=True)
@@ -238,15 +244,19 @@ def build_and_apply(stage_only: bool = False) -> dict:
 
         layers = []
         patch_stats = {}
+        orig_lens = {}
         changed = False
         for seq, entry in enumerate(TARGET_ENTRIES):
             raw = extracted[entry].read_bytes()
+            orig_lens[entry] = len(raw)
             fixed, st = patch_channel_xui_bytes(raw)
             patch_stats[entry] = st
             if fixed != raw:
                 changed = True
             out_f = tmp / f'{seq:02d}_{Path(entry).name}'
-            out_f.write_bytes(fixed)
+            # Write UTF-8 (with trailing NUL preserved) so pvfmerge encodes
+            # single-pass UTF-16LE cleanly across all pvfmerge versions.
+            out_f.write_bytes(fixed.decode('utf-16-le').encode('utf-8'))
             layers.append({
                 'path': entry,
                 'source': str(out_f),
@@ -254,7 +264,7 @@ def build_and_apply(stage_only: bool = False) -> dict:
                 'priority': seq,
             })
 
-        if not changed:
+        if not changed and inner_override is None:
             return {'status': 'already_fixed', 'sha256': before_sha, 'stats': patch_stats}
 
         plan_file = tmp / 'plan.json'
@@ -271,6 +281,21 @@ def build_and_apply(stage_only: bool = False) -> dict:
         if res.returncode != 0:
             raise RuntimeError('pvfmerge 失败：' + (res.stderr or res.stdout or '')[-800:])
         merge_report = json.loads((res.stdout or '{}').strip().splitlines()[-1])
+
+        # Strict post-merge read-back verification: ensure single-encoded UTF-16LE
+        # and well-formed XML (never double-encoded!).
+        verify_dir = tmp / 'verify'
+        verify_dir.mkdir()
+        verified = _extract_entries(merged_inner, verify_dir)
+        for entry in TARGET_ENTRIES:
+            vraw = verified[entry].read_bytes()
+            if not vraw.startswith(b'<\x00?\x00x\x00m\x00l\x00'):
+                raise RuntimeError(f'合并后 {entry} 编码校验失败：head={vraw[:16].hex()}')
+            if abs(len(vraw) - orig_lens[entry]) > 32768:
+                raise RuntimeError(f'合并后 {entry} 体积异常：{len(vraw)} vs {orig_lens[entry]}')
+            vtxt = vraw.decode('utf-16-le').rstrip('\x00').lstrip('\ufeff')
+            ET.fromstring(vtxt)
+            patch_stats[entry]['verified_bytes'] = len(vraw)
 
         staged_pvf = STAGE_DIR / 'Script.pvf'
         if is_inner:
@@ -313,8 +338,9 @@ def build_and_apply(stage_only: bool = False) -> dict:
 def main():
     p = argparse.ArgumentParser(description='Fix US100 Channel Select UI red-X and layout glitches in Script.pvf')
     p.add_argument('--stage-only', action='store_true', help='Build & stage patched Script.pvf without replacing live file')
+    p.add_argument('--inner-source', type=Path, default=None, help='Optional clean baseline inner PVF path')
     args = p.parse_args()
-    result = build_and_apply(stage_only=args.stage_only)
+    result = build_and_apply(stage_only=args.stage_only, inner_override=args.inner_source)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

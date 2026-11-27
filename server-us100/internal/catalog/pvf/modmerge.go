@@ -117,7 +117,8 @@ func (pb *poolBuilder) resolve(magicOffset int) string {
 	return readUTF8String(pb.strA, magicOffset>>1)
 }
 
-// decodeModText converts UTF-8 (with/without BOM), UTF-16LE/BE BOM, Shift-JIS, or GBK to UTF-8 string.
+// decodeModText converts UTF-8 (with/without BOM), UTF-16LE/BE (with or without
+// BOM), Shift-JIS, or GBK to UTF-8 string.
 func decodeModText(raw []byte) string {
 	if len(raw) >= 2 && raw[0] == 0xFF && raw[1] == 0xFE {
 		return decodeUTF16LE(raw[2:])
@@ -132,6 +133,9 @@ func decodeModText(raw []byte) string {
 	if len(raw) >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF {
 		raw = raw[3:]
 	}
+	if looksLikeUTF16LE(raw) {
+		return decodeUTF16LE(raw)
+	}
 	if utf8.Valid(raw) {
 		return string(raw)
 	}
@@ -142,6 +146,30 @@ func decodeModText(raw []byte) string {
 		return s
 	}
 	return string(raw)
+}
+
+// looksLikeUTF16LE detects BOM-less UTF-16LE text (e.g. raw .xui/.str extracted
+// from a PVF), preventing utf8.Valid from misclassifying NUL-interleaved ASCII
+// as UTF-8 and double-encoding it into 4-byte code units.
+func looksLikeUTF16LE(raw []byte) bool {
+	if len(raw) < 4 || len(raw)%2 != 0 {
+		return false
+	}
+	sample := len(raw)
+	if sample > 512 {
+		sample = 512
+	}
+	pairs := sample / 2
+	nulOdd, nulEven := 0, 0
+	for i := 0; i < sample; i += 2 {
+		if raw[i] == 0 {
+			nulEven++
+		}
+		if raw[i+1] == 0 {
+			nulOdd++
+		}
+	}
+	return nulOdd*2 >= pairs && nulEven*5 < pairs
 }
 
 func encodeUTF16LE(s string) []byte {
