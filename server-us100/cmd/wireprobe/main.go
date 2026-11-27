@@ -999,7 +999,8 @@ func main() {
 				adventureInfo := frame.Type == 1 && frame.ID == 1395
 				generalPreference := frame.Type == 1 && frame.ID == 197
 				openDanji := frame.Type == 1 && frame.ID == 2052
-				if len(frame.Raw) >= wire.ClientHeaderSize && (openChild || openPackage || shopBuy || adventureInfo || targetPreference || characterPreference || generalPreference || openDanji || retainRequestBody(frame.ID, bodySamples)) {
+				sortItems := frame.Type == 1 && frame.ID == 20
+				if len(frame.Raw) >= wire.ClientHeaderSize && (openChild || openPackage || shopBuy || adventureInfo || targetPreference || characterPreference || generalPreference || openDanji || sortItems || retainRequestBody(frame.ID, bodySamples)) {
 					retained = true
 					entry["hex"] = hex.EncodeToString(frame.Raw)
 					if p, e := wire.DecryptPayload(keys, frame.ID, frame.Raw[13:]); e == nil {
@@ -1007,7 +1008,7 @@ func main() {
 						entry["plain_hex"] = hex.EncodeToString(p)
 						verified = wire.Checksum(append(append([]byte{}, frame.Raw[11:13]...), p...)) == frame.Raw[7]
 						entry["checksum_ok"] = verified
-						if !openChild && !openPackage && !shopBuy && !adventureInfo && !targetPreference && !characterPreference && !generalPreference && !openDanji && !observedGameRequest(frame.ID) {
+						if !openChild && !openPackage && !shopBuy && !adventureInfo && !targetPreference && !characterPreference && !generalPreference && !openDanji && !sortItems && !observedGameRequest(frame.ID) {
 							entry["unimplemented_sample"] = true
 						}
 					} else {
@@ -1051,6 +1052,29 @@ func main() {
 					if err != nil {
 						event(map[string]any{"kind": "danji_open_refused", "character_id": selectedCharacterID, "code": code, "reason": err.Error()})
 						if sendPayload(1, 2052, protocol.Refusal(code)) != nil {
+							return
+						}
+						continue
+					}
+					worldState.role = saved
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
+				if sortItems {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					saved, plan, space, err := sortInventory(ctx, characters.Store, developmentAccount, worldState.role, frame.Raw, plaintext)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "sort_items_refused", "character_id": selectedCharacterID, "space": space, "reason": err.Error()})
+						if sendPayload(1, 20, protocol.SortItemsRefused(space, 2)) != nil {
 							return
 						}
 						continue
