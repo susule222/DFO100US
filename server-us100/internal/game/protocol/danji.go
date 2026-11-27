@@ -10,6 +10,19 @@ import (
 // state machine (0x14039c75a -> IsEventActive(0x1057)).
 const EventIDDanji uint16 = 0x1057 // 4183
 
+// DanjiInventorySpace is the dedicated 64-slot inventory space (0x149788e68,
+// initialized at 0x143a88754) queried by the DANJI UI (0x14039930c, 0x1403997e8,
+// 0x140399d04, 0x14039be8c, 0x14039c774) for DANJI pots (template 590004385).
+const DanjiInventorySpace byte = 0x2a
+
+// US224DanjiInventory encodes NOTI 13 or NOTI 14 for inventory space 0x2a (42).
+// Verified from DFO_unpacked.exe NOTI 13 (0x1434fc3c3..0x1434fc9e7) and NOTI 14
+// (0x14351074b..0x143510775): header is u8(0x2a) + u16(count), followed by
+// count * 0xb1-byte ordinary item records (with no avatar extra trailers).
+func US224DanjiInventory(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
+	return us224OrdinaryList([]byte{DanjiInventorySpace}, rows)
+}
+
 // ActiveEvents encodes NOTI 108 (0x6c, handler 0x14384d5d0 -> parser 0x143851af0).
 // Wire layout: u16 count, then count * (u16 eventID, u8 hasDetail=0).
 // When hasDetail is 0, the client skips the optional detail strings and inserts

@@ -82,14 +82,18 @@ func TestDanjiOpenConsumeRewardAndStack(t *testing.T) {
 	// Deterministic RNG: returns 0 (always hits Grade S first item 590704452 x1)
 	zeroRand := func(uint32) uint32 { return 0 }
 
-	// 1) Open 1x Tier 1 (costs 1 pot, stack +1)
-	cmd1 := makeDanjiCmdPayload(122, 1, 1)
+	// 1) Open 1x Tier 1 (costs 1 pot, stack +1; client sends slot 0 from space 0x2a)
+	cmd1 := makeDanjiCmdPayload(0, 1, 1)
 	saved, plan, code, err := openDanjiPot(ctx, store, acc, role, src, rules, []byte("frame-1"), cmd1, zeroRand)
 	if err != nil || code != 0 {
 		t.Fatalf("open 1x tier 1 failed: code=%d err=%v", code, err)
 	}
-	if len(plan) != 3 || plan[0].ID != 14 || plan[1].ID != 2279 || plan[2].ID != 2052 {
+	if len(plan) != 4 || plan[0].ID != 14 || plan[1].ID != 14 || plan[2].ID != 2279 || plan[3].ID != 2052 {
 		t.Fatalf("unexpected plan: %+v", plan)
+	}
+	// Verify space 0x2a update carries slot 0, template 590004385, remaining count 99
+	if plan[1].Payload[0] != 0x2a || binary.LittleEndian.Uint32(plan[1].Payload[5:9]) != danjiPotTemplate || binary.LittleEndian.Uint32(plan[1].Payload[9:13]) != 99 {
+		t.Fatalf("unexpected space 0x2a update: %x", plan[1].Payload[:13])
 	}
 	bag, err := inventory.ReadBag(saved.State)
 	if err != nil {
@@ -111,12 +115,12 @@ func TestDanjiOpenConsumeRewardAndStack(t *testing.T) {
 	if err != nil || stack != 1 {
 		t.Fatalf("stack=%d err=%v, want 1", stack, err)
 	}
-	if got := binary.LittleEndian.Uint32(plan[1].Payload[0:4]); got != 1 || plan[1].Payload[5] != 1 {
-		t.Fatalf("unexpected NOTI 2279 status: %x", plan[1].Payload)
+	if got := binary.LittleEndian.Uint32(plan[2].Payload[0:4]); got != 1 || plan[2].Payload[5] != 1 {
+		t.Fatalf("unexpected NOTI 2279 status: %x", plan[2].Payload)
 	}
 
 	// 2) Open 10x Tier 3 (costs 30 pots, stack +30 -> 31)
-	cmd2 := makeDanjiCmdPayload(122, 10, 3)
+	cmd2 := makeDanjiCmdPayload(0, 10, 3)
 	saved, plan, code, err = openDanjiPot(ctx, store, acc, saved, src, rules, []byte("frame-2"), cmd2, zeroRand)
 	if err != nil || code != 0 {
 		t.Fatalf("open 10x tier 3 failed: code=%d err=%v", code, err)
@@ -135,7 +139,7 @@ func TestDanjiOpenConsumeRewardAndStack(t *testing.T) {
 		t.Fatalf("after 10x tier 3: potsLeft=%d sRewards=%d, want 69/11", potsLeft, sRewards)
 	}
 	// ACK 2052 must carry 10 rewards
-	if got := binary.LittleEndian.Uint32(plan[2].Payload[1:5]); got != 10 {
+	if got := binary.LittleEndian.Uint32(plan[3].Payload[1:5]); got != 10 {
 		t.Fatalf("ack reward count=%d, want 10", got)
 	}
 	stack, _ = loadDanjiStack(store, acc)
@@ -207,6 +211,10 @@ func TestDanjiOpenDepletesSlotAndMilestoneWrap(t *testing.T) {
 	}
 	if !foundClear122 {
 		t.Fatalf("NOTI 14 did not include EmptySlotItem(122) sentinel")
+	}
+	// Verify space 0x2a update clears slot 0 with 0xffffffff when depleted to 0
+	if plan[1].Payload[0] != 0x2a || binary.LittleEndian.Uint16(plan[1].Payload[3:5]) != 0 || binary.LittleEndian.Uint32(plan[1].Payload[5:9]) != 0xffffffff {
+		t.Fatalf("expected space 0x2a slot 0 clear sentinel, got %x", plan[1].Payload[:13])
 	}
 
 	// Subsequent open with 0 pots must fail cleanly with code 0x101

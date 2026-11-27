@@ -21,6 +21,7 @@ type preparedPacket struct {
 type entryPayloads struct {
 	Select, Basic, Addition, Skills, Vault, UserArea, Area, Fatigue, Complete []byte
 	Experience, CompletedQuests, Inventory                                    []byte
+	DanjiInventory                                                            []byte
 	Avatars                                                                   []byte
 	AvailableQuests                                                           []byte
 	Worn                                                                      []byte
@@ -67,6 +68,7 @@ func (p entryPayloads) packets() []outboundPacket {
 		{"entry_skills_sent", 0, 19, p.Skills},
 		{"vault_initialized", 0, 13, p.Vault},
 		{"inventory_restored", 0, 13, p.Inventory},
+		{"danji_inventory_restored", 0, 13, p.DanjiInventory},
 		{"avatar_inventory_restored", 0, 13, p.Avatars},
 		{"worn_equipment_restored", 0, 13, p.Worn},
 		{"account_materials_restored", 0, 1140, p.AccountMaterials},

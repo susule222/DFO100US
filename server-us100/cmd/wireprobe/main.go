@@ -747,6 +747,7 @@ func main() {
 	}
 	defer l.Close()
 	var gm gmSessions
+	eventsPath := ""
 	if *gmDir != "" {
 		if questService == nil || questService.Inventory == nil || lootService == nil {
 			log.Fatal("launcher GM requires source inventory")
@@ -758,8 +759,17 @@ func main() {
 			Progression: progressionService,
 			Quests:      questService,
 		}
+		eventsPath = filepath.Join(*gmDir, "events.json")
 		lootService.AbyssPath = filepath.Join(*gmDir, "abyss.json")
 		lootService.GlobalDropPath = filepath.Join(*gmDir, "global_drop.json")
+		lootService.EventsPath = eventsPath
+		if fatigueService != nil {
+			fatigueService.EventsPath = eventsPath
+		}
+		if progressionService != nil {
+			progressionService.EventsPath = eventsPath
+			progressionService.Fatigue = fatigueService
+		}
 		drain := func() {
 			if err := admin.DrainAndNotify(*gmDir, svc, developmentAccount, gm.committed); err != nil {
 				log.Print("launcher GM: ", err)
@@ -874,7 +884,7 @@ func main() {
 		var equipmentState equipmentSession
 		var disjointState disjointSession
 		if worldService != nil {
-			worldState = &worldSession{service: worldService, account: developmentAccount, flags: townPolicy.Flags, dungeons: dungeonCatalog, tutorials: tutorialRoutes, tutorialDungeons: tutorialDungeons, professions: characters.Catalog, fatigue: fatigueService, characters: characters, quests: questService, progression: progressionService, loot: lootService, soloPartyBootstrap: *soloPartyBootstrap, channelCtx: channelCtx, gateSet: gateSet}
+			worldState = &worldSession{service: worldService, account: developmentAccount, flags: townPolicy.Flags, dungeons: dungeonCatalog, tutorials: tutorialRoutes, tutorialDungeons: tutorialDungeons, professions: characters.Catalog, fatigue: fatigueService, characters: characters, quests: questService, progression: progressionService, loot: lootService, soloPartyBootstrap: *soloPartyBootstrap, channelCtx: channelCtx, gateSet: gateSet, eventsPath: eventsPath}
 		}
 		sendPayload := func(kind byte, id uint16, payload []byte) error {
 			prepared, e := preparePackets(keys, []outboundPacket{{"response", kind, id, payload}})
@@ -1318,20 +1328,45 @@ func main() {
 					if e != nil {
 						return
 					}
-					bal, e := characters.Store.AccountCera(context.Background(), developmentAccount)
+					if applied {
+						var ceraSpent int64
+						if isNeo {
+							ceraSpent = neoShopSale.Cera
+						} else {
+							for _, l := range lines {
+								ceraSpent += l.Cera
+							}
+						}
+						if ceraSpent > 0 {
+							if ev := worldState.eventPolicy(); ev.Mileage.Enabled && ev.Mileage.ShopRebatePercent > 0 {
+								rebate := ceraSpent * int64(ev.Mileage.ShopRebatePercent) / 100
+								if rebate < 1 {
+									rebate = 1
+								}
+								_, _, _ = characters.Store.AddAccountMileage(context.Background(), developmentAccount, rebate, "", 0)
+							}
+						}
+					}
+					bal, mileage, e := characters.Store.AccountBalances(context.Background(), developmentAccount)
 					if e != nil {
 						return
 					}
-					if bal > 2147483647 {
-						bal = 2147483647
-					}
-					funds := binary.LittleEndian.AppendUint32([]byte{1}, uint32(bal))
-					funds = binary.LittleEndian.AppendUint32(funds, 0)
+					funds := fundsPayload(bal, mileage)
 					latest.WireID = worldState.role.WireID
 					worldState.role = latest
 					event(map[string]any{"kind": "shop_buy_committed", "product": product, "character_id": selectedCharacterID, "delivery": delivery, "applied": applied, "lines": len(lines)})
 					if sendPayload(0, 14, inv) != nil || sendPayload(0, 53, funds) != nil {
 						return
+					}
+					for _, l := range lines {
+						if l.Template == danjiPotTemplate {
+							if djInv, djErr := danjiSpaceUpdatePayload(bag); djErr == nil {
+								if sendPayload(0, 14, djInv) != nil {
+									return
+								}
+							}
+							break
+						}
 					}
 					hasAvatar := false
 					for _, l := range lines {
@@ -1968,7 +2003,7 @@ func main() {
 					// response. Without this it stayed at the configured zero,
 					// so an operator top-up could never be seen in game.
 					ctx, cancel = context.WithTimeout(context.Background(), 5*time.Second)
-					cera, ce := characters.Store.AccountCera(ctx, developmentAccount)
+					cera, entryMileage, ce := characters.Store.AccountBalances(ctx, developmentAccount)
 					cancel()
 					if ce != nil {
 						event(map[string]any{"kind": "cera_restore_error", "error": ce.Error()})
@@ -2293,6 +2328,11 @@ func main() {
 					} else {
 						plan.DanjiStatus = danjiBody
 					}
+					if djInv, djErr := danjiSpaceRestorePayload(role.State); djErr != nil {
+						event(map[string]any{"kind": "danji_inventory_read_error", "error": djErr.Error()})
+					} else {
+						plan.DanjiInventory = djInv
+					}
 					packets := plan.packets()
 					if body, ke := basicKeysOnEntry(characters.Store, developmentAccount); ke != nil {
 						event(map[string]any{"kind": "basic_keys_read_error", "error": ke.Error()})
@@ -2317,6 +2357,9 @@ func main() {
 						event(map[string]any{"kind": "character_options_read_error", "character_id": role.ID, "error": readErr.Error()})
 					} else if options != nil {
 						packets = append(packets, outboundPacket{"character_options_restored", 0, 376, options})
+					}
+					if entryMileage > 0 {
+						packets = append(packets, outboundPacket{"account_funds_restored", 0, 53, fundsPayload(cera, entryMileage)})
 					}
 					prepared, e := preparePackets(keys, packets)
 					if e != nil {

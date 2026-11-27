@@ -180,6 +180,45 @@ func danjiStatusOnEntry(store *storage.Store, account int64) ([]byte, error) {
 	return protocol.DanjiStatus(stack, 0, danjiAnimLevel(stack)), nil
 }
 
+func danjiPotTotal(b inventory.Bag) uint32 {
+	var total uint64
+	for _, it := range b.Items {
+		if it.Template == danjiPotTemplate {
+			total += uint64(it.Amount)
+		}
+	}
+	if total > 0xffffffff {
+		return 0xffffffff
+	}
+	return uint32(total)
+}
+
+// danjiSpaceRestorePayload builds NOTI 13 for inventory space 0x2a (42), which
+// the DANJI UI queries for DANJI pots (590004385).
+func danjiSpaceRestorePayload(state json.RawMessage) ([]byte, error) {
+	b, err := inventory.ReadBag(state)
+	if err != nil {
+		return nil, err
+	}
+	var rows [][protocol.CurrentItemRecordSize]byte
+	if n := danjiPotTotal(b); n > 0 {
+		rows = append(rows, protocol.OrdinaryItem(0, danjiPotTemplate, n))
+	}
+	return protocol.US224DanjiInventory(rows)
+}
+
+// danjiSpaceUpdatePayload builds NOTI 14 for inventory space 0x2a (42) after
+// DANJI pot acquisition or consumption, clearing slot 0 when the count hits 0.
+func danjiSpaceUpdatePayload(b inventory.Bag) ([]byte, error) {
+	var row [protocol.CurrentItemRecordSize]byte
+	if n := danjiPotTotal(b); n > 0 {
+		row = protocol.OrdinaryItem(0, danjiPotTemplate, n)
+	} else {
+		row = protocol.EmptySlotItem(0)
+	}
+	return protocol.US224DanjiInventory([][protocol.CurrentItemRecordSize]byte{row})
+}
+
 func cryptoRandUint32(bound uint32) uint32 {
 	if bound <= 1 {
 		return 0
@@ -448,6 +487,10 @@ func openDanjiPot(
 	if err != nil {
 		return saved, nil, 0x101, err
 	}
+	danjiSpaceUpdate, err := danjiSpaceUpdatePayload(bag)
+	if err != nil {
+		return saved, nil, 0x101, err
+	}
 	statusPayload := protocol.DanjiStatus(nextStack, 0, danjiAnimLevel(nextStack))
 	ackPayload, err := protocol.DanjiOpenSuccess(receipt.Rewards)
 	if err != nil {
@@ -457,6 +500,7 @@ func openDanjiPot(
 	saved.WireID = role.WireID
 	plan := []outboundPacket{
 		{"danji_inventory_updated", 0, 14, invUpdate},
+		{"danji_space_updated", 0, 14, danjiSpaceUpdate},
 		{"danji_status_updated", 0, 2279, statusPayload},
 		{"danji_open_ack", 1, 2052, ackPayload},
 	}

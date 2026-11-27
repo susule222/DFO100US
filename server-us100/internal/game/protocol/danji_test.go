@@ -79,3 +79,21 @@ func TestDecodeDanjiOpenAndAck(t *testing.T) {
 		t.Fatalf("unexpected second reward: %x", ack[11:17])
 	}
 }
+
+func TestUS224DanjiInventory(t *testing.T) {
+	p, err := US224DanjiInventory([][CurrentItemRecordSize]byte{
+		OrdinaryItem(0, 590004385, 200),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p) != 3+0xb1 {
+		t.Fatalf("len=%d, want %d", len(p), 3+0xb1)
+	}
+	if p[0] != DanjiInventorySpace || binary.LittleEndian.Uint16(p[1:3]) != 1 {
+		t.Fatalf("unexpected header: %x", p[:3])
+	}
+	if binary.LittleEndian.Uint16(p[3:5]) != 0 || binary.LittleEndian.Uint32(p[5:9]) != 590004385 || binary.LittleEndian.Uint32(p[9:13]) != 200 {
+		t.Fatalf("unexpected item row: %x", p[3:13])
+	}
+}
