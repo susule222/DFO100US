@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"time"
 
 	"dfolan/internal/db100"
 )
@@ -369,4 +370,36 @@ func (a *AdminTx) ClaimCharacterActivity(claimKey string) (bool, error) {
 		return false, err
 	}
 	return false, nil
+}
+
+// ExtendPremiumContracts atomically activates or extends one or more premium
+// contract kinds (22/27/73/79/92/118/120/125) on the account by the given days.
+func (s *Store) ExtendPremiumContracts(ctx context.Context, account int64, daysByKind map[byte]int64) error {
+	if account <= 0 || len(daysByKind) == 0 {
+		return nil
+	}
+	nowUnix := time.Now().Unix()
+	return s.db.Mutate(func(tx *db100.Tx) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		var ends map[byte]int64
+		if _, err := tx.Get("us224_account_premium", idKey(account), &ends); err != nil {
+			return err
+		}
+		if ends == nil {
+			ends = map[byte]int64{}
+		}
+		for kind, days := range daysByKind {
+			if kind == 0 || kind >= 126 || days <= 0 {
+				continue
+			}
+			base := ends[kind]
+			if base < nowUnix {
+				base = nowUnix
+			}
+			ends[kind] = base + days*86400
+		}
+		return tx.Put("us224_account_premium", idKey(account), ends)
+	})
 }

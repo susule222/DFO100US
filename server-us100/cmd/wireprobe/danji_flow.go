@@ -230,7 +230,7 @@ func cryptoRandUint32(bound uint32) uint32 {
 	return binary.LittleEndian.Uint32(b[:]) % bound
 }
 
-func pickWeighted(pool []danjiWeightedItem, nextRand func(uint32) uint32) protocol.DanjiReward {
+func pickWeighted(pool []danjiWeightedItem, grade byte, nextRand func(uint32) uint32) protocol.DanjiReward {
 	var total uint32
 	for _, it := range pool {
 		total += it.Weight
@@ -240,11 +240,11 @@ func pickWeighted(pool []danjiWeightedItem, nextRand func(uint32) uint32) protoc
 	for _, it := range pool {
 		acc += it.Weight
 		if r < acc {
-			return protocol.DanjiReward{Template: it.Template, Count: it.Count}
+			return protocol.DanjiReward{Template: it.Template, Grade: grade, Count: it.Count}
 		}
 	}
 	last := pool[len(pool)-1]
-	return protocol.DanjiReward{Template: last.Template, Count: last.Count}
+	return protocol.DanjiReward{Template: last.Template, Grade: grade, Count: last.Count}
 }
 
 func rollDanjiRewards(tier byte, count int, nextRand func(uint32) uint32) []protocol.DanjiReward {
@@ -254,11 +254,11 @@ func rollDanjiRewards(tier byte, count int, nextRand func(uint32) uint32) []prot
 		gradeRoll := nextRand(danjiRateScale)
 		switch {
 		case gradeRoll < cfg.RateS:
-			out = append(out, pickWeighted(danjiGradeSPool, nextRand))
+			out = append(out, pickWeighted(danjiGradeSPool, protocol.DanjiGradeS, nextRand))
 		case gradeRoll < cfg.RateS+cfg.RateA:
-			out = append(out, pickWeighted(danjiGradeAPool, nextRand))
+			out = append(out, pickWeighted(danjiGradeAPool, protocol.DanjiGradeA, nextRand))
 		default:
-			out = append(out, pickWeighted(danjiGradeBPool, nextRand))
+			out = append(out, pickWeighted(danjiGradeBPool, protocol.DanjiGradeB, nextRand))
 		}
 	}
 	return out
@@ -277,7 +277,7 @@ func advanceDanjiStack(prev, add uint32) (uint32, []protocol.DanjiReward) {
 		next := cur + step
 		for _, m := range danjiMilestones {
 			if cur < m.Threshold && next >= m.Threshold {
-				bonus = append(bonus, protocol.DanjiReward{Template: m.Template, Count: m.Count})
+				bonus = append(bonus, protocol.DanjiReward{Template: m.Template, Grade: protocol.DanjiGradeS, Count: m.Count})
 			}
 		}
 		cur = next
@@ -339,6 +339,18 @@ func openDanjiPot(
 	nextStack, milestoneRewards := advanceDanjiStack(prevStack, stackAdd)
 	allDeliveries := append([]protocol.DanjiReward(nil), rewards...)
 	allDeliveries = append(allDeliveries, milestoneRewards...)
+
+	// Contracts rolled from DANJI jars (590006272..590006277) activate directly
+	// on the account instead of occupying bag slots.
+	contractDays := map[byte]int64{}
+	var bagDeliveries []protocol.DanjiReward
+	for _, rw := range allDeliveries {
+		if kind, days, ok := directContractItem(rw.Template); ok {
+			contractDays[kind] += days * int64(rw.Count)
+		} else {
+			bagDeliveries = append(bagDeliveries, rw)
+		}
+	}
 
 	var receipt danjiOpenReceipt
 	key := fmt.Sprintf("danji2052/%d/%x", role.ID, sha256.Sum256(rawFrame))
@@ -403,28 +415,12 @@ func openDanjiPot(
 		}
 		b.Items = filtered
 
-		// Build local catalog for DANJI reward templates, matching premiumDelivery's convention.
+		// Build local catalog with exact PVF bag tabs ([material], [material expert job], [throw]).
 		local := catalog.LootCatalog{Source: src.Source, Items: map[uint32]catalog.LootItem{}}
-		for _, rw := range allDeliveries {
-			limit := uint32(1000)
-			if uint32(rw.Count) > limit {
-				limit = uint32(rw.Count)
-			}
-			if existing, exists := src.Items[rw.Template]; exists && existing.Kind == "stackable" {
-				if existing.StackLimit < limit {
-					existing.StackLimit = limit
-				}
-				local.Items[rw.Template] = existing
-			} else {
-				local.Items[rw.Template] = catalog.LootItem{
-					ID:            rw.Template,
-					Kind:          "stackable",
-					StackableType: "[throw]",
-					StackLimit:    limit,
-				}
-			}
+		for _, rw := range bagDeliveries {
+			local.Items[rw.Template] = localCatalogEntry(src, rw.Template, uint32(rw.Count))
 		}
-		for _, rw := range allDeliveries {
+		for _, rw := range bagDeliveries {
 			b, _, e = b.Add(local, rules, rw.Template, uint32(rw.Count))
 			if e != nil {
 				return nil, nil, e
@@ -457,6 +453,11 @@ func openDanjiPot(
 	if applied {
 		if err = saveDanjiStack(store, account, nextStack); err != nil {
 			return saved, nil, 0x101, err
+		}
+		if len(contractDays) > 0 {
+			if err = store.ExtendPremiumContracts(ctx, account, contractDays); err != nil {
+				return saved, nil, 0x101, err
+			}
 		}
 	} else {
 		// Replayed identical frame: keep current persisted stack and reload receipt if needed.
@@ -503,6 +504,15 @@ func openDanjiPot(
 		{"danji_space_updated", 0, 14, danjiSpaceUpdate},
 		{"danji_status_updated", 0, 2279, statusPayload},
 		{"danji_open_ack", 1, 2052, ackPayload},
+	}
+	if len(contractDays) > 0 {
+		changed := make(map[byte]bool, len(contractDays))
+		for k := range contractDays {
+			changed[k] = true
+		}
+		if cpkts, cerr := buildContractRefreshPackets(ctx, store, nil, account, saved.ID, changed); cerr == nil {
+			plan = append(plan, cpkts...)
+		}
 	}
 	return saved, plan, 0, nil
 }

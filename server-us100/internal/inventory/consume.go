@@ -16,11 +16,7 @@ func (b Bag) Consume(c catalog.LootCatalog, slot uint16, template uint32) (Bag, 
 	if slot == 0 || template == 0 {
 		return b, 0, fmt.Errorf("invalid consume request")
 	}
-	item, known := c.Items[template]
-	if !known {
-		return b, 0, fmt.Errorf("item is absent from the imported source")
-	}
-	if item.Kind != "stackable" {
+	if item, known := c.Items[template]; known && item.Kind != "stackable" {
 		return b, 0, fmt.Errorf("only a source stackable can be consumed")
 	}
 	rows := append([]BagItem(nil), b.Items...)

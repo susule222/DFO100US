@@ -60,8 +60,8 @@ func TestDecodeDanjiOpenAndAck(t *testing.T) {
 	}
 
 	ack, err := DanjiOpenSuccess([]DanjiReward{
-		{Template: 7740, Count: 10},
-		{Template: 590704452, Count: 1},
+		{Template: 7740, Grade: DanjiGradeB, Count: 10},
+		{Template: 590704452, Grade: DanjiGradeS, Count: 1},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -72,10 +72,10 @@ func TestDecodeDanjiOpenAndAck(t *testing.T) {
 	if ack[0] != 1 || binary.LittleEndian.Uint32(ack[1:5]) != 2 {
 		t.Fatalf("unexpected ack header: %x", ack[:5])
 	}
-	if binary.LittleEndian.Uint32(ack[5:9]) != 7740 || binary.LittleEndian.Uint16(ack[9:11]) != 10 {
+	if binary.LittleEndian.Uint32(ack[5:9]) != 7740 || ack[9] != DanjiGradeB || ack[10] != 10 {
 		t.Fatalf("unexpected first reward: %x", ack[5:11])
 	}
-	if binary.LittleEndian.Uint32(ack[11:15]) != 590704452 || binary.LittleEndian.Uint16(ack[15:17]) != 1 {
+	if binary.LittleEndian.Uint32(ack[11:15]) != 590704452 || ack[15] != DanjiGradeS || ack[16] != 1 {
 		t.Fatalf("unexpected second reward: %x", ack[11:17])
 	}
 }

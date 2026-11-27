@@ -1145,43 +1145,21 @@ func main() {
 					if !verified || !bootstrapped || characters == nil || worldState == nil || lootService == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
 						continue
 					}
-					bonus := len(plaintext) == 8 && bytes.Equal(plaintext[2:], []byte{1, 0, 0, 0, 0, 0})
-					choice := len(plaintext) == 16 && bytes.Equal(plaintext[2:8], []byte{1, 0, 0, 0, 0, 0}) && bytes.Equal(plaintext[12:], make([]byte, 4))
-					if !bonus && !choice {
-						if sendPayload(1, 160, protocol.Refusal(4)) != nil {
-							return
-						}
-						continue
+					var slot uint16
+					if len(plaintext) >= 2 {
+						slot = binary.LittleEndian.Uint16(plaintext)
 					}
-					slot := binary.LittleEndian.Uint16(plaintext)
-					box, award := uint32(590005791), uint32(590005793)
-					quantity := uint32(1)
-					if choice {
-						box = 590005785
-						award = binary.LittleEndian.Uint32(plaintext[8:])
-						if n, ok := dailyGiftQuantity(award); ok {
-							box, quantity = 50002547, n
-						} else if award < 590005794 || award > 590005807 {
-							if sendPayload(1, 160, protocol.Refusal(4)) != nil {
-								return
-							}
-							continue
-						}
-					}
-					grant := neoBoxGrant(lootService, slot, box, award, quantity)
-					key := fmt.Sprintf("neo160/%x", sha256.Sum256(frame.Raw))
-					var role storage.Character
-					var applied bool
-					var err error
-					if bonus {
-						role, applied, err = characters.Store.CommitNeoContractBox(context.Background(), developmentAccount, selectedCharacterID, lootService.Catalog.Source.Checksum, key, grant)
-					} else {
-						model := "US224-neo-look-v1"
-						if box == 50002547 {
-							model = "US224-neo-daily-open-v1"
-						}
-						role, applied, err = characters.Store.CommitCharacterEvent(context.Background(), developmentAccount, selectedCharacterID, lootService.Catalog.Source.Checksum, key, model, grant)
-					}
+					saved, plan, box, award, quantity, applied, err := openBoosterBox(
+						context.Background(),
+						characters.Store,
+						fatigueService,
+						lootService,
+						developmentAccount,
+						worldState.role,
+						frame.Raw,
+						plaintext,
+						nil,
+					)
 					if err != nil {
 						event(map[string]any{"kind": "child_box_refused", "slot": slot, "reason": err.Error()})
 						if sendPayload(1, 160, protocol.Refusal(4)) != nil {
@@ -1189,48 +1167,11 @@ func main() {
 						}
 						continue
 					}
-					role.WireID = worldState.role.WireID
-					worldState.role = role
-					bag, e := inventory.ReadBag(role.State)
-					if e != nil {
-						return
-					}
-					inv, e := protocol.US224InventoryRestore(bag.Rows())
-					if e != nil {
-						return
-					}
-					// v224 CMD160 success: flags, source item and slot, extra, reward count,
-					// then reward template, quantity and two display flags per reward.
-					ack := binary.LittleEndian.AppendUint32([]byte{1, 0}, box)
-					ack = binary.LittleEndian.AppendUint16(ack, slot)
-					ack = binary.LittleEndian.AppendUint32(ack, 0)
-					ack = binary.LittleEndian.AppendUint16(ack, 1)
-					ack = binary.LittleEndian.AppendUint32(ack, award)
-					ack = binary.LittleEndian.AppendUint32(ack, quantity)
-					ack = append(ack, 0, 0)
-					if applied && sendPayload(1, 160, ack) != nil {
-						return
-					}
-					if sendPayload(0, 13, inv) != nil {
-						return
-					}
-					if bonus {
-						entries, e := characters.Store.NeoPremiumSeconds(developmentAccount)
-						if e != nil {
+					saved.WireID = worldState.role.WireID
+					worldState.role = saved
+					for _, pkt := range plan {
+						if sendPayload(pkt.Kind, pkt.ID, pkt.Payload) != nil {
 							return
-						}
-						for _, v := range entries {
-							msg := binary.LittleEndian.AppendUint64([]byte{2, 0, v.Kind}, v.Seconds)
-							if sendPayload(0, 66, msg) != nil {
-								return
-							}
-						}
-						if fatigueService != nil {
-							if fp, ferr := fatigueService.State(context.Background(), developmentAccount, selectedCharacterID, time.Now()); ferr == nil {
-								if update, uerr := protocol.Fatigue(fp.Used, fp.Limit, fp.UsedMax); uerr == nil && sendPayload(0, 36, update) != nil {
-									return
-								}
-							}
 						}
 					}
 					event(map[string]any{"kind": "child_box_settled", "box": box, "award": award, "quantity": quantity, "slot": slot, "applied": applied})
@@ -1618,7 +1559,7 @@ func main() {
 						event(map[string]any{"kind": "item_use_rejected", "reason": "checksum failed"})
 						continue
 					}
-					plan, e := worldState.useStackable(plaintext)
+					plan, e := worldState.useStackable(plaintext, frame.Raw)
 					if e != nil {
 						event(map[string]any{"kind": "item_use_refused", "character_id": worldState.role.ID, "reason": e.Error()})
 						if r, decodeErr := protocol.DecodeUseStackable(plaintext); decodeErr == nil {

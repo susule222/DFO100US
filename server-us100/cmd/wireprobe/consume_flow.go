@@ -2,16 +2,18 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/inventory"
+	"encoding/binary"
 	"fmt"
+	"sort"
 	"time"
 )
 
-// useStackable answers CMD44. The client applies the recovery effect itself,
-// so the server owns the durable decrement, the acknowledgement echoing the
-// consumed slot, and the authoritative bag refresh that follows it.
-func (w *worldSession) useStackable(p []byte) ([]outboundPacket, error) {
+// useStackable answers CMD44. The client applies potion/recovery effects itself,
+// while contract items also activate their account contract via NOTI 66.
+func (w *worldSession) useStackable(p, rawFrame []byte) ([]outboundPacket, error) {
 	if w == nil || w.role.ID == 0 || w.loot == nil {
 		return nil, fmt.Errorf("item use before character selection")
 	}
@@ -21,7 +23,11 @@ func (w *worldSession) useStackable(p []byte) ([]outboundPacket, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	saved, _, _, e := w.loot.Consume(ctx, w.role, r)
+	key := ""
+	if len(rawFrame) > 0 {
+		key = fmt.Sprintf("consume44/%d/%x", w.role.ID, sha256.Sum256(rawFrame))
+	}
+	saved, receipt, applied, e := w.loot.ConsumeWithKey(ctx, w.role, r, key)
 	if e != nil {
 		return nil, e
 	}
@@ -33,15 +39,31 @@ func (w *worldSession) useStackable(p []byte) ([]outboundPacket, error) {
 	if e != nil {
 		return nil, e
 	}
-	update, e := protocol.US224InventoryUpdate(b.Rows())
+	rows := b.Rows()
+	if receipt.Remaining == 0 {
+		rows = append(rows, protocol.EmptySlotItem(r.Slot))
+		sort.Slice(rows, func(i, j int) bool {
+			return binary.LittleEndian.Uint16(rows[i][:]) < binary.LittleEndian.Uint16(rows[j][:])
+		})
+	}
+	update, e := protocol.US224InventoryUpdate(rows)
 	if e != nil {
 		return nil, e
 	}
 	w.role = saved
-	// The absolute committed bag follows the acknowledgement, so a retried
-	// hotkey press cannot leave the client's own count drifting.
-	return []outboundPacket{
+	plan := []outboundPacket{
 		{"item_use_ack", 1, 44, ack},
 		{"item_use_inventory_updated", 0, 14, update},
-	}, nil
+	}
+	if kind, days, ok := directContractItem(r.Template); ok {
+		if applied {
+			if err := w.loot.Store.ExtendPremiumContracts(ctx, w.account, map[byte]int64{kind: days}); err != nil {
+				return nil, err
+			}
+		}
+		if cpkts, cerr := buildContractRefreshPackets(ctx, w.loot.Store, w.fatigue, w.account, w.role.ID, map[byte]bool{kind: true}); cerr == nil {
+			plan = append(plan, cpkts...)
+		}
+	}
+	return plan, nil
 }

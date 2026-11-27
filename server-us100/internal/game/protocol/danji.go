@@ -92,15 +92,27 @@ func DecodeDanjiOpen(p []byte) (DanjiOpenRequest, error) {
 	return r, nil
 }
 
-// DanjiReward is one 6-byte reward entry read by ACK 2052 handler 0x140398f60:
-// u32 itemTemplateID + u16 itemCount.
+// DANJI reward grade values read by the US100 client UI (0x14039cbee, 0x14039cc86):
+//   0 = Grade S (gold/rainbow), 1 = Grade A (purple glow), 2 = Grade B (normal).
+const (
+	DanjiGradeS byte = 0
+	DanjiGradeA byte = 1
+	DanjiGradeB byte = 2
+)
+
+// DanjiReward is one 6-byte reward entry read by ACK 2052 handler 0x140398f60
+// and rendered by 0x14039cbee / 0x14039da06 / 0x14039da3c / 0x14039ef41 / 0x14039ef77:
+//   - [0..3]: u32 itemTemplateID
+//   - [4]:    u8  grade (0=S, 1=A, 2=B)
+//   - [5]:    u8  itemCount (1..255)
 type DanjiReward struct {
 	Template uint32
+	Grade    byte
 	Count    uint16
 }
 
 // DanjiOpenSuccess encodes ACK 2052 (0x804, handler 0x140398f60):
-// u8 success=1, u32 rewardCount, then rewardCount * (u32 template, u16 count).
+// u8 success=1, u32 rewardCount, then rewardCount * (u32 template, u8 grade, u8 count).
 func DanjiOpenSuccess(rewards []DanjiReward) ([]byte, error) {
 	if len(rewards) == 0 {
 		return nil, fmt.Errorf("danji open success requires at least one reward")
@@ -109,11 +121,15 @@ func DanjiOpenSuccess(rewards []DanjiReward) ([]byte, error) {
 	p = append(p, 1)
 	p = add32(p, uint32(len(rewards)))
 	for _, r := range rewards {
-		if r.Template == 0 || r.Count == 0 {
-			return nil, fmt.Errorf("invalid danji reward template=%d count=%d", r.Template, r.Count)
+		if r.Template == 0 || r.Count == 0 || r.Grade > DanjiGradeB {
+			return nil, fmt.Errorf("invalid danji reward template=%d grade=%d count=%d", r.Template, r.Grade, r.Count)
+		}
+		cnt := r.Count
+		if cnt > 255 {
+			cnt = 255
 		}
 		p = add32(p, r.Template)
-		p = add16(p, r.Count)
+		p = append(p, r.Grade, byte(cnt))
 	}
 	return p, nil
 }

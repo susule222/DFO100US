@@ -25,6 +25,11 @@ type ConsumeReceipt struct {
 // The recovery effect is the client's own: the native success acknowledgement
 // carries no restored amount, so nothing is invented here.
 func (s *Service) Consume(ctx context.Context, role storage.Character, r protocol.UseStackableRequest) (storage.Character, ConsumeReceipt, bool, error) {
+	key := fmt.Sprintf("consume:%d:%d:%d", r.Slot, r.Template, r.Instance)
+	return s.ConsumeWithKey(ctx, role, r, key)
+}
+
+func (s *Service) ConsumeWithKey(ctx context.Context, role storage.Character, r protocol.UseStackableRequest, key string) (storage.Character, ConsumeReceipt, bool, error) {
 	var out ConsumeReceipt
 	fail := func(e error) (storage.Character, ConsumeReceipt, bool, error) {
 		return role, out, false, e
@@ -37,7 +42,9 @@ func (s *Service) Consume(ctx context.Context, role storage.Character, r protoco
 		// inventories) have their own unverified semantics.
 		return fail(fmt.Errorf("unsupported source container %d", r.List))
 	}
-	key := fmt.Sprintf("consume:%d:%d:%d", r.Slot, r.Template, r.Instance)
+	if key == "" {
+		key = fmt.Sprintf("consume:%d:%d:%d", r.Slot, r.Template, r.Instance)
+	}
 	saved, applied, e := s.Store.CommitCharacterEvent(ctx, role.AccountID, role.ID,
 		s.Catalog.Source.Checksum, key, s.Rules.Model,
 		func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
