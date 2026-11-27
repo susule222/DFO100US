@@ -74,7 +74,7 @@ func TestSortItemsLiveMaterialMoveAndCycle(t *testing.T) {
 	if err != nil || space != 0 {
 		t.Fatalf("sort failed: space=%d err=%v", space, err)
 	}
-	if len(plan) != 2 || plan[0].ID != 14 || plan[1].ID != 20 {
+	if len(plan) != 2 || plan[0].ID != 13 || plan[1].ID != 20 {
 		t.Fatalf("unexpected plan: %+v", plan)
 	}
 	bag, err := inventory.ReadBag(saved.State)
@@ -93,17 +93,10 @@ func TestSortItemsLiveMaterialMoveAndCycle(t *testing.T) {
 	if !found125 {
 		t.Fatalf("expected item 10327283 x15 moved to slot 125, got %+v", bag.Items)
 	}
-	// NOTI 14 must contain slot 125 (10327283) and slot 133 (0xffffffff empty)
-	noti14 := plan[0].Payload
-	if noti14[0] != 0 || binary.LittleEndian.Uint16(noti14[1:3]) != 2 {
-		t.Fatalf("unexpected NOTI 14 header: %x", noti14[:3])
-	}
-	if binary.LittleEndian.Uint16(noti14[3:5]) != 125 || binary.LittleEndian.Uint32(noti14[5:9]) != 10327283 {
-		t.Fatalf("unexpected first row: %x", noti14[3:13])
-	}
-	off2 := 3 + 0xb1
-	if binary.LittleEndian.Uint16(noti14[off2:off2+2]) != 133 || binary.LittleEndian.Uint32(noti14[off2+2:off2+6]) != 0xffffffff {
-		t.Fatalf("unexpected second row: %x", noti14[off2:off2+10])
+	// NOTI 13 (silent full-space restore) avoids NOTI 14 "获得 N 个 xxx" system chat spam.
+	noti13 := plan[0].Payload
+	if noti13[0] != 0 || binary.LittleEndian.Uint16(noti13[3:5]) != 6 {
+		t.Fatalf("unexpected NOTI 13 header: %x", noti13[:5])
 	}
 
 	// 2) Equipment swap: 10 <-> 12 in space 0
@@ -141,8 +134,8 @@ func TestSortItemsLiveMaterialMoveAndCycle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("avatar sort failed: %v", err)
 	}
-	if plan[0].Payload[0] != 1 {
-		t.Fatalf("expected space 1 NOTI 14, got space=%d", plan[0].Payload[0])
+	if plan[0].ID != 13 || plan[0].Payload[0] != 1 {
+		t.Fatalf("expected space 1 NOTI 13, got id=%d space=%d", plan[0].ID, plan[0].Payload[0])
 	}
 	bag, _ = inventory.ReadBag(saved.State)
 	avBySlot := map[uint16]uint32{}

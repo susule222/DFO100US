@@ -6,10 +6,8 @@ import (
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/inventory"
 	"dfolan/internal/storage"
-	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"sort"
 )
 
 func sortInventory(
@@ -29,7 +27,6 @@ func sortInventory(
 	}
 	moveMap := make(map[uint16]uint16, len(req.Pairs))
 	destSeen := make(map[uint16]bool, len(req.Pairs))
-	touchedSet := make(map[uint16]bool, len(req.Pairs)*2)
 	for _, pair := range req.Pairs {
 		if req.Space == 0 && (pair.From < 9 || pair.To < 9 || pair.From > 288 || pair.To > 288) {
 			return role, nil, req.Space, fmt.Errorf("sort slot out of ordinary bag range: %d->%d", pair.From, pair.To)
@@ -45,8 +42,6 @@ func sortInventory(
 		}
 		moveMap[pair.From] = pair.To
 		destSeen[pair.To] = true
-		touchedSet[pair.From] = true
-		touchedSet[pair.To] = true
 	}
 
 	key := fmt.Sprintf("sort20/%d/%x", role.ID, sha256.Sum256(rawFrame))
@@ -105,45 +100,22 @@ func sortInventory(
 		return saved, nil, req.Space, err
 	}
 
-	// Build exact NOTI 14 update rows for every touched slot (occupied -> new row, empty -> EmptySlotItem).
-	rowBySlot := make(map[uint16][protocol.CurrentItemRecordSize]byte, len(touchedSet))
+	// Use NOTI 13 (silent full-space restore) instead of NOTI 14: NOTI 14
+	// hardcodes showAcquireToast=1 (0x1435107af) and prints "获得 N 个 xxx"
+	// system chat notices for every item that lands in a new slot.
+	var invRestore []byte
 	if req.Space == 0 {
-		for _, r := range bag.Rows() {
-			slot := binary.LittleEndian.Uint16(r[:2])
-			if touchedSet[slot] {
-				rowBySlot[slot] = r
-			}
-		}
+		invRestore, err = protocol.US224InventoryRestore(bag.Rows())
 	} else {
-		for _, r := range bag.AvatarRows() {
-			slot := binary.LittleEndian.Uint16(r[:2])
-			if touchedSet[slot] {
-				rowBySlot[slot] = r
-			}
-		}
+		invRestore, err = protocol.US224AvatarRestore(inventory.AvatarBagCapacity, bag.AvatarRows())
 	}
-	touchedSlots := make([]uint16, 0, len(touchedSet))
-	for s := range touchedSet {
-		touchedSlots = append(touchedSlots, s)
-	}
-	sort.Slice(touchedSlots, func(i, j int) bool { return touchedSlots[i] < touchedSlots[j] })
-
-	rows := make([][protocol.CurrentItemRecordSize]byte, 0, len(touchedSlots))
-	for _, s := range touchedSlots {
-		if r, ok := rowBySlot[s]; ok {
-			rows = append(rows, r)
-		} else {
-			rows = append(rows, protocol.EmptySlotItem(s))
-		}
-	}
-	invUpdate, err := protocol.US224InventorySpaceUpdate(req.Space, rows)
 	if err != nil {
 		return saved, nil, req.Space, err
 	}
 
 	saved.WireID = role.WireID
 	plan := []outboundPacket{
-		{"sort_inventory_updated", 0, 14, invUpdate},
+		{"sort_inventory_restored", 0, 13, invRestore},
 		{"sort_items_ack", 1, 20, protocol.SortItemsSuccess(req.Space)},
 	}
 	return saved, plan, req.Space, nil
