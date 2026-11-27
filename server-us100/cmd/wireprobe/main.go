@@ -1110,6 +1110,28 @@ func main() {
 					}
 					continue
 				}
+				if frame.Type == 1 && (frame.ID == protocol.CmdEventAction || frame.ID == protocol.CmdEventQuery) {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || lootService == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					plan, err := worldState.handleEventCommand(ctx, frame.ID, plaintext, time.Now())
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "event_command_refused", "id": frame.ID, "character_id": selectedCharacterID, "reason": err.Error()})
+						if sendPayload(1, frame.ID, protocol.EventActionRefused(2, 0)) != nil {
+							return
+						}
+						continue
+					}
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
 				if sortItems {
 					if !verified || !bootstrapped || characters == nil || worldState == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
 						continue
@@ -2457,11 +2479,15 @@ func main() {
 						packets = append(packets, outboundPacket{"account_funds_restored", 0, 53, fundsPayload(cera, entryMileage)})
 					}
 					if worldState != nil && eventsPath != "" {
+						nowEv := time.Now()
 						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 						autoPkts := worldState.onActivityLogin(ctx)
 						cancel()
 						if len(autoPkts) > 0 {
 							packets = append(packets, autoPkts...)
+						}
+						if evInit := worldState.interactiveEventInitPackets(events.LoadBestEffort(eventsPath), nowEv); len(evInit) > 0 {
+							packets = append(packets, evInit...)
 						}
 					}
 					prepared, e := preparePackets(keys, packets)

@@ -210,7 +210,15 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			"300k Gold + 30 Remy's Touch + 20 Mileage.",
 			"Status: Active on server",
 		))
+		// Event 512 (Dungeon Mining) reads its 4 weekly mission rows from companion
+		// Event 388 (0x184) inside EventManager; register 388 with HasDetail=false so
+		// it does not clutter the calendar while enabling live mission counters.
+		entries = append(entries, protocol.ActiveEventEntry{
+			EventID:   eventIDMiningMission,
+			HasDetail: false,
+		})
 	}
+	var params []protocol.EventInitParam
 	if pol.Extra.ReturneeCareEnabled {
 		entries = append(entries, makeEntry(
 			eventIDReturneeCare, 2,
@@ -221,6 +229,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			"500k Gold + 50 Crystals + 30 Mileage.",
 			"Status: Active on server",
 		))
+		params = append(params, protocol.EventInitParam{
+			EventID: eventIDReturneeCare,
+			Params:  [12]uint32{1},
+		})
 	}
 	if pol.Extra.OTPSecurityEnabled {
 		entries = append(entries, makeEntry(
@@ -244,7 +256,7 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			"Status: Active on server",
 		))
 	}
-	return protocol.ActiveEventsDetailed(entries)
+	return protocol.ActiveEventsDetailedWithParams(entries, params)
 }
 
 func fundsPayload(cera, mileage uint64) []byte {
@@ -496,6 +508,9 @@ func (w *worldSession) onActivityClear(ctx context.Context) []outboundPacket {
 			}
 		}
 	}
+
+	// 4. Advance interactive event progress counters (Mining 388/512, Melody 614, Cube Lab 602).
+	out = append(out, w.onInteractiveEventClear(now)...)
 
 	return out
 }

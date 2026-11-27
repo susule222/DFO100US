@@ -250,6 +250,12 @@ func (w *worldSession) syncGrantedBag(account, id int64, send func(byte, uint16,
 			}
 			w.lastSyncedEvents = string(evPayload)
 			event(map[string]any{"kind": "gm_active_events_synced", "character_id": id, "bytes": len(evPayload)})
+			for _, pkt := range w.interactiveEventInitPackets(pol, now) {
+				if err = send(pkt.Kind, pkt.ID, pkt.Payload); err != nil {
+					return err
+				}
+				event(map[string]any{"kind": pkt.Name, "character_id": id, "id": pkt.ID})
+			}
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		autoPkts := w.onActivityLogin(ctx)

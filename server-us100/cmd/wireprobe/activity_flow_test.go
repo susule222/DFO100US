@@ -188,13 +188,11 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if count := binary.LittleEndian.Uint16(evBytes[0:2]); count < 10 {
-		t.Fatalf("expected >=10 active events in NOTI 108, got %d", count)
+	if count := binary.LittleEndian.Uint16(evBytes[0:2]); count < 11 {
+		t.Fatalf("expected >=11 active events (including companion 388) in NOTI 108, got %d", count)
 	}
-	if evBytes[len(evBytes)-1] != 0 {
-		t.Fatalf("expected trailing paramCount=0 in NOTI 108")
-	}
-	// Verify every NOTI 108 entry leaves Description (URL) empty and puts [text_control] markup in Notice!
+	// Verify every detailed NOTI 108 entry leaves Description (URL) empty, puts
+	// [text_control] markup in Notice, registers companion 388, and includes Part-2 param for 607!
 	{
 		rd := func(off int) (string, int) {
 			n := int(binary.LittleEndian.Uint32(evBytes[off : off+4]))
@@ -202,12 +200,21 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 		}
 		cnt := int(binary.LittleEndian.Uint16(evBytes[0:2]))
 		off := 2
+		var saw388 bool
 		for i := 0; i < cnt; i++ {
-			off += 2 // eventID
+			evID := binary.LittleEndian.Uint16(evBytes[off : off+2])
+			off += 2
 			hasDetail := evBytes[off]
 			off++
+			if hasDetail == 0 {
+				if evID != eventIDMiningMission {
+					t.Fatalf("unexpected non-detail entry %d eventID=%d", i, evID)
+				}
+				saw388 = true
+				continue
+			}
 			if hasDetail != 1 {
-				t.Fatalf("entry %d hasDetail=%d, want 1", i, hasDetail)
+				t.Fatalf("entry %d hasDetail=%d, want 0 or 1", i, hasDetail)
 			}
 			off += 2 // eventType + colorType
 			_, off = rd(off) // title
@@ -228,6 +235,23 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 				t.Fatalf("entry %d ShowOnCalendar=%d, want 1", i, evBytes[off])
 			}
 			off++
+		}
+		if !saw388 {
+			t.Fatalf("expected companion Event 388 in NOTI 108 when SeriaWelcomeEnabled is true")
+		}
+		paramCount := evBytes[off]
+		off++
+		if paramCount != 1 {
+			t.Fatalf("expected Part-2 paramCount=1 (for Event 607), got %d", paramCount)
+		}
+		if len(evBytes)-off != 50 {
+			t.Fatalf("expected 50 bytes of Part-2 params, got %d", len(evBytes)-off)
+		}
+		if pEvID := binary.LittleEndian.Uint16(evBytes[off : off+2]); pEvID != eventIDReturneeCare {
+			t.Fatalf("Part-2 param eventID=%d, want %d", pEvID, eventIDReturneeCare)
+		}
+		if p0 := binary.LittleEndian.Uint32(evBytes[off+2 : off+6]); p0 != 1 {
+			t.Fatalf("Part-2 param[0]=%d, want 1", p0)
 		}
 	}
 
