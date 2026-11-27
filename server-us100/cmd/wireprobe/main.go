@@ -963,7 +963,8 @@ func main() {
 				shopBuy := frame.Type == 1 && frame.ID == 64
 				adventureInfo := frame.Type == 1 && frame.ID == 1395
 				generalPreference := frame.Type == 1 && frame.ID == 197
-				if len(frame.Raw) >= wire.ClientHeaderSize && (openChild || openPackage || shopBuy || adventureInfo || targetPreference || characterPreference || generalPreference || retainRequestBody(frame.ID, bodySamples)) {
+				openDanji := frame.Type == 1 && frame.ID == 2052
+				if len(frame.Raw) >= wire.ClientHeaderSize && (openChild || openPackage || shopBuy || adventureInfo || targetPreference || characterPreference || generalPreference || openDanji || retainRequestBody(frame.ID, bodySamples)) {
 					retained = true
 					entry["hex"] = hex.EncodeToString(frame.Raw)
 					if p, e := wire.DecryptPayload(keys, frame.ID, frame.Raw[13:]); e == nil {
@@ -971,7 +972,7 @@ func main() {
 						entry["plain_hex"] = hex.EncodeToString(p)
 						verified = wire.Checksum(append(append([]byte{}, frame.Raw[11:13]...), p...)) == frame.Raw[7]
 						entry["checksum_ok"] = verified
-						if !openChild && !openPackage && !shopBuy && !adventureInfo && !targetPreference && !characterPreference && !generalPreference && !observedGameRequest(frame.ID) {
+						if !openChild && !openPackage && !shopBuy && !adventureInfo && !targetPreference && !characterPreference && !generalPreference && !openDanji && !observedGameRequest(frame.ID) {
 							entry["unimplemented_sample"] = true
 						}
 					} else {
@@ -997,6 +998,29 @@ func main() {
 						}
 						continue
 					}
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
+				if openDanji {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || lootService == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					saved, plan, code, err := openDanjiPot(ctx, characters.Store, developmentAccount, worldState.role, lootService.Catalog, lootService.BagRules, frame.Raw, plaintext, nil)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "danji_open_refused", "character_id": selectedCharacterID, "code": code, "reason": err.Error()})
+						if sendPayload(1, 2052, protocol.Refusal(code)) != nil {
+							return
+						}
+						continue
+					}
+					worldState.role = saved
 					for _, p := range plan {
 						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
 							return
@@ -2258,6 +2282,16 @@ func main() {
 						event(map[string]any{"kind": "general_options_read_error", "error": readErr.Error()})
 					} else {
 						plan.GeneralOptions = options
+					}
+					if eventsBody, evErr := protocol.ActiveEvents([]uint16{protocol.EventIDDanji}); evErr != nil {
+						event(map[string]any{"kind": "active_events_encode_error", "error": evErr.Error()})
+					} else {
+						plan.Events = eventsBody
+					}
+					if danjiBody, djErr := danjiStatusOnEntry(characters.Store, developmentAccount); djErr != nil {
+						event(map[string]any{"kind": "danji_status_read_error", "error": djErr.Error()})
+					} else {
+						plan.DanjiStatus = danjiBody
 					}
 					packets := plan.packets()
 					if body, ke := basicKeysOnEntry(characters.Store, developmentAccount); ke != nil {

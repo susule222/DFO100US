@@ -27,6 +27,8 @@ type entryPayloads struct {
 	AccountMaterials                                                          []byte
 	GeneralOptions                                                            []byte
 	AccountOptions                                                            []byte
+	Events                                                                    []byte
+	DanjiStatus                                                               []byte
 	WornUpdate                                                                []byte
 	Stat                                                                      []byte
 	// StatResend is the end-of-sequence mode-6 copy. It must carry DIFFERENT
@@ -70,6 +72,8 @@ func (p entryPayloads) packets() []outboundPacket {
 		{"account_materials_restored", 0, 1140, p.AccountMaterials},
 		// Restore the saved scale before the first town scene, not after world entry.
 		{"general_options_initialized", 0, 173, p.GeneralOptions},
+		{"active_events_initialized", 0, 108, p.Events},
+		{"danji_status_initialized", 0, 2279, p.DanjiStatus},
 		{"user_area_sent", 0, 23, p.UserArea},
 		{"town_entry_probe_sent", 0, 24, p.Area},
 		{"fatigue_sent", 0, 36, p.Fatigue},
