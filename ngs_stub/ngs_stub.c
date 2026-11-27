@@ -986,7 +986,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         int hooks_on = 1;
         int locale_hooks_on = 0;
         int fast_channel_select = 1;
-        int skip_server_select = 1;
+        int skip_server_select = 0;
         int panelfill_on = 0;
         {
             char path[MAX_PATH];

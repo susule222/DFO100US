@@ -71,7 +71,7 @@ class TestNgsStubAndDeploy(unittest.TestCase):
                 ini_text = (fake_client / 'ngs_stub.ini').read_text(encoding='utf-8')
                 self.assertIn('5=0', ini_text)
                 self.assertIn('fast_channel_select=1', ini_text)
-                self.assertIn('skip_server_select=1', ini_text)
+                self.assertIn('skip_server_select=0', ini_text)
                 self.assertIn('locale_hooks=0', ini_text)
 
                 # Simulate client closed -> pending staged stub applies cleanly with backup

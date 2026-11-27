@@ -51,7 +51,7 @@ def _ensure_ini(client_dir: pathlib.Path) -> str:
         'dismiss': 'RUN ERROR',
         'locale_hooks': '0',
         'fast_channel_select': '1',
-        'skip_server_select': '1',
+        'skip_server_select': '0',
     }
     if not ini.is_file():
         if BUILT_INI.is_file():
