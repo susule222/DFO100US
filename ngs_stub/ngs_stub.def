@@ -1,0 +1,8 @@
+LIBRARY NGClient64
+EXPORTS
+    ngs_fn1 @1 NONAME
+    ngs_fn2 @2 NONAME
+    ngs_fn3 @3 NONAME
+    ngs_fn4 @4 NONAME
+    ngs_fn5 @5 NONAME
+    ngs_fn6 @6 NONAME

@@ -1,0 +1,131 @@
+{
+  "Listen": "127.0.0.1:7001",
+  "ServerKey": "first",
+  "ServerID": 1,
+  "SourceSHA256": "aecc92480ccd469fa2b33bf9c189496a0c4e31c20eb2fef7e1623642c23a687f",
+  "MaxUsers": 300,
+  "AreaLabels": {
+    "[granfloris]": "Gran Floris",
+    "[sky_catle]": "Sky Tower",
+    "[behemoth]": "Behemoth",
+    "[stormpass]": "Storm Pass",
+    "[Alfhlyra]": "Alfhlyra",
+    "[north_myre]": "North Myre",
+    "[elven_guard]": "Elven Guard"
+  },
+  "Dungeons": {
+    "[elven_guard]": [
+      1,
+      2
+    ],
+    "[granfloris]": [
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      1000
+    ],
+    "[sky_catle]": [
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17
+    ],
+    "[behemoth]": [
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27
+    ],
+    "[stormpass]": [
+      40,
+      41
+    ],
+    "[Alfhlyra]": [
+      31,
+      32,
+      33,
+      34,
+      35,
+      1500,
+      50
+    ],
+    "[north_myre]": [
+      31,
+      32,
+      33,
+      34,
+      35,
+      1500,
+      50
+    ]
+  },
+  "Channels": [
+    {
+      "ID": 10,
+      "Name": "Gran Floris 1",
+      "Type": 22,
+      "Area": "[granfloris]",
+      "SourceValues": [5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ID": 11,
+      "Name": "Gran Floris 2",
+      "Type": 22,
+      "Area": "[granfloris]",
+      "SourceValues": [5, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ID": 15,
+      "Name": "Sky Tower 1",
+      "Type": 22,
+      "Area": "[sky_catle]",
+      "SourceValues": [3, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ID": 20,
+      "Name": "Behemoth 1",
+      "Type": 22,
+      "Area": "[behemoth]",
+      "SourceValues": [2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0]
+    },
+    {
+      "ID": 23,
+      "Name": "Storm Pass 1",
+      "Type": 22,
+      "Area": "[stormpass]",
+      "SourceValues": [2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+    },
+    {
+      "ID": 24,
+      "Name": "Alfhlyra 1",
+      "Type": 22,
+      "Area": "[Alfhlyra]",
+      "SourceValues": [2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+    },
+    {
+      "ID": 27,
+      "Name": "North Myre 1",
+      "Type": 22,
+      "Area": "[north_myre]",
+      "SourceValues": [2, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0]
+    },
+    {
+      "ID": 1,
+      "Name": "Elven Guard 1",
+      "Type": 22,
+      "Area": "[elven_guard]",
+      "SourceValues": [10, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
+    }
+  ],
+  "CompatibilityNote": "US100 v2.24.0.124 regional channel list: Type 22 passes vtable+0x30 (0x143a563a0), vtable+0x20 (0x143005480) -> Tab 0 Regional Channels, and native auto-entry eligibility. ASCII names match client CP437 MultiByteToWideChar in 0x144f1d5e0."
+}

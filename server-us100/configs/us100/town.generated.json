@@ -1,0 +1,34 @@
+{
+  "source": {
+    "format": "dfo_20260901_inner",
+    "path": "D:\\DNF project\\service\\美服100服务端\\runtime\\pvf_source\\Script.inner.pvf",
+    "size": 390977429,
+    "checksum": "53ed298dbd69f43e28cbe4b3fa09a4c77d02eaf31d579e27e9477663c924fe69",
+    "loaded_at": "2026-09-17T10:52:02.3095123Z",
+    "file_count": 3235751,
+    "group_count": 40031,
+    "cached_chunks": 0,
+    "cached_texts": 0
+  },
+  "town_id": 38,
+  "area_id": 0,
+  "town_path": "town/new_elvengard.twn",
+  "town_sha256": "032ae79c712a5a57fb6a67f77bdec34544541c01455265a21a736d4002fb6d09",
+  "map_path": "map/cataclysm/town/elvengard/new_elvengard.map",
+  "map_sha256": "526f0125fc3c83b33566ae80f53bca93ec377694f2f247700d338582f6661a07",
+  "minimum_level": 1,
+  "walkable_rectangles": [
+    [
+      10,
+      196,
+      2670,
+      142
+    ],
+    [
+      1362,
+      332,
+      89,
+      33
+    ]
+  ]
+}

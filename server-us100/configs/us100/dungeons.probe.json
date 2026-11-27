@@ -1,0 +1,462 @@
+{
+  "source": {
+    "format": "dfo_20260901_inner",
+    "path": "D:\\DNF project\\service\\美服100服务端\\runtime\\pvf_source\\Script.inner.pvf",
+    "size": 390977429,
+    "checksum": "53ed298dbd69f43e28cbe4b3fa09a4c77d02eaf31d579e27e9477663c924fe69",
+    "loaded_at": "2026-09-17T10:55:56.2113489Z",
+    "file_count": 3235751,
+    "group_count": 40031,
+    "cached_chunks": 0,
+    "cached_texts": 0
+  },
+  "dungeons": {
+    "1": {
+      "id": 1,
+      "script": {
+        "path": "dungeon/act1/lorien.dgn",
+        "sha256": "79b4301bbcdd305bf95f2f8082128956ef0fea6178f4d45358a50db4eed82a7c",
+        "cells": [
+          {
+            "type": 3,
+            "value": 51944320,
+            "text": "[background pos]"
+          },
+          {
+            "type": 0,
+            "value": 80
+          },
+          {
+            "type": 3,
+            "value": 51944354,
+            "text": "[cutscene image]"
+          },
+          {
+            "type": 6,
+            "value": 52327276,
+            "text": "Map/CutScene/Lorien.img"
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 3,
+            "value": 51944510,
+            "text": "[minimap image]"
+          },
+          {
+            "type": 6,
+            "value": 51952750,
+            "text": "Map/MiniMap/Act1.img"
+          },
+          {
+            "type": 3,
+            "value": 51944584,
+            "text": "[worldmap pattern info]"
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 6,
+            "value": 52327324,
+            "text": "WorldMap/SelectdungeonSlot/elvengard.img"
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 3,
+            "value": 51944788,
+            "text": "[minimum required level]"
+          },
+          {
+            "type": 0,
+            "value": 55
+          },
+          {
+            "type": 3,
+            "value": 51944890,
+            "text": "[basis level]"
+          },
+          {
+            "type": 0,
+            "value": 55
+          },
+          {
+            "type": 3,
+            "value": 52007612,
+            "text": "[experience increasing point]"
+          },
+          {
+            "type": 2,
+            "value": 1067869798,
+            "number": 1.3
+          },
+          {
+            "type": 3,
+            "value": 51944918,
+            "text": "[champion]"
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 3,
+            "value": 51944940,
+            "text": "[pathgate object]"
+          },
+          {
+            "type": 0,
+            "value": 361
+          },
+          {
+            "type": 0,
+            "value": 362
+          },
+          {
+            "type": 0,
+            "value": 363
+          },
+          {
+            "type": 0,
+            "value": 364
+          },
+          {
+            "type": 0,
+            "value": 365
+          },
+          {
+            "type": 0,
+            "value": 366
+          },
+          {
+            "type": 0,
+            "value": 367
+          },
+          {
+            "type": 0,
+            "value": 368
+          },
+          {
+            "type": 0,
+            "value": 369
+          },
+          {
+            "type": 0,
+            "value": 370
+          },
+          {
+            "type": 3,
+            "value": 51945798,
+            "text": "[maze info]"
+          },
+          {
+            "type": 3,
+            "value": 51946042,
+            "text": "[size]"
+          },
+          {
+            "type": 0,
+            "value": 2
+          },
+          {
+            "type": 0,
+            "value": 3
+          },
+          {
+            "type": 3,
+            "value": 51946056,
+            "text": "[greed]"
+          },
+          {
+            "type": 6,
+            "value": 52327406,
+            "text": "JJEE\r\n LLMM\r\n DDGG"
+          },
+          {
+            "type": 3,
+            "value": 51946212,
+            "text": "[start map]"
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 3,
+            "value": 51946236,
+            "text": "[/start map]"
+          },
+          {
+            "type": 3,
+            "value": 51946262,
+            "text": "[boss map]"
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 0,
+            "value": 2
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 0,
+            "value": 2
+          },
+          {
+            "type": 3,
+            "value": 51946284,
+            "text": "[/boss map]"
+          },
+          {
+            "type": 3,
+            "value": 51945016,
+            "text": "[designate dungeon difficulty]"
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 3,
+            "value": 52326104,
+            "text": "[special passive object item]"
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 0,
+            "value": -1
+          },
+          {
+            "type": 0,
+            "value": 2
+          },
+          {
+            "type": 0,
+            "value": 1000
+          },
+          {
+            "type": 0,
+            "value": 2000
+          },
+          {
+            "type": 0,
+            "value": 1004
+          },
+          {
+            "type": 0,
+            "value": 2000
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 0,
+            "value": -1
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 3,
+            "value": 52326164,
+            "text": "[/special passive object item]"
+          },
+          {
+            "type": 3,
+            "value": 52327444,
+            "text": "[event monster random map]"
+          },
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 3,
+            "value": 52327498,
+            "text": "[event monster]"
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 0,
+            "value": 1000
+          },
+          {
+            "type": 0,
+            "value": 21100
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 0,
+            "value": 1000
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 0,
+            "value": 5
+          },
+          {
+            "type": 3,
+            "value": 52327530,
+            "text": "[/event monster]"
+          },
+          {
+            "type": 3,
+            "value": 43360288,
+            "text": "[name]"
+          },
+          {
+            "type": 8,
+            "value": 52327564,
+            "reference": "\u003c2::name_120\u003e"
+          },
+          {
+            "type": 3,
+            "value": 43710730,
+            "text": "[explain]"
+          },
+          {
+            "type": 8,
+            "value": 52327592,
+            "reference": "\u003c2::explain_125\u003e"
+          },
+          {
+            "type": 3,
+            "value": 52327626,
+            "text": "[mob level charac level replace flag]"
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 3,
+            "value": 52030114,
+            "text": "[revision table]"
+          },
+          {
+            "type": 6,
+            "value": 52327702,
+            "text": "Dungeon/Towers/table/CrackOfDimension.tbl"
+          },
+          {
+            "type": 3,
+            "value": 52327786,
+            "text": "[crack of dimension dungeon]"
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 3,
+            "value": 51952974,
+            "text": "[difficulty]"
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 3,
+            "value": 51945016,
+            "text": "[designate dungeon difficulty]"
+          },
+          {
+            "type": 0,
+            "value": 1
+          }
+        ]
+      },
+      "MinimumLevel": 55,
+      "BasisLevel": 55,
+      "Tutorial": false,
+      "NoFatigue": false,
+      "mazes": [
+        {
+          "index": 0,
+          "quest": 0,
+          "Size": [
+            2,
+            3
+          ],
+          "Start": [
+            0,
+            0
+          ],
+          "Boss": [
+            0,
+            0
+          ],
+          "rooms": null,
+          "pending": [
+            "[start map]: coordinate pair required",
+            "[boss map]: coordinate pair required",
+            "unsupported room specification"
+          ]
+        }
+      ]
+    }
+  },
+  "maps": {}
+}

@@ -1,0 +1,24 @@
+# Runtime outputs, dumps, unpacked PVFs, LLM translation models, logs (42+ GB)
+/runtime/
+
+# Bundled Go toolchain & build caches (reproducible locally)
+/tools/go/
+/tools/gocache/
+/tools/gopath/
+
+# Python caches
+**/__pycache__/
+*.py[cod]
+*$py.class
+
+# Compiled server binaries & local secrets/overrides
+/server-us100/bin/
+/server-us100/configs/server.local.json
+/server-us100/configs/launcher.local.json
+
+# OS / editor / temp files
+*.log
+*.tmp
+*.bak
+.DS_Store
+Thumbs.db

@@ -1,0 +1,12 @@
+{
+  "_comment": "Which optional packets the dungeon gate answers CMD15 with. Edit and restart the server; no rebuild needed. License (02FD/02FE, worldmap 38) and guild (02E6, worldmap 37) packets are not switched here: they are derived from the gate's own worldmap, as the reference does.",
+  "_enter_select_state": "S0/0003 state byte. 0 = town (this client's own value for 'the actor is in town', see internal/game/protocol/user_state.go); 1 means 'the actor is in a dungeon'. Set to 1 only to reproduce the old behaviour.",
+  "user_area_select": true,
+  "enter_select": true,
+  "party_preload": true,
+  "enter_select_state": 0,
+  "reference_order": true,
+  "candidate_list": false,
+  "minimal_gate": true,
+  "gate_ack": true
+}

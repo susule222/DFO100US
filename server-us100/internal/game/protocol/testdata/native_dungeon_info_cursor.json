@@ -1,0 +1,33 @@
+{
+  "source": "DFO.exe 2.24.0.124 NOTI28, registered at 0x1434e5cbd to 0x1434d8ee0. This static cursor follows the empty groups branch at 0x1434d9538 and empty rows branch at 0x1434d9c61 to the return at 0x1434d9f07.",
+  "payload_hex": "03000000000000010300ffff000000000c0000ffffffff000000000000000000000000000000000000",
+  "consumed": 41,
+  "reads": [
+    {"site": "0x1434d915e", "offset": 0, "size": 4},
+    {"site": "0x1434d916d", "offset": 4, "size": 1},
+    {"site": "0x1434d917d", "offset": 5, "size": 2},
+    {"site": "0x1434d918c", "offset": 7, "size": 1},
+    {"site": "0x1434d919b", "offset": 8, "size": 1},
+    {"site": "0x1434d91aa", "offset": 9, "size": 1},
+    {"site": "0x1434d9437", "offset": 10, "size": 1},
+    {"site": "0x1434d9446", "offset": 11, "size": 1},
+    {"site": "0x1434d94db", "offset": 12, "size": 1},
+    {"site": "0x1434d952b", "offset": 13, "size": 1},
+    {"site": "0x1434d97f9", "offset": 14, "size": 2},
+    {"site": "0x1434d9816", "offset": 16, "size": 2},
+    {"site": "0x1434d983d", "offset": 18, "size": 1},
+    {"site": "0x1434d9885", "offset": 19, "size": 4},
+    {"site": "0x1434d9894", "offset": 23, "size": 1},
+    {"site": "0x1434d98a3", "offset": 24, "size": 1},
+    {"site": "0x1434d98b2", "offset": 25, "size": 1},
+    {"site": "0x1434d9b97", "offset": 26, "size": 1},
+    {"site": "0x1434d9bc6", "offset": 27, "size": 1},
+    {"site": "0x1434d9bf5", "offset": 28, "size": 1},
+    {"site": "0x1434d9c45", "offset": 29, "size": 1},
+    {"site": "0x1434d9ce1", "offset": 30, "size": 1},
+    {"site": "0x1434d9d01", "offset": 31, "size": 2},
+    {"site": "0x1434d9d24", "offset": 33, "size": 2},
+    {"site": "0x1434d9d3e", "offset": 35, "size": 2},
+    {"site": "0x1434d9d5b", "offset": 37, "size": 4}
+  ]
+}

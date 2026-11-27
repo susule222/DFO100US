@@ -1,0 +1,60 @@
+"""100US DSTR keys for dungeon tracking, combat, rewards, and NPC shops."""
+
+BASE = "324c103d1084db9c757b6018b2472109d10e45b1ec3c8d47e735a2302dc5356c"
+PVF = "7eef1a7129669eb6b5c9fc2dc5a2f238d040dc3fb8a0a8aa82c83dc398177247"
+ROWS = {
+    "31095": ("Meet %s: %d/%d", "与%s交谈：%d/%d"),
+    "150049": ("Meet %s", "与%s交谈"),
+    "70654": ("Meet %s", "与%s交谈"),
+    "49288": ("Remaining Skill Cooldown: %.*f second(s)", "技能剩余冷却：%.*f秒"),
+    "646": ("You have cleared the dungeon: %s.", "已通关地下城：%s。"),
+    "30207": ("You have cleared the dungeon: %s. ", "已通关地下城：%s。 "),
+    "790": ("You have completed the '%s' quest", "已完成任务「%s」。"),
+    "652": ("You have gained Skill Points.", "获得技能点。"),
+    "502": ("%s has attained Level %d.", "%s 已达到 %d 级。"),
+    "879": ("%s has weakened.", "%s 已进入虚弱状态。"),
+    "873": ("Boss: %s", "首领：%s"),
+    "872": ("Lesser: %s", "小怪：%s"),
+    "48600": ("Scenario", "剧情"),
+    "67012": ("Scenario", "剧情"),
+    "100087812": ("Scenario", "剧情"),
+    "30327": ("Scenario Dungeon", "剧情地下城"),
+    "65017": ("Scenario Easy", "剧情（简单）"),
+    "65018": ("Scenario Hard", "剧情（困难）"),
+    "476": ("+%d Gold", "+%d 金币"),
+    "5488": ("Gold:", "金币："),
+    "42372": ("%s Gold (+%s)", "%s 金币 (+%s)"),
+    "6500": ("You have no enough Gold to draw a Gold Card.", "金币不足，无法翻开金牌。"),
+    "6501": ("You have flipped the Gold Card by spending %d Gold.", "消耗 %d 金币翻开了金牌。"),
+    "60426": ("The user already selected the selected card type.", "已选择过这种卡牌。"),
+    "60427": ("Already a selected card.", "这张卡牌已被选中。"),
+    "479": ("Restart the dungeon.", "再次挑战当前地下城。"),
+    "480": ("Select a different dungeon.", "选择其他地下城。"),
+    "31231": ("Return to Town. (Hotkey : F12)", "返回城镇（快捷键：F12）"),
+    "100086051": ("Retry", "再次挑战"),
+    "100086052": ("Select a Different Dungeon", "选择其他地下城"),
+    "100086053": ("Return to Town", "返回城镇"),
+    "100086054": ("Start Next Quest", "开始下一任务"),
+    "100086055": ("Select Character", "选择角色"),
+    "100086056": ("Next Dungeon", "下一个地下城"),
+    "100086057": ("Next Dungeon", "下一个地下城"),
+    "21070": ("Sell", "出售"),
+    "21071": ("Buy", "购买"),
+    "21072": ("Repair", "修理"),
+    "21073": ("Repair All", "全部修理"),
+    "49180": ("Repair All (S)", "全部修理 (S)"),
+    "46217": ("Shop", "商店"),
+    "46218": ("Repurchase", "回购"),
+    "46219": ("Do not have enough gold to purchase.", "金币不足，无法购买。"),
+    "38239": ("Shop", "商店"),
+    "38240": ("Shop/Repair", "商店／修理"),
+    "30014": ("Repair", "修理"),
+}
+
+RACES = (
+    ("Human", "人型"), ("Beast", "野兽"), ("Plant", "植物"), ("Insect", "昆虫"),
+    ("Machine", "机械"), ("Hybrid", "混合型"), ("Undead", "不死族"),
+    ("Demon", "恶魔"), ("Fairy", "精灵"), ("Dragonoid", "龙族"),
+)
+for base in (5128, 6021):
+    ROWS.update({str(base+i): race for i, race in enumerate(RACES)})

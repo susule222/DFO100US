@@ -1,0 +1,6077 @@
+{
+  "source": {
+    "format": "dfo_20260901_inner",
+    "path": "D:\\DNF project\\service\\美服100服务端\\runtime\\pvf_source\\Script.inner.pvf",
+    "size": 390977429,
+    "checksum": "53ed298dbd69f43e28cbe4b3fa09a4c77d02eaf31d579e27e9477663c924fe69",
+    "loaded_at": "2026-09-17T10:52:10.6268963Z",
+    "file_count": 3235751,
+    "group_count": 40031,
+    "cached_chunks": 0,
+    "cached_texts": 0
+  },
+  "professions": {
+    "0": {
+      "id": 0,
+      "path": "character/swordman/swordman.chr",
+      "raw_sha256": "4a65abca7d4501d2d19652f1e68839da3c7ac52094596c31867ff1cdf2ba30a4",
+      "job": "[swordman]",
+      "initial_attributes": {
+        "[attack speed]": 850,
+        "[cast speed]": 700,
+        "[dark resistance]": 20,
+        "[hit recovery]": 600,
+        "[hp max]": 180,
+        "[inventory limit]": 48000,
+        "[jump power]": 430,
+        "[jump speed]": 95,
+        "[light resistance]": -20,
+        "[magical attack]": 4.5,
+        "[magical defense]": 4.5,
+        "[move speed]": 850,
+        "[mp max]": 140,
+        "[mp regen speed]": 50,
+        "[physical attack]": 7.5,
+        "[physical defense]": 7.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1.5,
+        "[hp max]": 45,
+        "[inventory limit]": 300,
+        "[magical attack]": 4.2,
+        "[magical defense]": 4.2,
+        "[mp max]": 25,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.8,
+        "[physical defense]": 4.8
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1146388480,
+            "number": 850
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1143930880,
+            "number": 700
+          }
+        ],
+        "[dark resistance]": [
+          {
+            "type": 2,
+            "value": 1101004800,
+            "number": 20
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1127481344,
+            "number": 180
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1195081728,
+            "number": 48000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1138163712,
+            "number": 430
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 95
+          }
+        ],
+        "[light resistance]": [
+          {
+            "type": 2,
+            "value": -1046478848,
+            "number": -20
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1146388480,
+            "number": 850
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1124859904,
+            "number": 140
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        46,
+        1,
+        1,
+        190,
+        1,
+        1,
+        5,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "169": 0,
+        "46": 1,
+        "5": 2
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 401040091
+        },
+        {
+          "type": 0,
+          "value": 101010912
+        },
+        {
+          "type": 0,
+          "value": 101030782
+        },
+        {
+          "type": 0,
+          "value": 401000102
+        },
+        {
+          "type": 0,
+          "value": 101010912
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 400190158
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 400090160
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 400140158
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 400240158
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 400290164
+        },
+        {
+          "type": 0,
+          "value": 18400
+        }
+      ],
+      "default_appearance_indices": [
+        -1,
+        39400,
+        -1,
+        40600,
+        41000,
+        41800,
+        -1,
+        -1,
+        42200,
+        -1,
+        27118
+      ]
+    },
+    "1": {
+      "id": 1,
+      "path": "character/fighter/fighter.chr",
+      "raw_sha256": "d6c175f861542b78fecfb4e73745a6ce889938553e59de70a6fe5a8d926350f3",
+      "job": "[fighter]",
+      "initial_attributes": {
+        "[attack speed]": 950,
+        "[cast speed]": 1000,
+        "[dark resistance]": -20,
+        "[hit recovery]": 600,
+        "[hp max]": 200,
+        "[inventory limit]": 43000,
+        "[jump power]": 470,
+        "[jump speed]": 110,
+        "[light resistance]": 20,
+        "[magical attack]": 4.5,
+        "[magical defense]": 4.5,
+        "[move speed]": 910,
+        "[mp max]": 120,
+        "[mp regen speed]": 50,
+        "[physical attack]": 7.5,
+        "[physical defense]": 7.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1.5,
+        "[hp max]": 50,
+        "[inventory limit]": 270,
+        "[magical attack]": 4,
+        "[magical defense]": 4,
+        "[mp max]": 20,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 5,
+        "[physical defense]": 5
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148026880,
+            "number": 950
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[dark resistance]": [
+          {
+            "type": 2,
+            "value": -1046478848,
+            "number": -20
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1128792064,
+            "number": 200
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1193801728,
+            "number": 43000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1139474432,
+            "number": 470
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 110
+          }
+        ],
+        "[light resistance]": [
+          {
+            "type": 2,
+            "value": 1101004800,
+            "number": 20
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[module damage rate]": [
+          {
+            "type": 2,
+            "value": 1062836634,
+            "number": 0.85
+          },
+          {
+            "type": 2,
+            "value": 1065353216,
+            "number": 1
+          },
+          {
+            "type": 2,
+            "value": 1065353216,
+            "number": 1
+          },
+          {
+            "type": 2,
+            "value": 1036831949,
+            "number": 0.1
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1147371520,
+            "number": 910
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1123024896,
+            "number": 120
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[usable weapon sub type]": [
+          {
+            "type": 0,
+            "value": 0
+          },
+          {
+            "type": 0,
+            "value": -1
+          },
+          {
+            "type": 0,
+            "value": 1
+          },
+          {
+            "type": 0,
+            "value": -1
+          },
+          {
+            "type": 0,
+            "value": 2
+          },
+          {
+            "type": 0,
+            "value": -1
+          },
+          {
+            "type": 0,
+            "value": 5
+          },
+          {
+            "type": 0,
+            "value": -1
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        5,
+        1,
+        1,
+        190,
+        1,
+        1,
+        46,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "169": 0,
+        "46": 2,
+        "5": 1
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 402000089
+        },
+        {
+          "type": 0,
+          "value": 402030087
+        },
+        {
+          "type": 0,
+          "value": 402020090
+        },
+        {
+          "type": 0,
+          "value": 402010090
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ],
+      "default_appearance_indices": [
+        -1,
+        43400,
+        -1,
+        44600,
+        45000,
+        45800,
+        -1,
+        -1,
+        46200,
+        -1,
+        29000
+      ]
+    },
+    "10": {
+      "id": 10,
+      "path": "character/mage/creatormage.chr",
+      "raw_sha256": "873e5da624871067f93cc1a60957ae409c366b796a83ce81da17ccb54c987494",
+      "job": "[creator mage]",
+      "initial_attributes": {
+        "[attack speed]": 1000,
+        "[cast speed]": 1000,
+        "[hit recovery]": 500,
+        "[hp max]": 120,
+        "[inventory limit]": 34000,
+        "[jump power]": 350,
+        "[jump speed]": 55,
+        "[magical attack]": 7.5,
+        "[magical defense]": 7.5,
+        "[move speed]": 820,
+        "[mp max]": 200,
+        "[mp regen speed]": 80,
+        "[physical attack]": 4.5,
+        "[physical defense]": 4.5,
+        "[presetskill level]": 50,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1,
+        "[hp max]": 35,
+        "[inventory limit]": 250,
+        "[magical attack]": 5,
+        "[magical defense]": 5,
+        "[mp max]": 35,
+        "[mp regen speed]": 4,
+        "[physical attack]": 4,
+        "[physical defense]": 4
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1140457472,
+            "number": 500
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1123024896,
+            "number": 120
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1191497728,
+            "number": 34000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1135542272,
+            "number": 350
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 55
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1145896960,
+            "number": 820
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1128792064,
+            "number": 200
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1117782016,
+            "number": 80
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[preset skill]": [
+          {
+            "type": 0,
+            "value": 267
+          },
+          {
+            "type": 0,
+            "value": 250
+          },
+          {
+            "type": 0,
+            "value": 251
+          },
+          {
+            "type": 0,
+            "value": 253
+          },
+          {
+            "type": 0,
+            "value": 255
+          },
+          {
+            "type": 0,
+            "value": 276
+          },
+          {
+            "type": 0,
+            "value": 131
+          },
+          {
+            "type": 0,
+            "value": 133
+          },
+          {
+            "type": 0,
+            "value": 134
+          },
+          {
+            "type": 0,
+            "value": 136
+          },
+          {
+            "type": 0,
+            "value": 132
+          },
+          {
+            "type": 0,
+            "value": 135
+          },
+          {
+            "type": 0,
+            "value": 248
+          },
+          {
+            "type": 0,
+            "value": 249
+          },
+          {
+            "type": 0,
+            "value": 277
+          }
+        ],
+        "[presetskill level]": [
+          {
+            "type": 0,
+            "value": 50
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        169,
+        1,
+        1,
+        174,
+        1,
+        1,
+        501,
+        1,
+        1,
+        196,
+        1,
+        1,
+        511,
+        1,
+        1,
+        250,
+        1,
+        1,
+        131,
+        1,
+        1,
+        133,
+        1,
+        1,
+        91,
+        1,
+        1,
+        190,
+        1,
+        1,
+        491,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "169": 0,
+        "250": 1
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 106040493
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 400190158
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 400090160
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 400140158
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 400240158
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 400290164
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ],
+      "default_appearance_indices": [
+        2190000,
+        2190011,
+        -1,
+        2190041,
+        2190051,
+        2190071,
+        -1,
+        -1,
+        2190081,
+        -1,
+        33679
+      ]
+    },
+    "11": {
+      "id": 11,
+      "path": "character/swordman/atswordman.chr",
+      "raw_sha256": "a467e24643bcf6259a02d6d0206254c29a03371e884259c960c0f47b5125bef9",
+      "job": "[at swordman]",
+      "initial_attributes": {
+        "[attack speed]": 900,
+        "[cast speed]": 800,
+        "[dark resistance]": 20,
+        "[hit recovery]": 600,
+        "[hp max]": 170,
+        "[inventory limit]": 45000,
+        "[jump power]": 440,
+        "[jump speed]": 100,
+        "[light resistance]": -20,
+        "[magical attack]": 5,
+        "[magical defense]": 5,
+        "[move speed]": 900,
+        "[mp max]": 150,
+        "[mp regen speed]": 50,
+        "[physical attack]": 7,
+        "[physical defense]": 7,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1.5,
+        "[hp max]": 40,
+        "[inventory limit]": 290,
+        "[magical attack]": 4.4,
+        "[magical defense]": 4.4,
+        "[mp max]": 30,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.6,
+        "[physical defense]": 4.6
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1147207680,
+            "number": 900
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1145569280,
+            "number": 800
+          }
+        ],
+        "[dark resistance]": [
+          {
+            "type": 2,
+            "value": 1101004800,
+            "number": 20
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1126825984,
+            "number": 170
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1194313728,
+            "number": 45000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1138491392,
+            "number": 440
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 100
+          }
+        ],
+        "[light resistance]": [
+          {
+            "type": 2,
+            "value": -1046478848,
+            "number": -20
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1147207680,
+            "number": 900
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1125515264,
+            "number": 150
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1088421888,
+            "number": 7
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1088421888,
+            "number": 7
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        96,
+        1,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        8,
+        1,
+        1,
+        190,
+        1,
+        1,
+        1,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "1": 2,
+        "169": 0,
+        "8": 1
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 101030782
+        },
+        {
+          "type": 0,
+          "value": 401000102
+        },
+        {
+          "type": 0,
+          "value": 101030782
+        },
+        {
+          "type": 0,
+          "value": 401040091
+        },
+        {
+          "type": 0,
+          "value": 101010912
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 400190158
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 400090160
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 400140158
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 400240158
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 400290164
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 18400
+        }
+      ]
+    },
+    "12": {
+      "id": 12,
+      "path": "character/knight/knight.chr",
+      "raw_sha256": "a47b93ef4cb41527829cfe4fb239c9ebd5ea3ba4f09081683c169af0742e79a4",
+      "job": "[knight]",
+      "initial_attributes": {
+        "[attack speed]": 900,
+        "[cast speed]": 800,
+        "[dark resistance]": 5,
+        "[fire resistance]": 5,
+        "[hit recovery]": 600,
+        "[hp max]": 150,
+        "[inventory limit]": 45000,
+        "[jump power]": 430,
+        "[jump speed]": 100,
+        "[light resistance]": 5,
+        "[magical attack]": 5,
+        "[magical defense]": 5,
+        "[move speed]": 900,
+        "[mp max]": 150,
+        "[mp regen speed]": 50,
+        "[physical attack]": 7,
+        "[physical defense]": 7,
+        "[water resistance]": 5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1.5,
+        "[hp max]": 45,
+        "[inventory limit]": 300,
+        "[magical attack]": 4.2,
+        "[magical defense]": 4.2,
+        "[mp max]": 25,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.8,
+        "[physical defense]": 4.8
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1147207680,
+            "number": 900
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1145569280,
+            "number": 800
+          }
+        ],
+        "[dark resistance]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[fire resistance]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1125515264,
+            "number": 150
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1194313728,
+            "number": 45000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1138163712,
+            "number": 430
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 100
+          }
+        ],
+        "[light resistance]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1147207680,
+            "number": 900
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1125515264,
+            "number": 150
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1088421888,
+            "number": 7
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1088421888,
+            "number": 7
+          }
+        ],
+        "[water resistance]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        1,
+        1,
+        1,
+        190,
+        1,
+        1,
+        2,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "1": 1,
+        "169": 0,
+        "2": 2
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 101030782
+        },
+        {
+          "type": 0,
+          "value": 401000102
+        },
+        {
+          "type": 0,
+          "value": 401020093
+        },
+        {
+          "type": 0,
+          "value": 101010912
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400190158
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 400190158
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400090160
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 400090160
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400140158
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 400140158
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400240158
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 400240158
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400290164
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 400290164
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ]
+    },
+    "13": {
+      "id": 13,
+      "path": "character/demoniclancer/demoniclancer.chr",
+      "raw_sha256": "6b7562eef1127077793c9f2de5607887e44f823d2f6f7c80e85d9403db794c62",
+      "job": "[demonic lancer]",
+      "initial_attributes": {
+        "[attack speed]": 900,
+        "[cast speed]": 800,
+        "[hit recovery]": 600,
+        "[hp max]": 170,
+        "[inventory limit]": 45000,
+        "[jump power]": 440,
+        "[jump speed]": 100,
+        "[magical attack]": 5,
+        "[magical defense]": 5,
+        "[move speed]": 900,
+        "[mp max]": 150,
+        "[mp regen speed]": 50,
+        "[physical attack]": 7,
+        "[physical defense]": 7,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1.5,
+        "[hp max]": 40,
+        "[inventory limit]": 290,
+        "[magical attack]": 4.4,
+        "[magical defense]": 4.4,
+        "[mp max]": 30,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.6,
+        "[physical defense]": 4.6
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1147207680,
+            "number": 900
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1145569280,
+            "number": 800
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1126825984,
+            "number": 170
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1194313728,
+            "number": 45000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1138491392,
+            "number": 440
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 100
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1147207680,
+            "number": 900
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1125515264,
+            "number": 150
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1088421888,
+            "number": 7
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1088421888,
+            "number": 7
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        3,
+        1,
+        1,
+        190,
+        1,
+        1,
+        2,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "169": 0,
+        "2": 2,
+        "3": 1
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 414010090
+        },
+        {
+          "type": 0,
+          "value": 114000248
+        },
+        {
+          "type": 0,
+          "value": 414020074
+        },
+        {
+          "type": 0,
+          "value": 414030064
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ]
+    },
+    "14": {
+      "id": 14,
+      "path": "character/priest/atpriest.chr",
+      "raw_sha256": "dcc16fa5a90cf15eaac48eb14f1162357c742ed218a0108d9d5eace2860323a8",
+      "job": "[at priest]",
+      "initial_attributes": {
+        "[attack speed]": 950,
+        "[cast speed]": 1000,
+        "[hit recovery]": 500,
+        "[hp max]": 180,
+        "[inventory limit]": 48000,
+        "[jump power]": 440,
+        "[jump speed]": 100,
+        "[magical attack]": 4.5,
+        "[magical defense]": 6.5,
+        "[move speed]": 850,
+        "[mp max]": 140,
+        "[mp regen speed]": 50,
+        "[physical attack]": 6.5,
+        "[physical defense]": 6.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1,
+        "[hp max]": 50,
+        "[inventory limit]": 300,
+        "[magical attack]": 4,
+        "[magical defense]": 4.5,
+        "[mp max]": 20,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.7,
+        "[physical defense]": 4.8
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148026880,
+            "number": 950
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1140457472,
+            "number": 500
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1127481344,
+            "number": 180
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1195081728,
+            "number": 48000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1138491392,
+            "number": 440
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 100
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1146388480,
+            "number": 850
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1124859904,
+            "number": 140
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        7,
+        1,
+        1,
+        190,
+        1,
+        1,
+        1,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "1": 2,
+        "169": 0,
+        "7": 1
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 108000525
+        },
+        {
+          "type": 0,
+          "value": 408040086
+        },
+        {
+          "type": 0,
+          "value": 408010085
+        },
+        {
+          "type": 0,
+          "value": 408030085
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400190158
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400090160
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400140158
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400240158
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400290164
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ]
+    },
+    "15": {
+      "id": 15,
+      "path": "character/gunblader/gunblader.chr",
+      "raw_sha256": "1d9996a78555e25b95aac2301238536333ceec534667af7b1449c36adbcc6506",
+      "job": "[gun blader]",
+      "initial_attributes": {
+        "[attack speed]": 900,
+        "[cast speed]": 800,
+        "[hit recovery]": 600,
+        "[hp max]": 170,
+        "[inventory limit]": 45000,
+        "[jump power]": 440,
+        "[jump speed]": 100,
+        "[magical attack]": 5,
+        "[magical defense]": 5,
+        "[move speed]": 850,
+        "[mp max]": 150,
+        "[mp regen speed]": 50,
+        "[physical attack]": 7,
+        "[physical defense]": 7,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1.5,
+        "[hp max]": 40,
+        "[inventory limit]": 290,
+        "[magical attack]": 4.4,
+        "[magical defense]": 4.4,
+        "[mp max]": 30,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.6,
+        "[physical defense]": 4.6
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1147207680,
+            "number": 900
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1145569280,
+            "number": 800
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1126825984,
+            "number": 170
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1194313728,
+            "number": 45000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1138491392,
+            "number": 440
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 100
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1084227584,
+            "number": 5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1146388480,
+            "number": 850
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1125515264,
+            "number": 150
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1088421888,
+            "number": 7
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1088421888,
+            "number": 7
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        1,
+        1,
+        1,
+        190,
+        1,
+        1,
+        50,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "1": 1,
+        "169": 0,
+        "50": 2
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 116000011
+        },
+        {
+          "type": 0,
+          "value": 416010053
+        },
+        {
+          "type": 0,
+          "value": 416020053
+        },
+        {
+          "type": 0,
+          "value": 416030053
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ]
+    },
+    "2": {
+      "id": 2,
+      "path": "character/gunner/gunner.chr",
+      "raw_sha256": "2b0b021d8a42fedfbc60e449e2e9fc2a4b3623adc688c722dfb215ef929500e3",
+      "job": "[gunner]",
+      "initial_attributes": {
+        "[attack speed]": 950,
+        "[cast speed]": 800,
+        "[hit recovery]": 600,
+        "[hp max]": 160,
+        "[inventory limit]": 40000,
+        "[jump power]": 470,
+        "[jump speed]": 80,
+        "[magical attack]": 5.5,
+        "[magical defense]": 5.5,
+        "[move speed]": 830,
+        "[mp max]": 160,
+        "[mp regen speed]": 50,
+        "[physical attack]": 6.5,
+        "[physical defense]": 6.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1,
+        "[hp max]": 40,
+        "[inventory limit]": 300,
+        "[magical attack]": 4.5,
+        "[magical defense]": 4.5,
+        "[mp max]": 30,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.5,
+        "[physical defense]": 4.5
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148026880,
+            "number": 950
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1145569280,
+            "number": 800
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1126170624,
+            "number": 160
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1193033728,
+            "number": 40000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1139474432,
+            "number": 470
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 80
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1085276160,
+            "number": 5.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1085276160,
+            "number": 5.5
+          }
+        ],
+        "[module damage rate]": [
+          {
+            "type": 2,
+            "value": 1065772646,
+            "number": 1.05
+          },
+          {
+            "type": 2,
+            "value": 1065353216,
+            "number": 1
+          },
+          {
+            "type": 2,
+            "value": 1065772646,
+            "number": 1.05
+          },
+          {
+            "type": 2,
+            "value": 1036831949,
+            "number": 0.1
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1146060800,
+            "number": 830
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1126170624,
+            "number": 160
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        47,
+        1,
+        1,
+        4,
+        1,
+        1,
+        190,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "169": 0,
+        "4": 2,
+        "47": 1
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 404000089
+        },
+        {
+          "type": 0,
+          "value": 404030089
+        },
+        {
+          "type": 0,
+          "value": 104010559
+        },
+        {
+          "type": 0,
+          "value": 404020085
+        },
+        {
+          "type": 0,
+          "value": 104010559
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        }
+      ],
+      "default_appearance_indices": [
+        47000,
+        47400,
+        -1,
+        48600,
+        49000,
+        49800,
+        -1,
+        -1,
+        50200,
+        -1,
+        31000
+      ]
+    },
+    "3": {
+      "id": 3,
+      "path": "character/mage/mage.chr",
+      "raw_sha256": "acd708cdfcb2656279fb55c3abfda074074421f10654a824cfc099e2f3e3aa29",
+      "job": "[mage]",
+      "initial_attributes": {
+        "[attack speed]": 1000,
+        "[cast speed]": 1000,
+        "[hit recovery]": 500,
+        "[hp max]": 120,
+        "[inventory limit]": 34000,
+        "[jump power]": 350,
+        "[jump speed]": 55,
+        "[magical attack]": 7.5,
+        "[magical defense]": 7.5,
+        "[move speed]": 820,
+        "[mp max]": 200,
+        "[mp regen speed]": 80,
+        "[physical attack]": 4.5,
+        "[physical defense]": 4.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1,
+        "[hp max]": 35,
+        "[inventory limit]": 250,
+        "[magical attack]": 5,
+        "[magical defense]": 5,
+        "[mp max]": 35,
+        "[mp regen speed]": 4,
+        "[physical attack]": 4,
+        "[physical defense]": 4
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1140457472,
+            "number": 500
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1123024896,
+            "number": 120
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1191497728,
+            "number": 34000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1135542272,
+            "number": 350
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 55
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1145896960,
+            "number": 820
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1128792064,
+            "number": 200
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1117782016,
+            "number": 80
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        12,
+        1,
+        1,
+        190,
+        1,
+        1,
+        11,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "12": 1,
+        "169": 0
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 406030091
+        },
+        {
+          "type": 0,
+          "value": 106020596
+        },
+        {
+          "type": 0,
+          "value": 406000082
+        },
+        {
+          "type": 0,
+          "value": 106040493
+        },
+        {
+          "type": 0,
+          "value": 106040493
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 400190158
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 400090160
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 400140158
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 400240158
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 400290164
+        }
+      ],
+      "default_appearance_indices": [
+        51265,
+        51400,
+        -1,
+        52600,
+        53000,
+        53800,
+        -1,
+        -1,
+        54200,
+        -1,
+        33679
+      ]
+    },
+    "4": {
+      "id": 4,
+      "path": "character/priest/priest.chr",
+      "raw_sha256": "af79ba6d64f9d417b7946835027041f0549422d46ef3ee33c425a6095b10fb3d",
+      "job": "[priest]",
+      "initial_attributes": {
+        "[attack speed]": 950,
+        "[cast speed]": 1000,
+        "[hit recovery]": 500,
+        "[hp max]": 220,
+        "[inventory limit]": 48000,
+        "[jump power]": 440,
+        "[jump speed]": 100,
+        "[magical attack]": 4.5,
+        "[magical defense]": 6.5,
+        "[move speed]": 800,
+        "[mp max]": 100,
+        "[mp regen speed]": 50,
+        "[physical attack]": 6.5,
+        "[physical defense]": 6.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1,
+        "[hp max]": 50,
+        "[inventory limit]": 300,
+        "[magical attack]": 4,
+        "[magical defense]": 4.5,
+        "[mp max]": 20,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.7,
+        "[physical defense]": 4.8
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148026880,
+            "number": 950
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1140457472,
+            "number": 500
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1130102784,
+            "number": 220
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1195081728,
+            "number": 48000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1138491392,
+            "number": 440
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 100
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1145569280,
+            "number": 800
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1120403456,
+            "number": 100
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        1,
+        1,
+        1,
+        190,
+        1,
+        1,
+        8,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "1": 1,
+        "169": 0,
+        "8": 2
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 108000525
+        },
+        {
+          "type": 0,
+          "value": 408020081
+        },
+        {
+          "type": 0,
+          "value": 408040086
+        },
+        {
+          "type": 0,
+          "value": 408030085
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400190158
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 400190158
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400090160
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 400090160
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400140158
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 400140158
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400240158
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 400240158
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400290164
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 400290164
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ],
+      "default_appearance_indices": [
+        -1,
+        55400,
+        55820,
+        56600,
+        57000,
+        57800,
+        -1,
+        -1,
+        58200,
+        -1,
+        35000
+      ]
+    },
+    "5": {
+      "id": 5,
+      "path": "character/gunner/atgunner.chr",
+      "raw_sha256": "b638b169993bb15ff7daf17e3ba41d74a58d539c83acbf8f7fc52788ddbde7f7",
+      "job": "[at gunner]",
+      "initial_attributes": {
+        "[attack speed]": 950,
+        "[cast speed]": 800,
+        "[hit recovery]": 550,
+        "[hp max]": 150,
+        "[inventory limit]": 40000,
+        "[jump power]": 440,
+        "[jump speed]": 80,
+        "[magical attack]": 5.5,
+        "[magical defense]": 5.5,
+        "[move speed]": 850,
+        "[mp max]": 170,
+        "[mp regen speed]": 50,
+        "[physical attack]": 6.5,
+        "[physical defense]": 6.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1,
+        "[hp max]": 37.5,
+        "[inventory limit]": 300,
+        "[magical attack]": 4.5,
+        "[magical defense]": 4.5,
+        "[mp max]": 32.5,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.5,
+        "[physical defense]": 4.5
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148026880,
+            "number": 950
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1145569280,
+            "number": 800
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1141473280,
+            "number": 550
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1125515264,
+            "number": 150
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1193033728,
+            "number": 40000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1138491392,
+            "number": 440
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 80
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1085276160,
+            "number": 5.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1085276160,
+            "number": 5.5
+          }
+        ],
+        "[module damage rate]": [
+          {
+            "type": 2,
+            "value": 1064514355,
+            "number": 0.95
+          },
+          {
+            "type": 2,
+            "value": 1065353216,
+            "number": 1
+          },
+          {
+            "type": 2,
+            "value": 1065353216,
+            "number": 1
+          },
+          {
+            "type": 2,
+            "value": 1036831949,
+            "number": 0.1
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1146388480,
+            "number": 850
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1126825984,
+            "number": 170
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        4,
+        1,
+        1,
+        190,
+        1,
+        1,
+        47,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "169": 0,
+        "4": 1,
+        "47": 2
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 404000089
+        },
+        {
+          "type": 0,
+          "value": 404030089
+        },
+        {
+          "type": 0,
+          "value": 104010559
+        },
+        {
+          "type": 0,
+          "value": 404040087
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ],
+      "default_appearance_indices": [
+        1600000,
+        1610000,
+        55820,
+        1640000,
+        1650000,
+        1670000,
+        -1,
+        -1,
+        1680000,
+        -1,
+        31000
+      ]
+    },
+    "6": {
+      "id": 6,
+      "path": "character/thief/thief.chr",
+      "raw_sha256": "e226e711e7be1ed2bad14b2dd42407fbb4c37eb662dc1b15a14b705d7a8b2dc7",
+      "job": "[thief]",
+      "initial_attributes": {
+        "[attack speed]": 1000,
+        "[cast speed]": 1000,
+        "[hit recovery]": 600,
+        "[hp max]": 170,
+        "[inventory limit]": 43000,
+        "[jump power]": 465,
+        "[jump speed]": 125,
+        "[magical attack]": 6.5,
+        "[magical defense]": 4.5,
+        "[move speed]": 960,
+        "[mp max]": 150,
+        "[mp regen speed]": 50,
+        "[physical attack]": 7.5,
+        "[physical defense]": 5.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1.5,
+        "[hp max]": 42.5,
+        "[inventory limit]": 270,
+        "[magical attack]": 5,
+        "[magical defense]": 4,
+        "[mp max]": 27.5,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 5,
+        "[physical defense]": 4
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1126825984,
+            "number": 170
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1193801728,
+            "number": 43000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1139310592,
+            "number": 465
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 125
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1087373312,
+            "number": 6.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1148190720,
+            "number": 960
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1125515264,
+            "number": 150
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1085276160,
+            "number": 5.5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        1,
+        1,
+        1,
+        190,
+        1,
+        1,
+        24,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "1": 1,
+        "169": 0,
+        "24": 2
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 109000493
+        },
+        {
+          "type": 0,
+          "value": 409030059
+        },
+        {
+          "type": 0,
+          "value": 409040102
+        },
+        {
+          "type": 0,
+          "value": 109000493
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ],
+      "default_appearance_indices": [
+        1720000,
+        1730000,
+        -1,
+        1760000,
+        1770000,
+        1790000,
+        1750000,
+        -1,
+        1800000,
+        -1,
+        37000
+      ]
+    },
+    "7": {
+      "id": 7,
+      "path": "character/fighter/atfighter.chr",
+      "raw_sha256": "46f58089a340c06acadf8ebd874934c6be9fe64d9272427d34c9ad157309d466",
+      "job": "[at fighter]",
+      "initial_attributes": {
+        "[attack speed]": 950,
+        "[cast speed]": 1000,
+        "[dark resistance]": -20,
+        "[hit recovery]": 600,
+        "[hp max]": 210,
+        "[inventory limit]": 43000,
+        "[jump power]": 470,
+        "[jump speed]": 110,
+        "[light resistance]": 20,
+        "[magical attack]": 4.5,
+        "[magical defense]": 4.5,
+        "[move speed]": 880,
+        "[mp max]": 110,
+        "[mp regen speed]": 50,
+        "[physical attack]": 7.5,
+        "[physical defense]": 7.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1.5,
+        "[hp max]": 50,
+        "[inventory limit]": 270,
+        "[magical attack]": 4,
+        "[magical defense]": 4,
+        "[mp max]": 18,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 5,
+        "[physical defense]": 5
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148026880,
+            "number": 950
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[dark resistance]": [
+          {
+            "type": 2,
+            "value": -1046478848,
+            "number": -20
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1129447424,
+            "number": 210
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1193801728,
+            "number": 43000
+          }
+        ],
+        "[item victory motion]": [
+          {
+            "type": 6,
+            "value": 37746190,
+            "text": "ATAnimation/Victory_Item1.ani"
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1139474432,
+            "number": 470
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 110
+          }
+        ],
+        "[light resistance]": [
+          {
+            "type": 2,
+            "value": 1101004800,
+            "number": 20
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[module damage rate]": [
+          {
+            "type": 2,
+            "value": 1062836634,
+            "number": 0.85
+          },
+          {
+            "type": 2,
+            "value": 1065353216,
+            "number": 1
+          },
+          {
+            "type": 2,
+            "value": 1065353216,
+            "number": 1
+          },
+          {
+            "type": 2,
+            "value": 1036831949,
+            "number": 0.1
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1146880000,
+            "number": 880
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1121714176,
+            "number": 110
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[victory motion]": [
+          {
+            "type": 6,
+            "value": 37746040,
+            "text": "ATAnimation/Victory1.ani"
+          },
+          {
+            "type": 6,
+            "value": 37746090,
+            "text": "ATAnimation/Victory2.ani"
+          },
+          {
+            "type": 6,
+            "value": 37746140,
+            "text": "ATAnimation/Victory3.ani"
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        174,
+        1,
+        1,
+        169,
+        1,
+        1,
+        5,
+        1,
+        1,
+        190,
+        1,
+        1,
+        46,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "169": 0,
+        "46": 2,
+        "5": 1
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 402000089
+        },
+        {
+          "type": 0,
+          "value": 402030087
+        },
+        {
+          "type": 0,
+          "value": 402020090
+        },
+        {
+          "type": 0,
+          "value": 402010090
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 400170168
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 400070174
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 400120169
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 400220168
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 400270172
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ],
+      "default_appearance_indices": [
+        -1,
+        29201,
+        -1,
+        29202,
+        29203,
+        29204,
+        -1,
+        -1,
+        29205,
+        -1,
+        29000
+      ]
+    },
+    "8": {
+      "id": 8,
+      "path": "character/mage/atmage.chr",
+      "raw_sha256": "3724bf5cd51c09e207394935e5ab53e4e36988236bbdbbabdfaa40646a478862",
+      "job": "[at mage]",
+      "initial_attributes": {
+        "[attack speed]": 1000,
+        "[cast speed]": 1000,
+        "[hit recovery]": 500,
+        "[hp max]": 115,
+        "[inventory limit]": 34000,
+        "[jump power]": 350,
+        "[jump speed]": 55,
+        "[magical attack]": 8,
+        "[magical defense]": 7.5,
+        "[move speed]": 830,
+        "[mp max]": 205,
+        "[mp regen speed]": 80,
+        "[physical attack]": 4,
+        "[physical defense]": 4.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1,
+        "[hp max]": 34.5,
+        "[inventory limit]": 250,
+        "[magical attack]": 5.5,
+        "[magical defense]": 5,
+        "[mp max]": 35.5,
+        "[mp regen speed]": 4,
+        "[physical attack]": 3.5,
+        "[physical defense]": 4
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1140457472,
+            "number": 500
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1122369536,
+            "number": 115
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1191497728,
+            "number": 34000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1135542272,
+            "number": 350
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 55
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1090519040,
+            "number": 8
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1146060800,
+            "number": 830
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1129119744,
+            "number": 205
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1117782016,
+            "number": 80
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1082130432,
+            "number": 4
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        179,
+        7,
+        1,
+        33,
+        1,
+        1,
+        174,
+        1,
+        1,
+        65,
+        1,
+        1,
+        169,
+        1,
+        1,
+        1,
+        1,
+        1,
+        190,
+        1,
+        1,
+        26,
+        1,
+        1,
+        511,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "1": 1,
+        "169": 0,
+        "26": 2
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 406030091
+        },
+        {
+          "type": 0,
+          "value": 106020596
+        },
+        {
+          "type": 0,
+          "value": 406000082
+        },
+        {
+          "type": 0,
+          "value": 406010080
+        },
+        {
+          "type": 0,
+          "value": 106040493
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 14400
+        },
+        {
+          "type": 0,
+          "value": 400150176
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 10400
+        },
+        {
+          "type": 0,
+          "value": 400050187
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 12400
+        },
+        {
+          "type": 0,
+          "value": 400100179
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 16400
+        },
+        {
+          "type": 0,
+          "value": 400200176
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 18400
+        },
+        {
+          "type": 0,
+          "value": 400250182
+        }
+      ],
+      "default_appearance_indices": [
+        -1,
+        2090000,
+        -1,
+        2120000,
+        2130000,
+        2150000,
+        -1,
+        2140000,
+        2160000,
+        -1,
+        33679
+      ]
+    },
+    "9": {
+      "id": 9,
+      "path": "character/swordman/dsswordman.chr",
+      "raw_sha256": "cd839687b7d020cbbef3d6d1fee7335faac39cc815ac6e69fa3ebc3acadc29e0",
+      "job": "[demonic swordman]",
+      "initial_attributes": {
+        "[attack speed]": 1000,
+        "[cast speed]": 1000,
+        "[dark resistance]": 20,
+        "[hit recovery]": 600,
+        "[hp max]": 180,
+        "[inventory limit]": 48000,
+        "[jump power]": 430,
+        "[jump speed]": 95,
+        "[light resistance]": -20,
+        "[magical attack]": 4.5,
+        "[magical defense]": 4.5,
+        "[move speed]": 850,
+        "[mp max]": 140,
+        "[mp regen speed]": 50,
+        "[physical attack]": 7.5,
+        "[physical defense]": 7.5,
+        "[weight]": 50000
+      },
+      "base_growth": {
+        "[hit recovery]": 1.5,
+        "[hp max]": 45,
+        "[inventory limit]": 300,
+        "[magical attack]": 4.2,
+        "[magical defense]": 4.2,
+        "[mp max]": 25,
+        "[mp regen speed]": 2.5,
+        "[physical attack]": 4.8,
+        "[physical defense]": 4.8
+      },
+      "initial_sections": {
+        "[attack speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[cast speed]": [
+          {
+            "type": 2,
+            "value": 1148846080,
+            "number": 1000
+          }
+        ],
+        "[dark resistance]": [
+          {
+            "type": 2,
+            "value": 1101004800,
+            "number": 20
+          }
+        ],
+        "[hit recovery]": [
+          {
+            "type": 2,
+            "value": 1142292480,
+            "number": 600
+          }
+        ],
+        "[hp max]": [
+          {
+            "type": 2,
+            "value": 1127481344,
+            "number": 180
+          }
+        ],
+        "[inventory limit]": [
+          {
+            "type": 2,
+            "value": 1195081728,
+            "number": 48000
+          }
+        ],
+        "[jump power]": [
+          {
+            "type": 2,
+            "value": 1138163712,
+            "number": 430
+          }
+        ],
+        "[jump speed]": [
+          {
+            "type": 0,
+            "value": 95
+          }
+        ],
+        "[light resistance]": [
+          {
+            "type": 2,
+            "value": -1046478848,
+            "number": -20
+          }
+        ],
+        "[magical attack]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[magical defense]": [
+          {
+            "type": 2,
+            "value": 1083179008,
+            "number": 4.5
+          }
+        ],
+        "[module damage rate]": [
+          {
+            "type": 2,
+            "value": 1062165545,
+            "number": 0.81
+          },
+          {
+            "type": 2,
+            "value": 1065353216,
+            "number": 1
+          },
+          {
+            "type": 2,
+            "value": 1065353216,
+            "number": 1
+          },
+          {
+            "type": 2,
+            "value": 1006834287,
+            "number": 0.008
+          }
+        ],
+        "[move speed]": [
+          {
+            "type": 2,
+            "value": 1146388480,
+            "number": 850
+          }
+        ],
+        "[mp max]": [
+          {
+            "type": 2,
+            "value": 1124859904,
+            "number": 140
+          }
+        ],
+        "[mp regen speed]": [
+          {
+            "type": 2,
+            "value": 1112014848,
+            "number": 50
+          }
+        ],
+        "[physical attack]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[physical defense]": [
+          {
+            "type": 2,
+            "value": 1089470464,
+            "number": 7.5
+          }
+        ],
+        "[weight]": [
+          {
+            "type": 2,
+            "value": 1195593728,
+            "number": 50000
+          }
+        ]
+      },
+      "initial_skill_cells": [
+        118,
+        1,
+        1,
+        119,
+        1,
+        1,
+        120,
+        1,
+        1,
+        121,
+        1,
+        1,
+        122,
+        1,
+        1,
+        123,
+        1,
+        1,
+        169,
+        1,
+        1,
+        46,
+        1,
+        1,
+        5,
+        1,
+        1,
+        8,
+        1,
+        1,
+        108,
+        1,
+        1,
+        172,
+        1,
+        1,
+        173,
+        1,
+        1,
+        187,
+        1,
+        1,
+        196,
+        1,
+        1,
+        33,
+        1,
+        1,
+        174,
+        1,
+        1,
+        197,
+        1,
+        1,
+        511,
+        1,
+        1,
+        501,
+        1,
+        1,
+        190,
+        1,
+        1,
+        491,
+        1,
+        1
+      ],
+      "initial_skill_slots": {
+        "108": 4,
+        "169": 0,
+        "46": 1,
+        "5": 2,
+        "8": 3
+      },
+      "create_equipment_cells": [
+        {
+          "type": 6,
+          "value": 37699342,
+          "text": "[weapon]"
+        },
+        {
+          "type": 0,
+          "value": 101010912
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699374,
+          "text": "[shoulder]"
+        },
+        {
+          "type": 0,
+          "value": 400180181
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699360,
+          "text": "[coat]"
+        },
+        {
+          "type": 0,
+          "value": 400080184
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699412,
+          "text": "[pants]"
+        },
+        {
+          "type": 0,
+          "value": 400130181
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699428,
+          "text": "[waist]"
+        },
+        {
+          "type": 0,
+          "value": 400230179
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 6,
+          "value": 37699396,
+          "text": "[shoes]"
+        },
+        {
+          "type": 0,
+          "value": 400280186
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        },
+        {
+          "type": 0,
+          "value": 0
+        }
+      ],
+      "default_appearance_indices": [
+        -1,
+        39400,
+        -1,
+        40600,
+        41000,
+        41800,
+        -1,
+        -1,
+        42200,
+        -1,
+        27118
+      ]
+    }
+  }
+}

@@ -1,0 +1,569 @@
+{
+  "503": {
+    "old": "The unique ID of the target object is DEFINE_ALL!",
+    "decision": "keep",
+    "reason": "engine object ID diagnostics"
+  },
+  "511": {
+    "old": "Packet [%2d] [%4d] times [%5.2f] per sec. Size[%5.1f]\\n",
+    "decision": "keep",
+    "reason": "packet debug trace"
+  },
+  "512": {
+    "old": "\\nTransmitted Packet Total [%d]\\nTransmission Speed per Min. [%d]\\n",
+    "decision": "keep",
+    "reason": "packet debug trace"
+  },
+  "514": {
+    "old": "Packet [%2d] [%4d] times [%5.2f] per sec. Size[%5.1f]\\n",
+    "decision": "keep",
+    "reason": "packet debug trace"
+  },
+  "515": {
+    "old": "\\nReceived Packet Total [%d]\\nTransmission Speed per Min. [%d]\\n",
+    "decision": "keep",
+    "reason": "packet debug trace"
+  },
+  "549": {
+    "old": "[Test Users]",
+    "decision": "keep",
+    "reason": "test-only marker"
+  },
+  "11378": {
+    "old": ".img files don't exist.\\nPlease check the live/First server images.",
+    "decision": "keep",
+    "reason": "development diagnostics for paired live/first image server"
+  },
+  "13005": {
+    "old": "tjsghTlWkdajtwla",
+    "decision": "keep",
+    "reason": "opaque keyboard/legacy token"
+  },
+  "13144": {
+    "old": "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "decision": "keep",
+    "reason": "alphabet lookup used as a literal"
+  },
+  "15141": {
+    "old": "-awk",
+    "decision": "keep",
+    "reason": "feature flag"
+  },
+  "19356": {
+    "old": "%s-%dGM",
+    "decision": "keep",
+    "reason": "GM technical label"
+  },
+  "21460": {
+    "old": "Mjpeg",
+    "decision": "keep",
+    "reason": "codec identifier"
+  },
+  "22078": {
+    "old": "DFOWebImg",
+    "decision": "keep",
+    "reason": "resource folder name"
+  },
+  "27034": {
+    "old": "if0gyfjdsmfugkfjbngamr2uf",
+    "decision": "keep",
+    "reason": "opaque identifier"
+  },
+  "27035": {
+    "old": ";dx'tj9dxjdjbngamr2uf",
+    "decision": "keep",
+    "reason": "opaque identifier"
+  },
+  "31485": {
+    "old": "ch%02d.%s",
+    "decision": "keep",
+    "reason": "generated filename format"
+  },
+  "31488": {
+    "old": "ch%d.%s",
+    "decision": "keep",
+    "reason": "generated filename format"
+  },
+  "31607": {
+    "old": "A|B|C|D|E|F|G|H|I|J|K|L|M|N|O|P|Q|R|S|T|U|V|W|XYZ",
+    "decision": "keep",
+    "reason": "pipe-delimited input alphabet"
+  },
+  "31623": {
+    "old": " XYZ (%d)",
+    "decision": "keep",
+    "reason": "XYZ control label"
+  },
+  "36027": {
+    "old": "SKT",
+    "decision": "keep",
+    "reason": "mobile carrier brand"
+  },
+  "36029": {
+    "old": "LG U+",
+    "decision": "keep",
+    "reason": "mobile carrier brand"
+  },
+  "36276": {
+    "old": "2D@+(vhxnw8h!xvb",
+    "decision": "keep",
+    "reason": "opaque identifier"
+  },
+  "36322": {
+    "old": "The internal packet processing methods do not match.",
+    "decision": "keep",
+    "reason": "internal protocol diagnostic"
+  },
+  "38334": {
+    "old": "naver.com",
+    "decision": "keep",
+    "reason": "domain literal"
+  },
+  "38335": {
+    "old": "hanmail.net",
+    "decision": "keep",
+    "reason": "domain literal"
+  },
+  "38337": {
+    "old": "nate.com",
+    "decision": "keep",
+    "reason": "domain literal"
+  },
+  "38340": {
+    "old": "hotmail.com",
+    "decision": "keep",
+    "reason": "domain literal"
+  },
+  "42453": {
+    "old": "Incorrect packet information.",
+    "decision": "keep",
+    "reason": "internal packet diagnostic"
+  },
+  "42569": {
+    "old": "2GM",
+    "decision": "keep",
+    "reason": "GM code"
+  },
+  "44375": {
+    "old": "JPEG (.jpg)",
+    "decision": "keep",
+    "reason": "image format and file extension"
+  },
+  "44376": {
+    "old": "TGA (.tga)",
+    "decision": "keep",
+    "reason": "image format and file extension"
+  },
+  "44377": {
+    "old": "PNG (.png)",
+    "decision": "keep",
+    "reason": "image format and file extension"
+  },
+  "48460": {
+    "old": "[Guild] Guild Main Character Setting packet sent",
+    "decision": "keep",
+    "reason": "packet-send debug line"
+  },
+  "60176": {
+    "old": "2D@+(vhxnw8h!xvb",
+    "decision": "keep",
+    "reason": "opaque identifier"
+  },
+  "90119": {
+    "old": "/news/sales/1617/lost-treasure-apr-2020",
+    "decision": "keep",
+    "reason": "web endpoint path"
+  },
+  "150452": {
+    "old": "Turned on Extract item info. Hover the cursor over an item and press F4 to extract its information as iteminfo.txt.",
+    "decision": "keep",
+    "reason": "developer data extraction debug message"
+  },
+  "100001294": {
+    "old": "JGG-312",
+    "decision": "keep",
+    "reason": "monster model code"
+  },
+  "100001367": {
+    "old": "RP : %d/%d",
+    "decision": "keep",
+    "reason": "rank-point acronym"
+  },
+  "100001368": {
+    "old": "RP : %d/-",
+    "decision": "keep",
+    "reason": "rank-point acronym"
+  },
+  "100007324": {
+    "old": "CP +%d%%%%",
+    "decision": "keep",
+    "reason": "CP abbreviation and numeric control"
+  },
+  "100085053": {
+    "old": "The generation list is sorted\\nbased on packet sizes.  ",
+    "decision": "keep",
+    "reason": "packet debug diagnostic"
+  },
+  "100088201": {
+    "old": "<positive_number1>",
+    "decision": "keep",
+    "reason": "internal formatter token"
+  },
+  "300002731": {
+    "old": "%d HH",
+    "decision": "keep",
+    "reason": "legacy abbreviated time format"
+  },
+  "279": {
+    "old": "/p [Message]: Party Chat\\n/g [Message]: Guild Chat\\n/w [Character Name] [Message]: Whisper\\n/m [Explorer Club Name] [Message]: Explorer Club Whisper\\n/r [Message]: Reply to the latest whisper\\n/re or /repeat: Resend the latest message\\n/j, /enter, /join, or /invite [Character Name]: Invite to your party or join a party\\n/out or /leave: Leave party\\n/v, /arena [Character Name], /invarena [Character Name]: Invite to Arena\\n/tr or /trade [Character Name]: Trade with another character\\n/target [Character Name]: Character Submenu window\\n/info [Character Name]: View the character's info\\n/ignore or /block [Character Name]: Block character",
+    "new": "/p [消息]：队伍聊天\\n/g [消息]：公会聊天\\n/w [角色名] [消息]：发送悄悄话\\n/m [冒险团名] [消息]：发送冒险团悄悄话\\n/r [消息]：回复最近一条悄悄话\\n/re 或 /repeat：重新发送上一条消息\\n/j、 /enter、 /join 或 /invite [角色名]：邀请入队或加入队伍\\n/out 或 /leave：退出队伍\\n/v、 /arena [角色名]、 /invarena [角色名]：邀请进入决斗场\\n/tr 或 /trade [角色名]：与其他角色交易\\n/target [角色名]：打开角色快捷菜单\\n/info [角色名]：查看角色信息\\n/ignore 或 /block [角色名]：屏蔽角色"
+  },
+  "300": {
+    "old": "/out or /leave: Leave a Party",
+    "new": "/out 或 /leave：退出队伍"
+  },
+  "301": {
+    "old": "/v, /arena [Character Name], /invarena [Character Name] : Invite to arena",
+    "new": "/v、 /arena [角色名]、 /invarena [角色名]：邀请进入决斗场"
+  },
+  "509": {
+    "old": "Elapsed Time: %dSec(s)",
+    "new": "已用时间：%d秒"
+  },
+  "529": {
+    "old": "Triple S Invitational",
+    "new": "三 S 邀请赛"
+  },
+  "575": {
+    "old": "New Guildsman",
+    "new": "新公会成员"
+  },
+  "577": {
+    "old": "New Guildsman",
+    "new": "新公会成员"
+  },
+  "579": {
+    "old": "New Guildsman",
+    "new": "新公会成员"
+  },
+  "581": {
+    "old": "New Guildsman",
+    "new": "新公会成员"
+  },
+  "583": {
+    "old": "New Guildsman",
+    "new": "新公会成员"
+  },
+  "585": {
+    "old": "New Guildsman",
+    "new": "新公会成员"
+  },
+  "587": {
+    "old": "New Guildsman",
+    "new": "新公会成员"
+  },
+  "1102": {
+    "old": "Pierce Defense",
+    "new": "穿刺防御"
+  },
+  "1205": {
+    "old": "Your number of Chasers has exceeded the limit.",
+    "new": "炫纹数量已达上限。"
+  },
+  "1266": {
+    "old": "Water Enchanted",
+    "new": "冰属性附魔"
+  },
+  "1525": {
+    "old": "Mentorship System Guide\\n \\nA. Add a Mentor or Apprentice\\n  1. In the Mentorship window, click \"Add.\"\\n  2. Enter the character's name, click \"Ok.\"\\n  3. If the character is at least 5 levels lower, they will be your Apprentice.\\n  4. If the character is at least 5 levels higher, they will be your Mentor.\\n \\nB. Mentorship Restrictions\\n  1. Mentors must be at least Level 20.\\n  2. You cannot have more than one Mentor at a time.\\n  3. A Mentor cannot have more than two Apprentices.\\n \\nC. Mentorship Benefits\\nBenefits are applied only when a Mentor and Apprentice party play together. If your Alliance level is 10, benefits are applied when a Mentor and Apprentice are logged in together.\\n \\n  1. Gold Bonus: When an Apprentice gains gold, a percentage of the gold will be given to their Mentor.\\n \\n  2. EXP Bonus: The Apprentice will receive Monster EXP + Dungeon Clear EXP + Bonus EXP simultaneously.\\n \\n  3. Fatigue Bonus: According to Alliance Level, when an Apprentice burns a certain amount of Fatigue Points, their Mentor gains one. ",
+    "new": "师徒系统指南\\n \\nA. 添加师父或徒弟\\n  1. 在师徒窗口中点击「添加」。\\n  2. 输入角色名，点击「确定」。\\n  3. 对方比你低至少 5 级时，可以成为你的徒弟。\\n  4. 对方比你高至少 5 级时，可以成为你的师父。\\n \\nB. 师徒限制\\n  1. 师父必须至少达到 20 级。\\n  2. 同一时间只能有一位师父。\\n  3. 一位师父最多收两名徒弟。\\n \\nC. 师徒奖励\\n师徒组队游戏时可享受奖励。师徒关系达到 10 级后，师徒同时在线即可享受奖励。\\n \\n  1. 金币奖励：徒弟获得金币时，师父可获得一定比例的金币。\\n \\n  2. 经验奖励：徒弟可同时获得怪物经验、通关经验和额外经验。\\n \\n  3. 疲劳值奖励：根据师徒关系等级，徒弟消耗一定疲劳值后，师父可获得一点疲劳值。 "
+  },
+  "1583": {
+    "old": "Water Enchanted",
+    "new": "冰属性附魔"
+  },
+  "3101": {
+    "old": "You can use multiple new characters to purchase the Challenger Package. If you purchase more than 1 Challenger Packages for 1 character, only 1 of the packages will be refundable.",
+    "new": "可用多个新角色购买挑战者礼包。若给 1 个角色购买超过 1 个挑战者礼包，最多只有 1 个礼包可退款。"
+  },
+  "3588": {
+    "old": "The skill requires Chasers.",
+    "new": "施放此技能需要炫纹。"
+  },
+  "4078": {
+    "old": "Pierce Resistance",
+    "new": "穿刺抗性"
+  },
+  "5138": {
+    "old": "during a Jump",
+    "new": "跳跃时"
+  },
+  "11143": {
+    "old": "1. The Small Numbers event is available to participate on Dec. 20 and 29, and Jan. 5 and 12 between 8-10 p.m.",
+    "new": "1. 小数字活动在十二月 20 日和 29 日、一月 5 日和 12 日开放，时间为晚上 8-10 点。"
+  },
+  "11147": {
+    "old": "Available to participate on Dec. 22 between 8-10 p.m.",
+    "new": "十二月 22 日晚上 8-10 点可参加。"
+  },
+  "11148": {
+    "old": "Available to participate on Dec. 29 between 8-10 p.m.",
+    "new": "十二月 29 日晚上 8-10 点可参加。"
+  },
+  "11150": {
+    "old": "Available to participate on Jan. 12 between 8-10 p.m.",
+    "new": "一月 12 日晚上 8-10 点可参加。"
+  },
+  "11374": {
+    "old": "SPR (%d)",
+    "new": "精神（%d）"
+  },
+  "11375": {
+    "old": "VIT (%d)/SPR (%d)",
+    "new": "体力（%d）/精神（%d）"
+  },
+  "15145": {
+    "old": "Reinforce your 2nd Awakening skills through the Clue of Awakening skill.\\n                  (Default selection: 2nd Awakening skills)",
+    "new": "通过「觉醒线索」强化第 2 次觉醒技能。\\n                  （默认选择：第 2 次觉醒技能）"
+  },
+  "21010": {
+    "old": "Peaceful Server without Fights\\nLarge amount of EXP and Life Tokens given\\nBurning time every Wednesday 1pm - 4pm.",
+    "new": "和平服务器，不可进行对战。\\n可获得大量经验和复活币。\\n每周三下午 1 点 - 4 点开启双倍活动。"
+  },
+  "27235": {
+    "old": "Seismic Wave generator gathers enemies towards it's center and deals multiple damage on them.\\nDrop position can be controlled by movement key.",
+    "new": "地脉震荡器会将敌人牵引到中心，并对其造成多段伤害。\\n可用方向键控制投放位置。"
+  },
+  "27332": {
+    "old": "You can send up a minimum of 1,000 Clear Cubes to each player.\\nYour name and the watched Replay clip name will be displayed to the recipient.",
+    "new": "每次赠送给一名玩家的无色小晶块不能少于 1,000 个。\\n收件人可以看到你的名字和你观看的回放名称。"
+  },
+  "27350": {
+    "old": "Your Replay storage period decreases daily at midnight.",
+    "new": "每天午夜，回放的剩余保存天数会减少。"
+  },
+  "27363": {
+    "old": "You have less than 1,300 RP.\\n\\nThe Replay clips that you registered to the server will be deleted after midnight.\\n\\n(Maintain at least 2,400 RP to retain your Replay clips.)",
+    "new": "你的决斗积分（RP）低于 1,300。\\n\\n你上传到服务器的回放将在午夜后删除。\\n\\n（保持至少 2,400 RP 可保留回放。）"
+  },
+  "29042": {
+    "old": "Transforms you into G-0 Battleroid while using G-1, G-2, and G-3, and inflicts powerful Magical Damage with Gatling Attack, Missile Attack, and Laser Attack.",
+    "new": "变身为 G-0 战斗机器人，同时使用 G-1、G-2 与 G-3，以机枪、导弹和激光造成强力魔法伤害。"
+  },
+  "30230": {
+    "old": "The playtime for the current page has increased + 5 minutes.",
+    "new": "当前阶段的剩余时间 +5 分钟。"
+  },
+  "30300": {
+    "old": "Increases the remaining playtime + 5 minutes. (Cooldown: 120 min.)",
+    "new": "剩余攻坚时间 +5 分钟。（冷却：120 分钟）"
+  },
+  "30301": {
+    "old": "Increases Physical/Magical/Independent Attack Strengths + 15%% for the entire Raid. (Cooldown: 7 min.)",
+    "new": "整个攻坚队的物理、魔法和独立攻击力 +15%%。（冷却：7 分钟）"
+  },
+  "30302": {
+    "old": "The party becomes Invincible (immune to all damage). (Cooldown: 6 min.)",
+    "new": "队伍进入无敌状态，免疫一切伤害。（冷却：6 分钟）"
+  },
+  "30303": {
+    "old": "Restores the party's HP/MP + 7%% every second for 1 minute. (Cooldown: 4 min.)",
+    "new": "队伍每秒恢复 +7%% HP 和 MP，持续 1 分钟。（冷却：4 分钟）"
+  },
+  "30304": {
+    "old": "Increases the party's remaining Life Tokens + 4. (The remaining number of Life Tokens cannot exceed the maximum limit. Cooldown: 5 min.)",
+    "new": "队伍剩余复活币使用次数 +4。（不会超过次数上限。冷却：5 分钟）"
+  },
+  "30312": {
+    "old": "The playtime for the current page has increased + 5 minutes.",
+    "new": "当前阶段的剩余时间 +5 分钟。"
+  },
+  "30404": {
+    "old": "Get Matryoshka Accumulation Reward",
+    "new": "领取套娃累积奖励"
+  },
+  "38158": {
+    "old": "The Max Level Dictionary event is in progress. You can earn EXP up to 99.99%% at Level 70 for the event period.",
+    "new": "满级词典活动进行中。活动期间经验最高可累计至 99.99%%（70 级）。"
+  },
+  "40097": {
+    "old": "SPD+%d%%",
+    "new": "速度+%d%%"
+  },
+  "46031": {
+    "old": "%d EA",
+    "new": "%d 个"
+  },
+  "46072": {
+    "old": " %d EA",
+    "new": " %d 个"
+  },
+  "46262": {
+    "old": "EA: %s",
+    "new": "数量：%s"
+  },
+  "46314": {
+    "old": "Will you refuse %sto join your guild?",
+    "new": "是否拒绝%s加入公会？"
+  },
+  "47738": {
+    "old": " %d/%d EA)",
+    "new": " %d/%d 个）"
+  },
+  "49130": {
+    "old": "OV(A) : %d/%d",
+    "new": "异界（A）：%d/%d"
+  },
+  "49131": {
+    "old": "OV(B) : %d/%d",
+    "new": "异界（B）：%d/%d"
+  },
+  "60099": {
+    "old": "A keyword must be entered to search the \"All\" category.",
+    "new": "在「全部」分类下搜索时，必须输入关键词。"
+  },
+  "65085": {
+    "old": "ToA: %d/%d",
+    "new": "绝望之塔：%d/%d"
+  },
+  "75474": {
+    "old": "You can receive the [Fiend War] Invasion of the Cosmo Fiends (1/2) quest through Seria at Level 90.",
+    "new": "可在赛丽亚处领取「[超时空之战]宇宙恶魔的入侵（1/2）」任务，要求达到 90 级。"
+  },
+  "75594": {
+    "old": "<npc::0>This doesn't look like it has any useful information.",
+    "new": "<npc::0>这里似乎没有什么有用的线索。"
+  },
+  "100019022": {
+    "old": "P.War",
+    "new": "魔界大战"
+  },
+  "100019026": {
+    "old": "P.War: %d/%d ",
+    "new": "魔界大战：%d/%d "
+  },
+  "100022130": {
+    "old": "<How to Join the Event>\\n* I'll Give You a Gift Every Day!\\n- Remain online for 20 minutes and 21 seconds daily to help Bubba reach his destination.\\n- You'll get a gift box when he reaches his destination.\\n- You can receive your 3-piece Renaming Ticket Set Box between January 1 and January 2 before 6:00 a.m.\\n- From January 1 to 6:00 a.m. on January 2 counts as 1 day.\\n\\n* I'll Give You More Gifts on Special Days!\\n- This is based on the number of gift boxes you get.\\n- You'll get a reward for the 1st, 3rd, and 5th gift box you receive.",
+    "new": "<参与活动>\\n* 每天送你一份礼物！\\n- 每天在线 20 分钟 21 秒，帮助巴巴抵达目的地。\\n- 抵达目的地后，他会送你一个礼盒。\\n- 可领取含 3 张更名券的套装礼盒，领取时间为一月 1 日至一月 2 日上午 6:00 之前领取。\\n- 从一月 1 日到上午 6:00（一月 2 日）算作 1 天。\\n\\n* 特殊日子会有额外礼物！\\n- 奖励根据领取的礼盒数量发放。\\n- 领取第 1、3、5 个礼盒时，将获得额外奖励。"
+  },
+  "100022211": {
+    "old": "Only 1 of the 2 Traits per grade can be selected.",
+    "new": "每个等级只能选择 1 项特性（共 2 项）。"
+  },
+  "100030862": {
+    "old": "SUB",
+    "new": "副属性"
+  },
+  "100060006": {
+    "old": "This Re-experience quest can only be performed in the exclusive town until the scheduled maintenance on Nov 08, 2022. ",
+    "new": "此重温剧情任务只可在专属城镇完成，开放至十一月 08 日（2022 年）的计划维护前。 "
+  },
+  "300000143": {
+    "old": "Increases Gold gain from 7 to 15 Gold per 5 sec.",
+    "new": "金币获取量由 7 提升至 15 金币，每 5 秒结算一次。"
+  },
+  "300000151": {
+    "old": "Dungeon can be entered after accepting \"The Merchant's Test\" quest from NPC Merchant Triss.",
+    "new": "在商人特莉丝处接受「商人的考验」后，即可进入地下城。"
+  },
+  "300000182": {
+    "old": "Challenge! Chain Rush\\nYou can only get 1 Mini-game Heaven reward daily after 6:00 a.m.\\nYou already collected your reward for the day. This mini-game's results reward won't be Mailed to you.",
+    "new": "挑战！连锁冲刺\\n每天可获得 1 次小游戏乐园奖励，上午 6:00 后可领取。\\n你今天已领取过奖励，本局小游戏结算奖励不会通过邮件发放。"
+  },
+  "300000561": {
+    "old": "(Cooldown: 25 sec.)\\nGoblin Troops regenerate 15%% HP over 12.5 seconds.",
+    "new": "（冷却：25 秒）\\n哥布林部队恢复 15%% HP，历时 12.5 秒。"
+  },
+  "300000591": {
+    "old": "(Cooldown: 30 sec.)\\nActivates one of the four following buffs randomly for all allies.\\n1. Increases Atk. by 20%% for 20 seconds.\\n2. Heals 20%% of HP over 5 seconds.\\n3 Increases Movement and Attack Speed by 25%% for 20 seconds.\\n4. Reduces damage received by 20%% for 10 seconds.",
+    "new": "（冷却：30 秒）\\n随机为所有友方单位施加以下一种增益。\\n1. 攻击力提升 20%%，持续 20 秒。\\n2. 恢复 20%% HP，历时 5 秒。\\n3. 移动速度和攻击速度提升 25%%，持续 20 秒。\\n4. 受到的伤害减少 20%%，持续 10 秒。"
+  },
+  "300000609": {
+    "old": "Active skills are enhanced, increasing skill effects.\\n\\n[Revelation]\\n1. Increases Atk. by 30%% for 20 seconds.\\n2. Heals 30%% of HP over 1 second.\\n3. Increases Movement Speed by 23%% and Attack Speed by 30%% for 20 seconds.\\n4. Reduces damage received by 30%% for 10 seconds.\\n\\n[Prophecy]\\n1. Adds Burn to pillars of fire, dealing 150%% damage.\\n2. Enemies hit by lighting will take 150%% damage and be Stunned for 2 seconds.\\n3 Icy areas appear with pillars of ice, inflicting Slow.\\n4. Orbs of darkness Taunt enemies, forcing them to attack.",
+    "new": "主动技能得到强化，技能效果提升。\\n\\n[启示]\\n1. 攻击力提升 30%%，持续 20 秒。\\n2. 恢复 30%% HP，历时 1 秒。\\n3. 移动速度提升 23%%、攻击速度提升 30%%，持续 20 秒。\\n4. 受到的伤害减少 30%%，持续 10 秒。\\n\\n[预言]\\n1. 火柱附加灼伤，造成 150%% 伤害。\\n2. 被雷电击中的敌人受到 150%% 伤害，并眩晕 2 秒。\\n3. 地面出现冰区，使敌人减速。\\n4. 黑暗球体嘲讽敌人，强制其进行攻击。"
+  },
+  "300000726": {
+    "old": "(Cooldown: 30 sec.)\\nTau Legion regenerates 20%% HP over 15 seconds.",
+    "new": "（冷却：30 秒）\\n牛头怪军团恢复 20%% HP，历时 15 秒。"
+  },
+  "300001688": {
+    "old": "District 9",
+    "new": "第 9 区"
+  },
+  "300001983": {
+    "old": "At 30%% or lower HP, recovers 30%% of HP over 5 sec. once.",
+    "new": "HP 降至 30%% 或以下时，恢复 30%% HP，历时 5 秒。仅触发一次。"
+  },
+  "300002145": {
+    "old": "Inflicts 20%% more damage on enemies with 30%% or lower HP.",
+    "new": "对 HP 不高于阈值的敌人额外造成 20%% 伤害；该阈值为 30%% HP。"
+  },
+  "300002448": {
+    "old": "(Cooldown: 10 sec.) Throws a spinning pincer that follows enemies. This pincer inflicts a total of 435%% damage as it moves 3 times, and then returns.",
+    "new": "（冷却：10 秒）投出会追踪敌人的旋转巨钳。巨钳总计造成 435%% 伤害，移动 3 次后返回。"
+  },
+  "300002496": {
+    "old": "Increases the number of Normal Attack flowers.\\nDay: Flowers inflict 171%% damage on their target, with 38%% damage on 2 enemies around it. Increase 2 allies' Atk. +10%% for 5 sec.\\nNight: Flowers inflict 245%% damage on their target, with 55%% damage on 2 enemies around it.",
+    "new": "增加普通攻击时生成的花朵数量。\\n白昼：花朵对目标造成 171%% 伤害，对周围敌人造成 38%% 伤害（最多 2 个）。2 名友方单位攻击力 +10%%，持续 5 秒。\\n黑夜：花朵对目标造成 245%% 伤害，对周围敌人造成 55%% 伤害（最多 2 个）。"
+  },
+  "300002579": {
+    "old": "Products are updated daily at 09:00 UTC.",
+    "new": "商品每天 UTC 09:00 刷新。"
+  },
+  "400001353": {
+    "old": "Rewards for each phase can be obtained only once a day.",
+    "new": "每个阶段的奖励每天只能领取一次。"
+  },
+  "38010": {
+    "old": "/pvpfr /Arena Friends: <Only See Friends in the Arena> Status.",
+    "new": "/pvpfr /Arena Friends：<决斗场仅显示好友>状态。"
+  },
+  "38009": {
+    "old": "/fr /Friends : <I Only Want To See Friends> Status",
+    "new": "/fr /Friends：<仅显示好友>状态。"
+  },
+  "38008": {
+    "old": "/solo  /Alone: <I Want To Be Alone> Status",
+    "new": "/solo  /Alone：<免打扰>状态。"
+  },
+  "139": {
+    "old": "The Mage is gifted with a mysterious power called Magic. She appears to be a Human girl, but is actually from Pandemonium, a place hidden in a veil of mystery from the Humans of Arad Continent.\\n \\n- Long range character using magic.\\n - Can inflict great damage on a large area.\\n- Has considerably low Physical Strength and Defense; uses various skills to compensate for these weaknesses.\\n \\n<Advancement: Elemental Master> Pure Mage who employs and intensifies the power of elements.\\n \\n - Uses powerful long range Magical Attack skills utilizing the power of 4 elements.\\n- Uses skills such as Arctic Feast to inflict great damage on large areas.\\n - Can master a specific element to maximize that element's destructive power.\\n \\n<Advancement: Summoner> Mage who summons Fairies and Monsters to fight for her.\\n \\n - Summon fairies of 4 elements.\\n - Summon monsters through contracts.\\n - Uses various skills to control her summoned creatures.\\n  - As her skill levels rise, her summoned creatures become more powerful, and the maximum summoning number of creatures increases.\\n - Summons Kasijas the Fourth Apostle.\\n \\n<Advancement: Witch> Curious Mage who has taken a great interest in science.\\n \\n - Carries a creature called a Familiar that was created through alchemy.\\n - Uses various attack skills with magical devices that are created with her witchcraft.\\n - Her witchcraft is incomplete and may cause unexpected effects during combat.\\n - Can wear Leather Armor.\\ - Can use the Witch's traditional weapon, Broomstick, that enables her to fly in the sky.\\n \\n<Advancement: Battle Mage> Mage who has focused on physical combat skills to survive this tough world.\\n \\n - Specializes in melee attacks.\\n - Create various Chasers from afar while fighting enemies within short range.\\n - Specializes in Spears and Poles, performing fast and powerful attacks.\\n - Wears Leather Armor; increases Attack Speed and Critical Chance.\\n - Can transform into a female warrior with ultimate combat power.\\n - The only Mage who can learn weapon masteries.",
+    "new": "法师拥有一种名为“魔法”的神秘力量。她看起来像一个人类女孩，但实际上来自魔界——一个被神秘面纱笼罩、远离阿拉德大陆人类视线的地方。\\n \\n- 使用魔法的远程角色。\\n - 能在大范围内造成巨大伤害。\\n- 其体力与防御力极低；通过多种技能来弥补这些弱点。\\n \\n<转职：元素师> 运用并强化元素力量的纯法师。\\n \\n - 使用由 4 元素力量所驱动的强大远程魔法攻击技能。\\n- 使用如“北极盛宴”这样的技能，对大范围区域造成巨大伤害。\\n - 可以掌握特定元素，从而最大化该元素的破坏力。\\n \\n<转职：召唤师> 能召唤精灵与怪物来为她战斗的法师。\\n \\n - 召唤 4 元素的精灵。\\n - 通过契约召唤怪物。\\n - 使用各种技能来控制她召唤的生物。\\n  - 随着她的技能等级提升，她召唤的生物会变得更强大，同时最大召唤数量也会增加。\\n - 召唤第四使徒卡西利亚斯。\\n \\n<转职：魔道学者> 对科学充满兴趣的奇奇趣魔法师。\\n \\n - 携带一个通过炼金术创造的生物，名为“随从”。\\n - 使用她魔法所创造的魔法装置上的各种攻击技能。\\n - 她的魔法能力并不完整，在战斗中可能会产生意想不到的效果。\\n - 可以穿戴皮革护甲。\\ - 可以使用女巫的传统武器——扫帚，从而能在天空中飞行。\\n \\n<转职：战斗法师> 专注于肉体战斗技巧以在这个艰难世界中生存的法师。\\n \\n - 擅长近战攻击。\\n - 在与近距离敌人战斗的同时，从远处创建各种炫纹。\\n - 专攻矛和棍棒，能发动快速而有力的攻击。\\n - 穿着皮革护甲；提升攻击速度和暴击几率。\\n - 可转化为拥有终极战斗力的女性战士。\\n - 唯一能学会武器技巧的法师。"
+  },
+  "31249": {
+    "old": "Do you want to use the item?\\contained item(s) cannot be traded.",
+    "new": "确定要使用该物品吗？\\内含物品无法交易。"
+  },
+  "44314": {
+    "old": "Training EXP: %d/%d\\nThe Training Level cannot increase because the character level is too low.\\Level %d required.",
+    "new": "修炼经验：%d/%d\\n角色等级过低，无法提升修炼等级。\\需要达到 %d 级。"
+  },
+  "100088011": {
+    "old": "All the materials, including the equipment, will disappear upon rowing options.\\n\\nIf the target Level 105 Epic equipment's average option level is low, @its damage may be decreased slightly@ after the growth.\\nWe recommend Level 105 Epic equipment's average option level be at least 11.\\n\\nDo you really want to continue?",
+    "new": "进行属性成长时，包括材料装备在内的所有材料都会消失。\\n\\n如果目标 105 级史诗装备的平均属性等级较低，成长后@伤害可能略有下降@。\\n建议 105 级史诗装备的平均属性等级至少为 11。\\n\\n确定继续吗？"
+  },
+  "100088370": {
+    "old": "@The selected option of the equipment to receive transfer has a higher level than the selected option of the material equipment.@\\nAll material equipment and material items will be consumed and gone after Option Transfer.\\nOptions excluding the selected option of the equipment to receive transfer will be fixed to the current status, and cannot be changed later.\\n\\nDo you wish to continue?\\n\\nPlease type \"@Transfer Now@\" if you wish to transfer options.",
+    "new": "@接受转移的装备所选属性等级高于材料装备的对应属性。@\\n属性转移会消耗所有材料装备和材料。\\n接受转移的装备中，除所选属性外，其余属性将保持当前状态，之后不可更改。\\n\\n确定继续吗？\\n\\n如需转移，请输入 \"@Transfer Now@\"。"
+  },
+  "100088590": {
+    "old": "@Please check!@\\nThe current equipment already has an Enchanting effect\\non it.\\nIf you enchanting it again, the existing effect will disappear.\\nIf you want to continue, please enter \"@enchant@.\"",
+    "new": "@请注意！@\\n当前装备已附魔。\\n请核对现有附魔。\\n重新附魔后，原有附魔会消失。\\n如需继续，请输入 \"@enchant@.\""
+  },
+  "21450": {
+    "old": "Display all skill effects.",
+    "new": "显示全部技能特效。"
+  },
+  "21451": {
+    "old": "Display your skill effects.\\n(Only some party skill effects will be displayed.)",
+    "new": "完整显示自身技能特效。\\n（仅显示部分队友技能特效。）"
+  },
+  "21452": {
+    "old": "Display some skill effects. \\n(Improves gameplay at the cost of graphics.)",
+    "new": "只显示部分技能特效。 \\n（降低画面表现以提升运行流畅度。）"
+  },
+  "60506": {
+    "old": "你可以注册一个Aura装扮\\n并改变动画效果\\n一种装备好的光环。\\n*氛围选项不受影响。\\n右键点击或拖拽以登记装扮。",
+    "new": "可登记一件光环装扮，\\n将其动画效果应用到\\n当前已装备的光环。\\n*不会影响光环属性。\\n右键点击或拖动即可登记装扮。"
+  }
+}

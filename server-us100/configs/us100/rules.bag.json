@@ -1,0 +1,36 @@
+{
+  "model": "reference90-bag-v1",
+  "source": "53ed298dbd69f43e28cbe4b3fa09a4c77d02eaf31d579e27e9477663c924fe69",
+  "slots": {
+    "[material expert job]": [233, 288],
+    "[quest]": [177, 232],
+    "[throw]": [
+      65,
+      120
+    ],
+    "[material]": [
+      121,
+      176
+    ]
+  },
+  "missing_stack_limit": 1000,
+  "slot_aliases": {
+    "[booster]": "[throw]",
+    "[booster selection]": "[throw]",
+    "[dungeon and life booster]": "[throw]",
+    "[enchant waste]": "[throw]",
+    "[town and dungeon]": "[throw]",
+    "[unlimited town and dungeon]": "[throw]",
+    "[unlimited waste]": "[throw]",
+    "[waste]": "[throw]"
+  },
+  "equipment_slots": [
+    9,
+    64
+  ],
+  "quick_slots": [
+    0,
+    8
+  ],
+  "us100_note": "Values are the local reference model named by reference_sha256, not recovered US100 server values. Only the archive-version binding was moved to the US100 Script.pvf so the server cross-file version checks accept US100 catalogs."
+}

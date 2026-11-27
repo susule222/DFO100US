@@ -1,0 +1,1930 @@
+{
+  "385": [
+    "Recover %.1f HP per minute",
+    "每分钟恢复 %.1f 点生命值"
+  ],
+  "386": [
+    "Recover %.1f MP per minute",
+    "每分钟恢复 %.1f 点魔法值"
+  ],
+  "401": [
+    "This Avatar cannot be discarded.",
+    "这个装扮无法丢弃。"
+  ],
+  "473": [
+    "Avatar Bonus EXP:\\nYou receive bonus EXP while equipped with an Avatar item.\\nSingle Play: +2%%\\nTeam Play: +5%%",
+    "装扮经验加成：\\n穿戴装扮时额外获得经验。\\n单人：+2%%\\n组队：+5%%"
+  ],
+  "542": [
+    "[Avatar]",
+    "[装扮]"
+  ],
+  "906": [
+    "Please select the abilities for the Avatar before purchase.",
+    "购买前请选择装扮属性。"
+  ],
+  "907": [
+    "Please select the retention period for the Avatar before purchase.",
+    "购买前请选择装扮期限。"
+  ],
+  "986": [
+    "Hat Avatar",
+    "帽子装扮"
+  ],
+  "987": [
+    "Hair Avatar",
+    "头发装扮"
+  ],
+  "988": [
+    "Face Avatar",
+    "脸部装扮"
+  ],
+  "989": [
+    "Top Avatar",
+    "上衣装扮"
+  ],
+  "990": [
+    "Bottom Avatar",
+    "下装装扮"
+  ],
+  "991": [
+    "Shoes Avatar",
+    "鞋子装扮"
+  ],
+  "992": [
+    "Torso Avatar",
+    "胸部装扮"
+  ],
+  "993": [
+    "Waist Avatar",
+    "腰部装扮"
+  ],
+  "1057": [
+    "Expires in : %d Day(s)",
+    "剩余期限：%d天"
+  ],
+  "1058": [
+    "Expires in : %d H",
+    "剩余期限：%d小时"
+  ],
+  "1059": [
+    "Unlimited",
+    "永久"
+  ],
+  "1063": [
+    "Recover %.*f HP per min(s)",
+    "每分钟恢复 %.*f 点生命值"
+  ],
+  "1064": [
+    "Recover %.*f MP per min(s)",
+    "每分钟恢复 %.*f 点魔法值"
+  ],
+  "1359": [
+    "Only the Permanent Avatar can be sold in the Personal Shop.",
+    "只有永久装扮才能在个人商店中出售。"
+  ],
+  "2074": [
+    "Only the Permanent Avatar can be sent.",
+    "只有永久装扮才能被发送。"
+  ],
+  "2150": [
+    "Insert an avatar.",
+    "请放入装扮。"
+  ],
+  "2151": [
+    "Only Avatars at the same grade can be compounded with each other.",
+    "只有同品级的装扮才能合成。"
+  ],
+  "2152": [
+    "Only Avatars of the same kind can be combined together.",
+    "只有相同部位的装扮才能合成。"
+  ],
+  "2153": [
+    "Only Avatars with unlimited period can be compounded with each other.",
+    "只有永久装扮才能合成。"
+  ],
+  "2155": [
+    "Unlimited",
+    "永久"
+  ],
+  "2158": [
+    "Randomly Select an Avatar Design:\\nSelecting the Random option creates a chance of generating a rare Avatar that can only be obtained through Avatar compositions.",
+    "随机选择装扮设计：\\n选择“随机”选项会增加生成稀有装扮的概率，而稀有装扮只能通过装扮合成获得。"
+  ],
+  "2159": [
+    "Only Avatars for your own class can be combined.",
+    "只能合成本职业的装扮。"
+  ],
+  "2163": [
+    "Avatar Composition Result",
+    "装扮合成结果"
+  ],
+  "2164": [
+    "Event Avatars, Rare Avatars or Skin Avatars cannot be used in the Bind Cube.",
+    "活动装扮、稀有装扮和皮肤装扮无法用于装扮合成器。"
+  ],
+  "2165": [
+    "This Avatar's retention period has expired.",
+    "该装扮已到期。"
+  ],
+  "2166": [
+    "You have obtained a Rare Avatar!",
+    "你获得了稀有装扮！"
+  ],
+  "2167": [
+    "Rare Avatars can only be compounded with clear Avatars.",
+    "稀有装扮只能与无色装扮合成。"
+  ],
+  "3010": [
+    "You must have at least 16 empty slots in the Avatar Inventory to purchase a Double Event Avatar. Please empty your Avatar Inventory first.",
+    "您必须在装扮栏中至少有 16 个空位，才能购买双活动装扮。请先清空您的装扮栏。"
+  ],
+  "3011": [
+    "The Double Event only applies if you purchase the full set of x2-marked Avatar items at once.\\nYou currently have not selected the entire set.\\nAre you sure that you want to purchase them without the rest?",
+    "“双重活动”仅适用于您一次性购买全套标记有“x2”的装扮时。\\n您目前尚未选择全部内容。\\n你确定要购买它们而不包含其他物品吗？"
+  ],
+  "3012": [
+    "Notice:\\nDouble Event has been applied to your purchase;\\nyou will receive 1 more set of the same Avatar items\\nupon completing this purchase.",
+    "注意：\\n“双活动”优惠已适用于您的购买行为；\\n你将收到 1 套相同的装扮物品\\n完成此购买后。"
+  ],
+  "3120": [
+    "Avatars: %d",
+    "装扮： %d"
+  ],
+  "3121": [
+    "Advanced Avatars: %d",
+    "高级装扮: %d"
+  ],
+  "3128": [
+    "Emblems: %d",
+    "徽章： %d"
+  ],
+  "3500": [
+    "Skin Avatar",
+    "皮肤装扮"
+  ],
+  "3552": [
+    "Unlimited",
+    "不限"
+  ],
+  "4721": [
+    "You have no Inventory Slot for these Avatar items. Please empty your Avatar Inventory, and then try again.",
+    "您没有可用于这些装扮的物品的库存位置。请清空您的装扮栏，然后再尝试一次。"
+  ],
+  "5440": [
+    "The Priest Avatar composition service is being prepared.",
+    "牧师装扮组合服务正在准备中。"
+  ],
+  "6257": [
+    "Avatar Vending Machine",
+    "装扮自动售货机"
+  ],
+  "6277": [
+    "Avatar Vending Machine Tooltip",
+    "装扮自动售货机提示词"
+  ],
+  "6306": [
+    "Avatar Vending Machine",
+    "装扮自动售货机"
+  ],
+  "6522": [
+    "This package contains avatar items for a different class. Continue with purchase?",
+    "此礼包包含不同职业的装扮物品。是否继续购买？"
+  ],
+  "6670": [
+    "Not all the Avatars have their stats selected.\\nPlease finish selecting Avatar stats.",
+    "并非所有装扮都已设置其属性。\\n请完成装扮属性的选择。"
+  ],
+  "11003": [
+    " (M)",
+    "（男）"
+  ],
+  "11004": [
+    " (F)",
+    "（女）"
+  ],
+  "11005": [
+    "%s%s Only",
+    "仅限%s%s"
+  ],
+  "11206": [
+    "Received ⑧⑧ Avatar Box.",
+    "收到⑧⑧个装扮盒。"
+  ],
+  "11207": [
+    "An error has occurred while receiving ⑧⑧ Avatar Box.",
+    "接收⑧⑧装扮箱时出现了错误。"
+  ],
+  "11332": [
+    "Equipped the free Arena Clone Avatar.",
+    "装备了免费的决斗场克隆装扮。"
+  ],
+  "11333": [
+    "Cannot issue the free Arena Clone Avatar. You have no empty slot in your inventory.",
+    "无法发放免费的决斗场克隆装扮。你的背包中没有空位。"
+  ],
+  "11334": [
+    "Your free Arena Clone Avatar has been unequipped.",
+    "你的免费决斗场克隆装扮已解除装备。"
+  ],
+  "11343": [
+    "Free Arena Clone Avatars cannot be used while characters are in the Mercenary Reward status.",
+    "自由竞技场克隆装扮在角色处于雇佣兵奖励状态时无法使用。"
+  ],
+  "11408": [
+    "Unlimited",
+    "不限"
+  ],
+  "13087": [
+    "Recover %.*f HP per Minute.",
+    "每分钟恢复 %.*f 点生命值。"
+  ],
+  "13088": [
+    "Recover %.*f MP per Minute.",
+    "每分钟恢复 %.*f 点魔法值。"
+  ],
+  "15045": [
+    "<Arena Season 5 Completion Reward>\\n\\nChanges your character's idle motion to befit its Advanced Class without compromising the abilities of your current Aura avatar. The copied design remains in effect as long as the original Avatar is kept in your inventory. If the Avatar is removed, then this item reverts to its default design at the next login.",
+    "<决斗场 5 完成奖励>\\n\\n在维持已有光环属性的状态下， 使角色的等待动作更符合转职特性。 复制属性的光环装扮在物品栏时， 该光环装扮的属性将被保留。 如果装扮消失， 将会在下次登录时恢复到基础属性。"
+  ],
+  "15119": [
+    "Time-limited Avatars and weapons found from\\nthe Avatar/Weapon Random Boxes\\nsold at NPC Chobung's Shop on the Arad Grand Clash server\\ncan only be used on that server.\\n \\n",
+    "限时装扮与武器来自\\n装扮/武器随机箱\\n，可在Arad Grand Clash服务器上NPC Chobung的商店购买\\n，仅能在该服务器上使用。\\n \\n"
+  ],
+  "19010": [
+    "This item or avatar cannot be sold in a Personal shop.",
+    "此物品或装扮无法在个人商店中出售。"
+  ],
+  "19052": [
+    "Set Effect",
+    "套装效果"
+  ],
+  "19117": [
+    "The Female Gunner Avatar Synthesis service is being prepared.",
+    "女性神枪手装扮合成服务正在准备中。"
+  ],
+  "19202": [
+    "Emblem Synthesizer",
+    "徽章合成器"
+  ],
+  "19203": [
+    "Merchant who can synthesize Emblems.",
+    "可合成徽章的商人。"
+  ],
+  "19204": [
+    "Please insert an emblem.",
+    "请放入徽章。"
+  ],
+  "19209": [
+    "Only Emblems that or Bronze or better can be synthesized.",
+    "只能合成青铜及以上品级的徽章。"
+  ],
+  "19210": [
+    "Please use an emblem of same grade.",
+    "请使用同品级的徽章。"
+  ],
+  "19306": [
+    "Emblems do not apply in the Fair Arena.",
+    "公平决斗场中不适用徽章。"
+  ],
+  "19307": [
+    "Avatar options do not apply in Fair Arena.",
+    "公平决斗场中不适用装扮选项。"
+  ],
+  "19574": [
+    "Cannot create sockets on equipped Avatars.",
+    "不能在装备的装扮上创建插槽"
+  ],
+  "19716": [
+    "You can only claim an Unlimited reward after selecting all the Avatars.",
+    "选完所有装扮后才能领取永久装扮奖励。"
+  ],
+  "19723": [
+    "Unlimited Avatar",
+    "永久装扮"
+  ],
+  "19724": [
+    "Rental Avatar",
+    "租赁装扮"
+  ],
+  "19728": [
+    "Charged 1 Receive Unlimited Avatars count.",
+    "永久装扮可领取次数增加 1 次。"
+  ],
+  "19729": [
+    "You can only rent Avatars once a day.\\nRent Avatars?",
+    "你每天只能租用一次装扮。\\n租用装扮？"
+  ],
+  "19730": [
+    "You will lose 1 Receive Unlimited Avatars count if you proceed.\\nGet this Avatar?",
+    "如果你继续行动，你将失去1个“无限装扮”点数。\\n要获得这个装扮吗？"
+  ],
+  "21429": [
+    "Recover %d more HP every minute.",
+    "每分钟额外恢复 %d 点生命值。"
+  ],
+  "21430": [
+    "Recover %d more MP every minute.",
+    "每分钟额外恢复 %d 点魔法值。"
+  ],
+  "21813": [
+    "MP MAX %+.*f%%%%",
+    "魔法值上限 %+.*f%%%%"
+  ],
+  "21814": [
+    "HP MAX %+.*f (Actual %+.*f)",
+    "生命值上限 %+.*f（实际 %+.*f）"
+  ],
+  "21815": [
+    "MP MAX %+.*f (Actual %+.*f)",
+    "魔法值上限 %+.*f（实际 %+.*f）"
+  ],
+  "21816": [
+    "HP MAX %+.*f",
+    "生命值上限 %+.*f"
+  ],
+  "21817": [
+    "MP MAX %+.*f",
+    "魔法值上限 %+.*f"
+  ],
+  "21818": [
+    "+ %.*f HP per Min. (Actual %+.*f)",
+    "+ %.*f 点生命值/分钟（实际 %+.*f）"
+  ],
+  "21819": [
+    "+ %.*f MP per Min. (Actual %+.*f)",
+    "+ %.*f 点魔法值/分钟（实际 %+.*f）"
+  ],
+  "21820": [
+    "Actual",
+    "实际"
+  ],
+  "21821": [
+    "+ %.f HP per Min. (Actual %+.f)",
+    "+ %.f 点生命值/分钟（实际 %+.f）"
+  ],
+  "21822": [
+    "+ %.f MP per Min. (Actual %+.f)",
+    "+ %.f 点魔法值/分钟（实际 %+.f）"
+  ],
+  "21970": [
+    "Incorrect Avatar info has been entered.",
+    "输入了错误的装扮信息。"
+  ],
+  "22030": [
+    "Avatar Ability Selection Window",
+    "装扮属性选择"
+  ],
+  "22464": [
+    "Class: %s",
+    "职业：%s"
+  ],
+  "23074": [
+    "View Top Avatar for My Level------------",
+    "查看适合当前等级的上衣装扮"
+  ],
+  "23075": [
+    "Set All Avatar Period to Unlimited----------",
+    "将所有装扮的期限设为永久"
+  ],
+  "23077": [
+    "Try the recommended Avatar on.",
+    "试试推荐的装扮吧。"
+  ],
+  "23078": [
+    "Save the selected Avatar.",
+    "保存选定的装扮。"
+  ],
+  "23079": [
+    "Please select a slot to save the selected Avatar.",
+    "请选择一个位置来保存选中的装扮。"
+  ],
+  "23080": [
+    "You will lose the previous Avatar information. Would you like to continue?",
+    "你将失去之前的装扮信息。是否继续？"
+  ],
+  "23081": [
+    "Select a slot to save an Avatar.",
+    "选择一个位置来保存装扮。"
+  ],
+  "23082": [
+    "The selected Avatar will be no longer viewable at the Preview menu. Would you like to continue?",
+    "在预览菜单中，选中的装扮将无法再被查看了。您是否希望继续操作？"
+  ],
+  "23084": [
+    "Press Save to save the current Avatar.",
+    "点击“保存”以保存当前装扮。"
+  ],
+  "23085": [
+    "Emblem: Unlimited",
+    "徽章：永久"
+  ],
+  "23090": [
+    "Avatar Customization",
+    "装扮定制"
+  ],
+  "23091": [
+    "Select Emblem",
+    "选择徽章"
+  ],
+  "100088199": [
+    "The most popular option among the users.\\nOnly the skills of the selected Advanced class can be selected in Top Avatar.",
+    "用户中最受欢迎的选择。\\n在“顶级装扮”中，只能选择所选高级职业的技能。"
+  ],
+  "30020": [
+    "Sunder Avatars",
+    "击碎装扮"
+  ],
+  "30021": [
+    "Synthesize Emblems",
+    "合成徽章"
+  ],
+  "30040": [
+    "Show the NPC that changes Avatar Emblems.",
+    "展示那些会更换装扮徽章的NPC。"
+  ],
+  "30041": [
+    "Show the NPC that crafts Emblems into new Emblems.",
+    "展示那个制作徽章以制造新徽章的非玩家角色。"
+  ],
+  "75596": [
+    "Can't Create Emblem Sockets",
+    "无法创建徽章插槽"
+  ],
+  "75597": [
+    "This equipment can't have Emblem sockets in it.",
+    "此装备不能装有徽章插槽。"
+  ],
+  "31004": [
+    "Aura Avatar",
+    "光环装扮"
+  ],
+  "31025": [
+    "Selectable Avatars cannot be gifted.",
+    "可选装扮不能赠送"
+  ],
+  "31026": [
+    "Only one of the same Avatar or Creature package can be put into the cart.",
+    "同一种装扮或宠物礼包只能加入购物车一次。"
+  ],
+  "31027": [
+    "Only one of the same Avatar or Creature can be put into the cart.",
+    "同一种装扮或宠物只能加入购物车一次。"
+  ],
+  "31244": [
+    "Equip Emblem",
+    "镶嵌徽章"
+  ],
+  "31245": [
+    "Avatar without Emblem Socket cannot be equiped with Emblem.",
+    "没有徽章插槽的装扮无法镶嵌徽章。"
+  ],
+  "31246": [
+    "Place an Avatar",
+    "放入装扮"
+  ],
+  "31248": [
+    "Right-Click to equip Emblem.",
+    "右键镶嵌徽章。"
+  ],
+  "31433": [
+    "(M)",
+    "（男）"
+  ],
+  "31434": [
+    "(F)",
+    "（女）"
+  ],
+  "33013": [
+    "The Avatar cannot use this Dye.",
+    "装扮无法使用这种染料。"
+  ],
+  "33030": [
+    "Weapon Avatar",
+    "武器装扮"
+  ],
+  "33052": [
+    "%s is selected. Moving to the Avatar Option Selection window...",
+    "已选中 %s。正在切换到装扮选项选择窗口……"
+  ],
+  "33063": [
+    "Not applicable Avatar.",
+    "不适用的装扮。"
+  ],
+  "33064": [
+    "The Avatar period has been extended.",
+    "已延长装扮期限。"
+  ],
+  "33083": [
+    "- Auction Hall Points required for Creature/Avatar registration",
+    "- 注册角色/装扮所需的拍卖行点数"
+  ],
+  "33105": [
+    "Not a Unlimited Avatar.",
+    "不是永久装扮。"
+  ],
+  "33106": [
+    "Cannot be used on Unlimited Avatars.",
+    "不能用于永久装扮。"
+  ],
+  "33157": [
+    "   Upgrade Avatar Inventory",
+    "   扩展装扮栏"
+  ],
+  "33158": [
+    "   Maximize Avatar Inventory",
+    "   扩展装扮栏至上限"
+  ],
+  "33160": [
+    "Avatar Inventory has been upgraded.",
+    "装扮物品栏已升级。"
+  ],
+  "33161": [
+    "Avatar Inventory is already fully upgraded.",
+    "装扮物品栏已经完全升级了。"
+  ],
+  "33163": [
+    "Avatar Inventory Upgrade : %d/%d",
+    "装扮栏扩展：%d/%d"
+  ],
+  "33164": [
+    "Slayer (M)",
+    "鬼剑士（男）"
+  ],
+  "33165": [
+    "Slayer (F)",
+    "鬼剑士（女）"
+  ],
+  "33166": [
+    "Fighter (M)",
+    "格斗家（男）"
+  ],
+  "33167": [
+    "Fighter (F)",
+    "格斗家（女）"
+  ],
+  "33168": [
+    "Gunner (M)",
+    "神枪手（男）"
+  ],
+  "33169": [
+    "Gunner (F)",
+    "神枪手（女）"
+  ],
+  "33170": [
+    "Mage (M)",
+    "魔法师（男）"
+  ],
+  "33171": [
+    "Mage (F)",
+    "魔法师（女）"
+  ],
+  "33172": [
+    "Priest",
+    "圣职者"
+  ],
+  "33173": [
+    "Thief",
+    "暗夜使者"
+  ],
+  "33174": [
+    "Knight",
+    "守护者"
+  ],
+  "33175": [
+    "Dark Knight",
+    "黑暗武士"
+  ],
+  "33176": [
+    "Creator",
+    "缔造者"
+  ],
+  "33177": [
+    "Following emblem cannot be synthesized.",
+    "下列徽章无法合成。"
+  ],
+  "33178": [
+    "Insert emblems to synthesize.",
+    "放入用于合成的徽章。"
+  ],
+  "33276": [
+    "(Emblems equipped in Avatars",
+    "(装扮上装备的徽章"
+  ],
+  "33292": [
+    "Not an Avatar.",
+    "不是装扮。"
+  ],
+  "33293": [
+    "Already registered Avatar.",
+    "该装扮已登记。"
+  ],
+  "33294": [
+    "Please register the same part as the registered Avatar.",
+    "请登记与已登记装扮部位相同的装扮。"
+  ],
+  "33295": [
+    "Not an exchangeable Avatar.",
+    "该装扮无法兑换。"
+  ],
+  "33296": [
+    "Please register Avatars that are identical to your character class.",
+    "请登记与你的角色职业相同的装扮。"
+  ],
+  "33297": [
+    "Convert Avatar",
+    "转换装扮"
+  ],
+  "33298": [
+    "Indicates NPC that converts Avatars.",
+    "显示可转换装扮的NPC"
+  ],
+  "33299": [
+    "The material Avatar's rank is not correct.",
+    "作为材料的装扮品级不符。"
+  ],
+  "33302": [
+    "Emblem Slots will be reset after Avatar Conversion.\\nConfirm?",
+    "转换装扮后，徽章插槽将被重置。\\n确定转换吗？"
+  ],
+  "33303": [
+    "Conversion conditions\\n--------------------\\nOnly Available to Avatars that are identical to your character class.\\n \\nOnly Available to Tradable Avatars\\n \\nConversion result will be identical to registered Avatar's part type.",
+    "转换条件\\n--------------------\\n仅限与您的角色职业相同的装扮可用。\\n \\n仅限可交易的装扮\\n \\n转换结果将与登记装扮的部位类型相同。"
+  ],
+  "33304": [
+    "Generates 1st to 13th Rare Avatars.\\nThe items used as materials will disappear.",
+    "可获得第1至13期稀有装扮。\\n作为材料的道具将消失。"
+  ],
+  "35069": [
+    "Avatars cannot be switched during a fight in the Fair Arena.",
+    "竞技场中战斗时不能切换装扮"
+  ],
+  "35165": [
+    "Limited Duration Avatars cannot be combined together.",
+    "限时装扮无法合成。"
+  ],
+  "35179": [
+    "Moving to the %s page resets the current preview and the Avatars in the cart. Do you still want to move?",
+    "前往 %s 此页面将重置当前的预览内容以及购物车中的装扮。 你还想移动吗？"
+  ],
+  "35182": [
+    "Unlimited",
+    "不限次数"
+  ],
+  "35183": [
+    "Emblems can be traded for unlimited times.",
+    "徽章可以无限次交易。"
+  ],
+  "35184": [
+    "Select tradability for the Avatar first.",
+    "首先为装扮选择可交易性。"
+  ],
+  "35185": [
+    "The item cannot be dyed.",
+    "该物品无法染色。"
+  ],
+  "35186": [
+    "Cannot be dyed",
+    "无法染色"
+  ],
+  "35187": [
+    "Can be dyed",
+    "可染色"
+  ],
+  "35191": [
+    "Attempting to dye... Please try again later.",
+    "正在染色，请稍后再试。"
+  ],
+  "35192": [
+    "Do you want to dye %s to %s color?",
+    "确定将%s染成%s吗？"
+  ],
+  "35193": [
+    "Dyed.",
+    "染色完成。"
+  ],
+  "35194": [
+    "Select your avatar.",
+    "请选择装扮。"
+  ],
+  "35195": [
+    "Rare Avatars cannot use this Dye.",
+    "稀有装扮无法使用该染色剂。"
+  ],
+  "35196": [
+    "The item cannot be dyed.",
+    "该物品无法染色。"
+  ],
+  "35197": [
+    "Dyed %s to %s.",
+    "已将%s染成%s。"
+  ],
+  "35198": [
+    "Select an Avatar that can be dyed first.",
+    "请先选择可染色的装扮。"
+  ],
+  "35200": [
+    "Equipped items cannot be dyed. Unequip the Avatar?",
+    "已穿戴的装扮无法染色。是否卸下？"
+  ],
+  "35202": [
+    "The Avatar cannot be dyed.",
+    "装扮无法染色。"
+  ],
+  "35203": [
+    "Do you want to dye %s to the default color?",
+    "确定将%s恢复为默认颜色吗？"
+  ],
+  "35204": [
+    "Dyed %s to the default color.",
+    "已将%s恢复为默认颜色。"
+  ],
+  "35205": [
+    "Dye Remover cannot be used on undyed Avatars.",
+    "未染色的装扮无法使用还原剂。"
+  ],
+  "35233": [
+    "Select tradability for all Avatars.",
+    "为所有装扮选择可交易属性。"
+  ],
+  "35244": [
+    "Can only be used on Avatars with no Emblem socket.",
+    "仅可用于没有徽章插槽的装扮。"
+  ],
+  "35243": [
+    "Can only be used on %s Avatars.",
+    "仅可用于%s装扮。"
+  ],
+  "35245": [
+    "Cannot be used on Skin Avatars.",
+    "不能用于皮肤装扮。"
+  ],
+  "35246": [
+    "Cannot be used on Clone Avatars.",
+    "不能用于克隆装扮。"
+  ],
+  "35247": [
+    "Can only be used on Clone Avatars.",
+    "只能在克隆装扮上使用。"
+  ],
+  "35248": [
+    "Do you want to create an Emblem socket for the above Avatars? The following items will be consumed:",
+    "确定为上述装扮添加徽章插槽吗？将消耗以下道具："
+  ],
+  "35249": [
+    "Emblem sockets have been created for the following Avatars:",
+    "已为以下装扮添加徽章插槽："
+  ],
+  "35257": [
+    " - Buy 1 more package and get 1 free 2008 Dream Fighter Avatar Booster!",
+    "- 购买 1 个礼包，即可获得 1 个免费 2008 梦之格斗家装扮增强器！"
+  ],
+  "35277": [
+    "Tradable Avatar",
+    "可交易装扮"
+  ],
+  "35278": [
+    "Untradable Avatar",
+    "无法交易装扮"
+  ],
+  "35317": [
+    " - Buy 1 more package and get 1 free 2008 Dream Fighter Avatar Booster!",
+    "- 购买 1 个礼包，即可获得 1 个免费 2008 梦之格斗家装扮增强器！"
+  ],
+  "35328": [
+    "Avatar",
+    "装扮"
+  ],
+  "35342": [
+    "Basic Emblem Avatar",
+    "基础徽章装扮"
+  ],
+  "35343": [
+    "Basic Clone Emblem Avatar",
+    "基础克隆徽章装扮"
+  ],
+  "35344": [
+    "Selectable Emblem Avatar",
+    "可选择的徽章装扮"
+  ],
+  "35345": [
+    "Selectable Clone Emblem Avatar",
+    "可选择的克隆徽章装扮"
+  ],
+  "36004": [
+    "Period: Permanent (Emblem)\\n",
+    "时期：永久（徽章）\\n"
+  ],
+  "36092": [
+    "Multicolored Emblem Socket",
+    "多色徽章插槽"
+  ],
+  "36093": [
+    "Only possible for Emblems other than Platinum.",
+    "仅适用于铂金以外的徽章。"
+  ],
+  "36094": [
+    "All Emblem Socket",
+    "全色徽章插槽"
+  ],
+  "36128": [
+    "Avatar Option Change Ticket",
+    "装扮属性变更券"
+  ],
+  "36130": [
+    "Select Avatar Option",
+    "选择装扮属性"
+  ],
+  "36131": [
+    "Avatar option changed successfully!",
+    "装扮属性已变更！"
+  ],
+  "36133": [
+    "The Avatar cannot be put into that slot.",
+    "无法将该装扮放入此位置。"
+  ],
+  "36135": [
+    "This Avatar cannot use that skill.",
+    "这个装扮无法使用那个技能。"
+  ],
+  "36139": [
+    "This Avatar cannot be used.",
+    "这个装扮无法使用。"
+  ],
+  "36140": [
+    "This Avatar Class cannot be used.",
+    "当前职业无法使用该装扮。"
+  ],
+  "36141": [
+    "This Avatar Part cannot be used.",
+    "无法使用此部位的装扮。"
+  ],
+  "36145": [
+    "Avatar Change License Error",
+    "装扮变更券错误"
+  ],
+  "36146": [
+    "This Avatar does not have stats that can be selected.",
+    "这个装扮没有可选择的属性数值。"
+  ],
+  "36163": [
+    "There is no Aura Avatar.",
+    "没有光环装扮。"
+  ],
+  "36164": [
+    "The Aura Avatar is not a Individual Teleport Avatar.",
+    "该光环装扮不具备个人传送功能。"
+  ],
+  "36401": [
+    "Emblems cannot be used in the Arena.",
+    "决斗场中不能使用徽章。"
+  ],
+  "36408": [
+    "Avatars cannot be equipped/unequipped in the area.",
+    "装扮不能在该区域装备或卸下"
+  ],
+  "38065": [
+    "Give me the Rare Avatars to examine, and put the other materials in the cauldron. ",
+    "给我稀有装扮来查看，其他材料放进坩埚里。"
+  ],
+  "38067": [
+    "Put the Avatar into the Crystal Ball.",
+    "将装扮放入水晶球中。"
+  ],
+  "38072": [
+    "Event Avatar cannot be used.",
+    "活动装扮无法使用。"
+  ],
+  "38073": [
+    "Selectable Avatars cannot be used.",
+    "可选装扮无法使用。"
+  ],
+  "38074": [
+    "Untradable Avatars cannot be used.",
+    "不可交易的装扮无法使用。"
+  ],
+  "38075": [
+    "Cannot be used unless it is an Avatar.",
+    "除非是装扮，否则无法使用。"
+  ],
+  "38079": [
+    "Randomly transforms according to the Avatar Rank.",
+    "根据装扮等级随机变换。"
+  ],
+  "39012": [
+    "Compound two Avatars into a new Avatar. It has a chance to create a Rare Avatar or Rare Clone Avatar.\\nThe material items disappear after use.",
+    "将两个装扮合并为新的装扮。有几率生成稀有装扮或稀有克隆装扮。\\n进行合成的材料道具会消失。"
+  ],
+  "39054": [
+    "Generates 11th Rare Avatars.\\nThe items used as materials will disappear.",
+    "可获得第11期稀有装扮。\\n作为材料的道具将消失。"
+  ],
+  "39055": [
+    "Avatars in the First server cannot be disassembled, compounded, or converted.",
+    "第一服务器中的装扮无法拆解、合成或转换。"
+  ],
+  "39078": [
+    "Remove Dye",
+    "还原染色"
+  ],
+  "39079": [
+    "Place an Avatar in the slot.",
+    "将装扮放入插槽中。"
+  ],
+  "39080": [
+    "Place an Avatar in the slot.",
+    "将装扮放入插槽中。"
+  ],
+  "39090": [
+    "Select a random Avatar.",
+    "随机选择一个装扮。"
+  ],
+  "39103": [
+    "Convert Avatar",
+    "转换装扮"
+  ],
+  "39108": [
+    "The Avatar will lose its equipped Emblems if converted.\\nDo you really want to use it?",
+    "转换后，该装扮上镶嵌的徽章将消失。\\n确定继续吗？"
+  ],
+  "39119": [
+    "You cannot discard items while dying Avatars.",
+    "装扮染色期间无法丢弃道具。"
+  ],
+  "39203": [
+    "Sunder Avatar",
+    "分解装扮"
+  ],
+  "39206": [
+    "Sunder this Avatar?",
+    "确定分解该装扮吗？"
+  ],
+  "39213": [
+    "Only Avatars can be disassembled.",
+    "只有装扮可以被分解。"
+  ],
+  "39214": [
+    "This type of Avatar can't be disassembled.",
+    "这种装扮无法被分解。"
+  ],
+  "39215": [
+    "You can't discard items while disassembling Avatars.",
+    "在拆解装扮时无法丢弃物品。"
+  ],
+  "39216": [
+    "Successfully disassembled Avatars!",
+    "成功分解了装扮！"
+  ],
+  "39217": [
+    "You don't have enough Voluminous Skeins\\nto operate the Mystic Sewing Machine.\\nYou can get Voluminous Skeins by disassembling Tradable Avatars.",
+    "你的卷轴数量还不够多\\n操作神秘缝纫机。\\n你可以通过分解可交易的装扮获得大量纱线。"
+  ],
+  "39222": [
+    "Add Avatars to disassemble.",
+    "添加装扮进行分解"
+  ],
+  "39235": [
+    "Can only be used on Temporary Avatars.",
+    "仅可用于限时装扮。"
+  ],
+  "39262": [
+    "Double-click an Avatar to auto-search.",
+    "双击装扮以自动搜索。"
+  ],
+  "39263": [
+    "Only Avatars for the same classes can be synthesized together.",
+    "只有相同职业的装扮才能合成在一起。"
+  ],
+  "39264": [
+    "Some of the Avatars may be too valuable to be disassembled.\\nDisassemble, anyway?",
+    "将分解的装扮中包含贵重装扮。\\n仍要分解吗？"
+  ],
+  "39265": [
+    "Valuable Avatars are included",
+    "珍贵的装扮已包含"
+  ],
+  "39306": [
+    "The information of the Emblems you want to combine isn't correct.",
+    "您想要组合的徽章信息不正确。"
+  ],
+  "39307": [
+    "No available Emblems to convert.",
+    "没有可转换的徽章。"
+  ],
+  "39311": [
+    "Add a Fancy Emblem.",
+    "添加一个华丽徽章。"
+  ],
+  "39312": [
+    "Add a Gold Emblem.",
+    "添加金徽章。"
+  ],
+  "39313": [
+    "Add a Platinum Emblem.",
+    "添加铂金徽章。"
+  ],
+  "39324": [
+    "Emblem transfer failed.\\nOnly Auras with the same Sockets can use Emblem transfer.",
+    "徽章转移失败。\\n仅徽章插槽相同的光环可转移徽章。"
+  ],
+  "39325": [
+    "Locked Avatars can't be used.",
+    "已锁定的装扮无法使用。"
+  ],
+  "39326": [
+    "Avatars in Avatar Presets can't be used.",
+    "无法使用已登记到装扮预设的装扮。"
+  ],
+  "39327": [
+    "Emblem Conversion Results",
+    "徽章转换结果"
+  ],
+  "39329": [
+    "No available Emblems to convert.",
+    "没有可转换的徽章。"
+  ],
+  "39330": [
+    "Emblems in quick slots can't be added.",
+    "无法添加快速栏位中的徽章。"
+  ],
+  "39331": [
+    "Only Emblems that meet the requirements can be converted.",
+    "只有符合要求的徽章才能被转换。"
+  ],
+  "39332": [
+    "Aura Emblem Transporter",
+    "光环徽章转移器"
+  ],
+  "39333": [
+    "Convert Emblem",
+    "转换徽章"
+  ],
+  "39334": [
+    "Displays the NPCs that convert Emblems into special Emblem Chests.",
+    "查找可将徽章转换为特殊徽章礼盒的NPC。"
+  ],
+  "39336": [
+    "Only Aura Avatars with Emblem sockets can be added.",
+    "只能放入带徽章插槽的光环装扮。"
+  ],
+  "39337": [
+    "Only Aura Avatars with at least 1 Emblem added to them can be transferred.",
+    "只能转移至少镶嵌了1个徽章的光环装扮。"
+  ],
+  "39341": [
+    "Equipped Aura Avatars can't be used.",
+    "已装备的装扮无法使用。"
+  ],
+  "39354": [
+    "Advanced Avatar",
+    "高级装扮"
+  ],
+  "39355": [
+    "Rare Avatar",
+    "稀有装扮"
+  ],
+  "39358": [
+    "Avatars in the Buff Enhancement window can't be disassembled.",
+    "无法分解已登记到增益强化栏的装扮。"
+  ],
+  "39363": [
+    "Mailed the Avatar.",
+    "寄出了装扮。"
+  ],
+  "39367": [
+    "The Showcase Avatar menu can't be used during the rank settlement period.\\n\\nPlease try again after 09:00 UTC.",
+    "展示装扮菜单在等级结算期间无法使用。\\n\\n请在 09:00 UTC 后再次尝试。"
+  ],
+  "39368": [
+    "You have no Avatars registered on the Avatar Market.\\nSold Avatars exist. Deleting them from the screen...",
+    "您的装扮市场中没有注册的装扮。\\n已出售的装扮存在。正在从屏幕上删除它们……"
+  ],
+  "39369": [
+    "Avatar Market",
+    "装扮市场"
+  ],
+  "39370": [
+    "Browse Avatars",
+    "浏览装扮"
+  ],
+  "39371": [
+    "Showcase Avatar",
+    "展示装扮"
+  ],
+  "39377": [
+    "The entered amount is too great. On the Avatar Market, selling prices can't exceed 800 million Gold.",
+    "价格过高。装扮市场售价不得超过 8 亿金币。"
+  ],
+  "39383": [
+    "Slayer (M)/Dark Knight",
+    "鬼剑士（男）／黑暗武士"
+  ],
+  "39384": [
+    "Fighter (F)",
+    "格斗家（女）"
+  ],
+  "39385": [
+    "Gunner (M)",
+    "神枪手（男）"
+  ],
+  "39386": [
+    "Mage (F)/Creator",
+    "魔法师（女）／缔造者"
+  ],
+  "39387": [
+    "Priest (M)",
+    "圣职者（男）"
+  ],
+  "39388": [
+    "Gunner (F)",
+    "神枪手（女）"
+  ],
+  "39389": [
+    "Thief",
+    "暗夜使者"
+  ],
+  "39390": [
+    "Fighter (M)",
+    "格斗家（男）"
+  ],
+  "39391": [
+    "Mage (M)",
+    "魔法师（男）"
+  ],
+  "39392": [
+    "Slayer (F)",
+    "鬼剑士（女）"
+  ],
+  "39393": [
+    "Knight",
+    "守护者"
+  ],
+  "39394": [
+    "Demonic Lancer",
+    "魔枪士"
+  ],
+  "39395": [
+    "Priest (F)",
+    "圣职者（女）"
+  ],
+  "39396": [
+    "Agent",
+    "枪剑士"
+  ],
+  "39397": [
+    "Emblem Status",
+    "徽章状态"
+  ],
+  "39398": [
+    "Slayer (M)",
+    "鬼剑士（男）"
+  ],
+  "39399": [
+    "Mage (F)",
+    "魔法师（女）"
+  ],
+  "39415": [
+    "Reregister All will re-register all your unsold Avatars for their original prices and periods.\\nReregister all?",
+    "重新注册全部功能将按原始价格和期限，为您的所有未售出装扮重新注册。\\n重新注册所有？"
+  ],
+  "39416": [
+    "Collect All will collect all your unsold Avatars, and collected Avatars will be stored in your Mailbox for 6 months.\\nCollect all?",
+    "收集全部将收集你所有未出售的装扮，收集到的装扮将保存在你的邮箱中，持续6个月。\\n收集所有？"
+  ],
+  "39420": [
+    "There are too many Emblems to find. Please narrow down your search criteria.",
+    "徽章太多，难以找到。请缩小搜索条件。"
+  ],
+  "39421": [
+    "There are too many Avatars to find. Please narrow down your search criteria.",
+    "装扮太多难以找到。 请缩小您的搜索条件。"
+  ],
+  "39423": [
+    "Enter Avatar Market",
+    "进入装扮市场"
+  ],
+  "39425": [
+    "Enter Avatar Market",
+    "进入装扮市场"
+  ],
+  "39428": [
+    "Move to the Avatar Market channel?",
+    "前往装扮市场频道吗？"
+  ],
+  "39430": [
+    "Character creation is restricted in the Avatar Market channel.",
+    "装扮市场频道中的角色创建功能受到限制。"
+  ],
+  "39440": [
+    "The Price Range function can't be used alone. Please select a lower Avatar category or another function.",
+    "“价格范围”功能不能单独使用。请选择更低的装扮等级或其他功能。"
+  ],
+  "39444": [
+    "To search within Avatar categories, enter a keyword or do it through another function.",
+    "要在装扮类别中搜索，请输入关键词或通过其他功能进行查找。"
+  ],
+  "39445": [
+    "Open the Avatar Market and check your unsold Avatars.",
+    "打开装扮市场，查看你未售出的装扮。"
+  ],
+  "39446": [
+    "You have no Avatars registered on the Avatar Market.",
+    "你没有在装扮市场登记装扮。"
+  ],
+  "39447": [
+    "The Avatar Market is temporarily unavailable.\\nFor more details, please check our Announcements page.",
+    "装扮市场暂时无法使用。\\n如需了解更多详情，请查看我们的公告页面。"
+  ],
+  "40196": [
+    "Congratulations, you have been selected for Seria's Welcome Back Event!\\nPlease visit the Event page and get your Welcome Back Avatar Box!",
+    "恭喜你，你被选中参加赛丽亚的欢迎回归活动！\\n请访问活动页面，领取您的“欢迎回归装扮礼包”！"
+  ],
+  "42003": [
+    "Avatar & Creature",
+    "装扮与宠物"
+  ],
+  "42045": [
+    "Sunder Avatar",
+    "分解装扮"
+  ],
+  "42046": [
+    "Indicates NPC that sunders avatars to emblems.",
+    "查找可以分解装扮获得徽章的NPC。"
+  ],
+  "42049": [
+    "Only Avatars can be sundered.",
+    "只能分解装扮。"
+  ],
+  "42050": [
+    "This type of Avatar cannot be sundered.",
+    "此类装扮无法分解。"
+  ],
+  "42051": [
+    "Type of emblem shown above can be obtained. Continue?",
+    "上述显示的徽章类型可以获得。继续吗？"
+  ],
+  "42052": [
+    "No Avatar is available to sunder.",
+    "没有可分解的装扮。"
+  ],
+  "42053": [
+    "Avatar",
+    "装扮"
+  ],
+  "42054": [
+    "Emblem",
+    "徽章"
+  ],
+  "42055": [
+    "No emblem is equipped.",
+    "未镶嵌徽章。"
+  ],
+  "42056": [
+    "Shift+ Right Click to equip an emblem.",
+    "按 Shift + 右键镶嵌徽章。"
+  ],
+  "42057": [
+    "Red Emblem Socket",
+    "红色徽章插槽"
+  ],
+  "42058": [
+    "Yellow Emblem Socket",
+    "黄色徽章插槽"
+  ],
+  "42059": [
+    "Green Emblem Socket",
+    "绿色徽章插槽"
+  ],
+  "42060": [
+    "Blue Emblem Socket",
+    "蓝色徽章插槽"
+  ],
+  "42061": [
+    "Platinum Emblem Socket",
+    "铂金徽章插槽"
+  ],
+  "42062": [
+    "No Avatars are available to synthesize.",
+    "没有可合成的装扮。"
+  ],
+  "42063": [
+    "This Avatar cannot be sundered.",
+    "该装扮无法分解。"
+  ],
+  "42064": [
+    "This Avatar is already deleted.",
+    "这个装扮已经被删除了。"
+  ],
+  "42065": [
+    "Failed to identify the grade of the Avatar; you cannot sunder this item.",
+    "无法识别装扮品级，不能分解。"
+  ],
+  "42066": [
+    "No empty slot is available to receive a synthesized emblem.",
+    "没有空位可以放置合成徽章。"
+  ],
+  "42068": [
+    "No emblem is available to equip.",
+    "没有可镶嵌的徽章。"
+  ],
+  "42069": [
+    "The current Avatar has no slot to equip the emblem.",
+    "当前装扮没有可用的徽章插槽。"
+  ],
+  "42071": [
+    "Avatar Emblem Window",
+    "装扮徽章镶嵌"
+  ],
+  "42072": [
+    "Your existing Emblem will be removed and replaced with the new Emblem.\\nWould you like to continue?",
+    "原徽章将被移除，并由新徽章替换。\\n确定继续吗？"
+  ],
+  "42074": [
+    "Emblem",
+    "徽章"
+  ],
+  "42075": [
+    "[Available Emblem Socket]",
+    "[可用徽章插槽]"
+  ],
+  "42076": [
+    "[Current Emblem Socket]",
+    "[当前徽章插槽]"
+  ],
+  "42078": [
+    "Shift+ Right click on an Avatar ",
+    "在装扮上按 Shift + 右键"
+  ],
+  "42079": [
+    "to equip an emblem.",
+    "镶嵌徽章。"
+  ],
+  "42080": [
+    "Equipped Avatars cannot be added Sockets.",
+    "装备的装扮不能添加插槽"
+  ],
+  "42081": [
+    "Can only be used on Rare and Rare Clone avatars that do not have Emblem Sockets.",
+    "只能在没有徽章插槽的稀有和稀有克隆装扮上使用。"
+  ],
+  "42082": [
+    "This Avatar is not rare-graded.",
+    "这个装扮不属于稀有等级。"
+  ],
+  "42083": [
+    "No Avatar is available to create a Socket.",
+    "没有可添加徽章插槽的装扮。"
+  ],
+  "42085": [
+    "This Avatar has already a socket.",
+    "这个装扮已经有了插槽。"
+  ],
+  "42086": [
+    "Would you like to add Sockets to the Avatar listed above?\\nYou will spend the following item(s):",
+    "确定为上述装扮添加徽章插槽吗？\\n将消耗以下道具："
+  ],
+  "42087": [
+    "The following Avatar has been created:",
+    "已为以下装扮添加徽章插槽："
+  ],
+  "42088": [
+    "Sunder Avatar ",
+    "分解装扮 "
+  ],
+  "42089": [
+    "Insert an Avatar to Sunder.",
+    "请放入要分解的装扮。"
+  ],
+  "42107": [
+    "Only %s Emblems can be equipped.",
+    "只能镶嵌%s徽章。"
+  ],
+  "42154": [
+    "Clone Avatar",
+    "克隆装扮"
+  ],
+  "42155": [
+    "Emblem Avatar",
+    "徽章装扮"
+  ],
+  "42156": [
+    "Clone Emblem",
+    "克隆徽章"
+  ],
+  "42364": [
+    "Avatars for the dispatched mercenary cannot be moved.",
+    "派遣的佣兵的装扮无法移动"
+  ],
+  "42376": [
+    "%s Avatar Bonus ( %d%%%% )",
+    "%s 装扮奖励 ( %d%%%% )"
+  ],
+  "42377": [
+    "There is no Avatar Bonus.",
+    "没有装扮奖励。"
+  ],
+  "42788": [
+    "This Emblem can't be crafted.",
+    "这个徽章无法制作。"
+  ],
+  "44189": [
+    " HP MAX +500",
+    " 生命值上限 +500"
+  ],
+  "44190": [
+    " MP MAX +400",
+    " 魔法值上限 +400"
+  ],
+  "46005": [
+    "Avatar.Creature",
+    "装扮／宠物"
+  ],
+  "46030": [
+    "Unlimited",
+    "不限"
+  ],
+  "46229": [
+    "Class : %s",
+    "职业：%s"
+  ],
+  "46429": [
+    "Clone Emblem",
+    "克隆徽章"
+  ],
+  "46453": [
+    "Returning the Avatar to original condition...",
+    "将装扮恢复至原状……"
+  ],
+  "46775": [
+    "HP MAX",
+    "生命值上限"
+  ],
+  "46776": [
+    "MP MAX",
+    "魔法值上限"
+  ],
+  "46912": [
+    "Not enough free space in Avatar inventory. Please make some room first.",
+    "装扮栏空间不足，请先腾出空位。"
+  ],
+  "46914": [
+    "To add presets, you must buy Avatar Preset Extension Tickets. Move to the Purchase page?",
+    "扩展预设需购买装扮预设扩展券。是否前往购买？"
+  ],
+  "46921": [
+    "Avatars in the Preset window can't be sold or moved.",
+    "预设窗口中的装扮不能出售或移动。"
+  ],
+  "46922": [
+    "Extended Avatar presets by 1 slot.",
+    "已增加 1 个装扮预设栏位。"
+  ],
+  "46931": [
+    "Consume 1 Avatar Preset Extension Ticket and extend Avatar presets by 1 slot. Use?",
+    "是否消耗 1 张装扮预设扩展券，增加 1 个预设栏位？"
+  ],
+  "46933": [
+    "(For Untradable Avatars only. Can't be crafted.)",
+    "仅限不可交易的装扮 无法合成。"
+  ],
+  "46936": [
+    "Avatar presets can't be used inside the Arena.",
+    "装扮预设在决斗场中无法使用。"
+  ],
+  "100087173": [
+    "Some of the Avatars that you want to buy are restricted from trading.\\nThey'll become untradable upon purchase.\\n\\n",
+    "你想要购买的一些装扮受到交易限制。\\n购买后，它们将变为无法交易。\\n\\n"
+  ],
+  "100087192": [
+    "This Avatar is equipped with Emblems. Do you really want to continue?",
+    "这个装扮上带有徽章。你真的想继续吗？"
+  ],
+  "49102": [
+    "%s Avatar Bonus (Maximum Reward: %d)",
+    "%s 装扮奖励（最高奖励：%d）"
+  ],
+  "49153": [
+    "Avatar Bonus",
+    "装扮奖励"
+  ],
+  "49186": [
+    "Characters that are being used as Mercenaries cannot have their Avatars moved. Do you want to retrieve the Mercenary?",
+    "正在被用作佣兵的角色不能移动其装扮 你想要回收雇佣兵吗？"
+  ],
+  "50740": [
+    "The Avatar cannot contain an Emblem socket.",
+    "装扮无法包含徽章插槽。"
+  ],
+  "60141": [
+    "Emblem-equipped Emblem Avatars cannot be auctioned now.\\n \\nPlease wait until we add them in the Auction list.",
+    "佩戴徽章的徽章装扮目前无法拍卖。\\n \\n请等待，直到我们将其加入拍卖列表。"
+  ],
+  "60358": [
+    "Cannot contain items from the Avatar inventory.",
+    "无法包含装扮栏中的物品。"
+  ],
+  "60499": [
+    "Aura Skin Avatar",
+    "光环皮肤装扮"
+  ],
+  "60506": [
+    "You can register an Aura Avatar\\nand change the animation of\\nan equipped Aura.\\n*Aura options are not affected.\\nRight-click or drag to register an Avatar.",
+    "你可以注册一个Aura装扮\\n并改变动画效果\\n一种装备好的光环。\\n*氛围选项不受影响。\\n右键点击或拖拽以登记装扮。"
+  ],
+  "60756": [
+    "Applied Set Effects",
+    "已生效的套装效果"
+  ],
+  "65081": [
+    "You do not have enough Friendship to use the NPC Dye menu.",
+    "与该NPC的好感度不足，无法使用染色菜单。"
+  ],
+  "65082": [
+    "You cannot use the NPC Dye menu while participating in the Costume event.",
+    "在参与服装活动时，无法使用NPC染色菜单。"
+  ],
+  "65083": [
+    "No such image exists. Cannot use the NPC Dye menu.",
+    "不存在这样的图片。无法使用NPC染色菜单。"
+  ],
+  "100087214": [
+    "You're temporarily restricted from Emblem trade at the Auction Hall.",
+    "你暂时无法在拍卖行进行徽章交易。"
+  ],
+  "100087215": [
+    "You're temporarily restricted from Emblem trade at the Auction Hall.",
+    "你暂时无法在拍卖行进行徽章交易。"
+  ],
+  "100087404": [
+    "Do you really want to disassemble this Avatar? You can get Emblems, depending on their availability.",
+    "确定分解该装扮吗？根据装扮种类有机会获得徽章。"
+  ],
+  "100087406": [
+    "The disassembly results can't be previewed when disassembling multiple Avatars. To preview the results, please drag and drop Avatars onto the Disassemble Avatar slots.",
+    "当分解多个装扮时，无法预览分解结果。若要预览结果，请将装扮拖放到分解装扮的插槽中。"
+  ],
+  "100087407": [
+    "Add 5 Bronze Emblems to combine.",
+    "添加 5 枚青铜徽章进行组合。"
+  ],
+  "100087408": [
+    "Add 5 Silver Emblems to combine.",
+    "添加 5 银质徽章进行组合。"
+  ],
+  "100087409": [
+    "Add 2 Gold Emblems to combine.",
+    "添加 2 金徽章进行组合。"
+  ],
+  "100087410": [
+    "Add 2 Platinum Emblems to combine.",
+    "添加 2 铂金徽章进行组合。"
+  ],
+  "100087411": [
+    "Add an Avatar to disassemble.",
+    "添加一个装扮用于分解。"
+  ],
+  "100087415": [
+    "Do you really want to disassemble these Avatars?\\nIf you want to preview the results, please drag and drop Avatars onto the Disassemble Avatar UI.",
+    "您真的想分解这些装扮吗？\\n如果您想预览结果，请将装扮拖放到“分解装扮”界面上。"
+  ],
+  "100087416": [
+    "Not enough Emblems to combine.",
+    "徽章数量不足，无法组合。"
+  ],
+  "100087429": [
+    "Your class Emblems only.",
+    "仅可使用本职业的徽章。"
+  ],
+  "69015": [
+    "The original Avatars of Clone Avatars can't be disassembled.",
+    "克隆装扮的原始装扮不能分解"
+  ],
+  "300000155": [
+    "There is no Dyes in your inventory. Can't dye the Avatar. Please check your inventory.",
+    "你的背包里没有染料，无法给装扮上色。请检查一下背包。"
+  ],
+  "69042": [
+    "This item can't be registered on Showcase Avatar.",
+    "该道具无法登记到装扮展示。"
+  ],
+  "69043": [
+    "Only Avatars for the same class as the Avatar that will be registered can be registered.",
+    "只能注册与登记装扮相同的类别的装扮。"
+  ],
+  "69164": [
+    "Items that have recent purchase prices can't be added to the Avatar Market.",
+    "近期购买价的物品无法添加到装扮市场。"
+  ],
+  "69201": [
+    "Slayer (M)/Dark Knight",
+    "鬼剑士（男）／黑暗武士"
+  ],
+  "69218": [
+    "[No Emblem Sockets]",
+    "[无徽章插槽]"
+  ],
+  "69235": [
+    "Add an Avatar to change.",
+    "添加一个装扮以进行更改。"
+  ],
+  "69238": [
+    "Can't disassemble Avatars registered as presets or whose design has been copied.",
+    "无法拆解被设置为预设值，或是设计已被复制的装扮。"
+  ],
+  "100009": [
+    "Slayer (M)",
+    "鬼剑士（男）"
+  ],
+  "100010": [
+    "Fighter (F)",
+    "格斗家（女）"
+  ],
+  "100011": [
+    "Gunner (M)",
+    "神枪手（男）"
+  ],
+  "100012": [
+    "Mage (F)",
+    "魔法师（女）"
+  ],
+  "100013": [
+    "Priest (M)",
+    "圣职者（男）"
+  ],
+  "100014": [
+    "Gunner (F)",
+    "神枪手（女）"
+  ],
+  "100015": [
+    "Thief",
+    "暗夜使者"
+  ],
+  "100016": [
+    "Fighter (M)",
+    "格斗家（男）"
+  ],
+  "100019": [
+    "Mage (M)",
+    "魔法师（男）"
+  ],
+  "100020": [
+    "Slayer (F)",
+    "鬼剑士（女）"
+  ],
+  "100078": [
+    "Knight",
+    "守护者"
+  ],
+  "100080": [
+    "Demonic Lancer",
+    "魔枪士"
+  ],
+  "100083": [
+    "Priest (F)",
+    "圣职者（女）"
+  ],
+  "100088": [
+    "Priest (M)",
+    "圣职者（男）"
+  ],
+  "100091": [
+    "Agent",
+    "枪剑士"
+  ],
+  "150411": [
+    "Add unequipped Avatars only.",
+    "仅添加未装备的装扮"
+  ],
+  "150412": [
+    "Register Avatars.",
+    "登记装扮。"
+  ],
+  "150413": [
+    "The final product is not an Avatar.",
+    "最终产品并非一个装扮。"
+  ],
+  "150415": [
+    "Register Avatars.",
+    "登记装扮。"
+  ],
+  "100000740": [
+    "The Avatar cannot contain an Emblem socket.",
+    "装扮无法包含徽章插槽。"
+  ],
+  "100002075": [
+    "Slayer (M)",
+    "鬼剑士（男）"
+  ],
+  "100002076": [
+    "Slayer (F)",
+    "鬼剑士（女）"
+  ],
+  "100002077": [
+    "Fighter (M)",
+    "格斗家（男）"
+  ],
+  "100002078": [
+    "Fighter (F)",
+    "格斗家（女）"
+  ],
+  "100002079": [
+    "Gunner (M)",
+    "神枪手（男）"
+  ],
+  "100002080": [
+    "Gunner (F)",
+    "神枪手（女）"
+  ],
+  "100002081": [
+    "Mage (M)",
+    "魔法师（男）"
+  ],
+  "100002082": [
+    "Mage (F)",
+    "魔法师（女）"
+  ],
+  "100002083": [
+    "Priest (M)",
+    "圣职者（男）"
+  ],
+  "100002084": [
+    "Priest (F)",
+    "圣职者（女）"
+  ],
+  "100002085": [
+    "Thief",
+    "暗夜使者"
+  ],
+  "100002086": [
+    "Knight",
+    "守护者"
+  ],
+  "100002087": [
+    "Demonic Lancer",
+    "魔枪士"
+  ],
+  "100002088": [
+    "Agent",
+    "枪剑士"
+  ],
+  "100002241": [
+    "Unlimited",
+    "不限"
+  ],
+  "100003032": [
+    "Avatar Set: %d pt",
+    "装扮套装：%d 点"
+  ],
+  "100003119": [
+    "Stats can't be selected for this type of Avatar.",
+    "这种装扮无法选择相关属性。"
+  ],
+  "100003165": [
+    "Unlimited",
+    "不限"
+  ],
+  "100009085": [
+    "Sender: [Guild: %s] [Content: %s] [Server Group: %d] [Emblem: %d] [Payment Type: %d]",
+    "发件人：[公会: %s] [内容: %s] [服务器组: %d] [徽章: %d] [支付方式: %d]"
+  ],
+  "100011011": [
+    "Complete this challenge, and you can get an Adventure Motion Aura Avatar to your Mailbox. (This reward can only be issued to one character per Advanced class that first contributed to the challenge's completion.)",
+    "完成此挑战后，你可将“冒险动态光环装扮”寄到你的邮箱中。（该奖励仅限每个高级职业角色首次完成挑战后可获得的一个。）"
+  ],
+  "100060008": [
+    "Complete this challenge, and you can get a [Adventure Motion Aura Avatar] to your Mailbox. Log in within 1 week after the ranks are reset to perform this challenge. Its reward will be issued to the first character that logs in after it's completed.",
+    "完成此挑战后，你可将[冒险动感氛围装扮]寄到你的邮箱中。在等级重置后的1周内登录，即可完成此挑战。奖励将发放给第一个完成挑战后登录的角色。"
+  ],
+  "100070067": [
+    "The additional material, Clone Weapon Avatar, is equipped with Emblems. Continue?",
+    "额外的材料“克隆武器装扮”上带有徽章。继续吗？"
+  ],
+  "100085005": [
+    "Cloned Avatars\\ncan't be equipped.\\n",
+    "克隆装扮\\n无法装备。\\n"
+  ],
+  "100087200": [
+    "%s Emblems only.",
+    "仅可镶嵌%s徽章。"
+  ],
+  "100087968": [
+    "Presets can't be used while you're dyeing Avatars. ",
+    "预设不能在装扮染色时使用。"
+  ],
+  "100088779": [
+    "Avatar Essence",
+    "装扮精髓"
+  ],
+  "100088819": [
+    "(The material Design Avatars will be destroyed.)",
+    "（作为材料的设计装扮将消失。）"
+  ],
+  "100088820": [
+    "Target Design Avatars: %d",
+    "目标设计装扮： %d"
+  ],
+  "100088824": [
+    "Only Design Avatars can be used for extraction.",
+    "只能提取设计装扮。"
+  ],
+  "100088833": [
+    "Avatar Essence Extraction",
+    "提取装扮精髓"
+  ],
+  "100088835": [
+    "Add the Design Avatar to use.",
+    "请放入用于提取的设计装扮。"
+  ],
+  "100088798": [
+    "Save as Avatar Preset %d (%s)?",
+    "保存为装扮预设 %d（%s）吗？"
+  ],
+  "100088800": [
+    "Avatar preset saved.",
+    "装扮预设已保存。"
+  ],
+  "100089069": [
+    "Saving presets saves the added Avatars.\\n\\nSave presets?",
+    "保存预设可保存已添加的装扮。\\n\\n保存预设？"
+  ],
+  "51000": [
+    "Avatar Closet",
+    "装扮收藏簿"
+  ],
+  "51001": [
+    "Clone Avatars cannot be stored in Avatar Closet.",
+    "克隆装扮无法直接存入装扮收藏簿。"
+  ],
+  "51002": [
+    "Cloned Avatars only can be stored via Change button.",
+    "克隆装扮只能通过「更换」按钮存入。"
+  ],
+  "51003": [
+    "Only Avatars that this character can wear can be stored in Avatar Closet.",
+    "只有该角色可以穿戴的装扮才能存入收藏簿。"
+  ],
+  "51004": [
+    "Clone Avatars stored in Avatar Closet cannot be moved to your Avatar inventory.",
+    "收藏簿中的克隆装扮无法移回装扮栏。"
+  ],
+  "51005": [
+    "Expand 1 more slot in Avatar Closet.",
+    "扩展 1 个装扮收藏栏位。"
+  ],
+  "51006": [
+    "Avatar Closet can be expanded upto 4 slots.",
+    "装扮收藏簿最多可扩展至 4 个栏位。"
+  ],
+  "90934": [
+    "Clone avatars cannot be combined with ohter avatars.",
+    "克隆装扮不能与其他装扮组合。"
+  ],
+  "50861": [
+    "Only sunderable avatars can be traded.",
+    "只有可分解的装扮才能进行交易。"
+  ],
+  "91004": [
+    "Do you really want to exchange this avatar to Witch's special item?",
+    "你真的想将这个装扮兑换为女巫的特殊物品吗？"
+  ],
+  "91040": [
+    "Avatars can only be sundered by Lv.70+ characters.",
+    "只有达到70级的角色才能分解装扮。"
+  ],
+  "76531": [
+    "Selected Avatar is not applicable for Avatar Laundry. Please refer to web page for more information.",
+    "选定的装扮无法用于装扮清洗服务。请参考网页获取更多信息。"
+  ],
+  "76533": [
+    "Selected Avatar is not applicable for Avatar Laundry. Please refer to web page for more information.",
+    "选定的装扮无法用于装扮清洗服务。请参考网页获取更多信息。"
+  ],
+  "76534": [
+    "Selected Avatar is not applicable for Avatar Laundry. Please refer to web page for more information.",
+    "选定的装扮无法用于装扮清洗服务。请参考网页获取更多信息。"
+  ],
+  "76535": [
+    "Selected Avatar is not applicable for Avatar Laundry. Please refer to web page for more information.",
+    "选定的装扮无法用于装扮清洗服务。请参考网页获取更多信息。"
+  ],
+  "76536": [
+    "Selected Avatar is not applicable for Avatar Laundry. Please refer to web page for more information.",
+    "选定的装扮无法用于装扮清洗服务。请参考网页获取更多信息。"
+  ],
+  "76537": [
+    "Selected Avatar is not applicable for Avatar Laundry. Please refer to web page for more information.",
+    "选定的装扮无法用于装扮清洗服务。请参考网页获取更多信息。"
+  ],
+  "76538": [
+    "Selected Avatar is not applicable for Avatar Laundry. Please refer to web page for more information.",
+    "选定的装扮无法用于装扮清洗服务。请参考网页获取更多信息。"
+  ],
+  "76539": [
+    "Would you like to wash your avatar?\\n\\n(Avatars acquired by washing are UNTRADABLE.)",
+    "你想清洗你的装扮吗？\\n\\n（通过清洗获得的装扮无法交易。）"
+  ],
+  "508000021": [
+    "Unkown Set Effect.",
+    "未知套装效果。"
+  ]
+}
