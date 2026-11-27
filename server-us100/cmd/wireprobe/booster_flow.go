@@ -307,11 +307,20 @@ func openBoosterBox(
 	}
 	var openCount uint16
 	var isChoice bool
+	var category uint32
 	var chosen uint32
-	if len(plaintext) == 8 && bytes.Equal(plaintext[4:], make([]byte, 4)) {
+	switch {
+	case len(plaintext) == 8:
 		openCount = binary.LittleEndian.Uint16(plaintext[2:4])
-	} else if len(plaintext) == 16 && bytes.Equal(plaintext[4:8], make([]byte, 4)) && bytes.Equal(plaintext[12:], make([]byte, 4)) {
+		category = binary.LittleEndian.Uint32(plaintext[4:8])
+	case len(plaintext) == 12:
 		openCount = binary.LittleEndian.Uint16(plaintext[2:4])
+		category = binary.LittleEndian.Uint32(plaintext[4:8])
+		chosen = binary.LittleEndian.Uint32(plaintext[8:12])
+		isChoice = true
+	case len(plaintext) == 16 && bytes.Equal(plaintext[12:], make([]byte, 4)):
+		openCount = binary.LittleEndian.Uint16(plaintext[2:4])
+		category = binary.LittleEndian.Uint32(plaintext[4:8])
 		chosen = binary.LittleEndian.Uint32(plaintext[8:12])
 		isChoice = true
 	}
@@ -336,7 +345,7 @@ func openBoosterBox(
 	}
 
 	// Preserve exact existing Neo contract/look/daily gift box flows.
-	if box == 590005791 && !isChoice && openCount == 1 {
+	if box == 590005791 && !isChoice && category == 0 && openCount == 1 {
 		award, qty := uint32(590005793), uint32(1)
 		grant := neoBoxGrant(lootSvc, slot, box, award, qty)
 		key := fmt.Sprintf("neo160/%x", sha256.Sum256(rawFrame))
@@ -344,12 +353,12 @@ func openBoosterBox(
 		if err != nil {
 			return role, nil, box, award, qty, false, err
 		}
-		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{{award, qty}}, applied, map[byte]bool{
+		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{{Template: award, Quantity: qty}}, applied, map[byte]bool{
 			storage.ConquerorContractKind: true,
 			storage.TacticianContractKind: true,
 			storage.GrowthContractKind:    true,
 			storage.CubeContractKind:      true,
-		})
+		}, false)
 	}
 	if isChoice && openCount == 1 && (box == 590005785 || box == 50002547) {
 		qty := uint32(1)
@@ -372,7 +381,7 @@ func openBoosterBox(
 		if err != nil {
 			return role, nil, box, chosen, qty, false, err
 		}
-		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{{chosen, qty}}, applied, nil)
+		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{{Template: chosen, Quantity: qty}}, applied, nil, false)
 	}
 
 	// Bagged contract booster (e.g. 590006272..590006277 opened from bag):
@@ -404,12 +413,27 @@ func openBoosterBox(
 			}
 		}
 		display := contractBoosterAward(box, uint32(openCount))
-		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{display}, applied, map[byte]bool{kind: true})
+		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{display}, applied, map[byte]bool{kind: true}, false)
 	}
 
-	// DANJI [booster selection] boxes
+	// Resolve source-backed [booster selection] (DANJI weapon/body avatars & Neo look boxes),
+	// multi-reward [booster] (DANJI aura/creature boxes), and legacy DANJI tables.
 	var awards []boosterAward
-	if isChoice {
+	if def, ok := danjiAvatarSelectionBoxes[box]; ok {
+		resolved, rerr := resolveSelectionBox(def, category, chosen, isChoice, openCount)
+		if rerr != nil {
+			return role, nil, box, chosen, 0, false, fmt.Errorf("box %d: %w", box, rerr)
+		}
+		awards = resolved
+	} else if fixedMulti, ok := danjiFixedMultiBoosters[box]; ok && !isChoice {
+		for _, it := range fixedMulti {
+			awards = append(awards, boosterAward{
+				Template: it.Template,
+				Quantity: it.Quantity * uint32(openCount),
+				Avatar:   it.Avatar,
+			})
+		}
+	} else if isChoice {
 		opts, ok := danjiSelectionTables[box]
 		if !ok {
 			return role, nil, box, chosen, 0, false, fmt.Errorf("unsupported selection box %d", box)
@@ -440,9 +464,14 @@ func openBoosterBox(
 	}
 
 	contractDays := map[byte]int64{}
+	var avatarIDs []uint32
 	var bagAwards []boosterAward
 	for _, a := range awards {
-		if kind, days, ok := directContractItem(a.Template); ok {
+		if a.Avatar {
+			for i := uint32(0); i < a.Quantity; i++ {
+				avatarIDs = append(avatarIDs, a.Template)
+			}
+		} else if kind, days, ok := directContractItem(a.Template); ok {
 			contractDays[kind] += days * int64(a.Quantity)
 		} else {
 			bagAwards = append(bagAwards, a)
@@ -458,14 +487,22 @@ func openBoosterBox(
 		if e = deductBagSlot(&b, slot, box, uint32(openCount)); e != nil {
 			return nil, nil, e
 		}
-		local := catalog.LootCatalog{Source: lootSvc.Catalog.Source, Items: map[uint32]catalog.LootItem{}}
-		for _, a := range bagAwards {
-			local.Items[a.Template] = localCatalogEntry(lootSvc.Catalog, a.Template, a.Quantity)
-		}
-		for _, a := range bagAwards {
-			b, _, e = b.Add(local, lootSvc.BagRules, a.Template, a.Quantity)
+		if len(avatarIDs) > 0 {
+			b, _, e = b.AddAvatars(avatarIDs)
 			if e != nil {
 				return nil, nil, e
+			}
+		}
+		if len(bagAwards) > 0 {
+			local := catalog.LootCatalog{Source: lootSvc.Catalog.Source, Items: map[uint32]catalog.LootItem{}}
+			for _, a := range bagAwards {
+				local.Items[a.Template] = localCatalogEntry(lootSvc.Catalog, a.Template, a.Quantity)
+			}
+			for _, a := range bagAwards {
+				b, _, e = b.Add(local, lootSvc.BagRules, a.Template, a.Quantity)
+				if e != nil {
+					return nil, nil, e
+				}
 			}
 		}
 		state, e := inventory.SaveBag(cur.State, b)
@@ -487,12 +524,94 @@ func openBoosterBox(
 			changedKinds[k] = true
 		}
 	}
-	return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, awards, applied, changedKinds)
+	return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, awards, applied, changedKinds, len(avatarIDs) > 0)
+}
+
+func resolveSelectionBox(def selectionBoxDef, category, chosen uint32, isChoice bool, openCount uint16) ([]boosterAward, error) {
+	if def.SelectNum == 0 {
+		// Full-set category box: awards every item in the selected category.
+		items, ok := def.Categories[category]
+		if isChoice && chosen != 0 {
+			matched := false
+			if ok {
+				for _, it := range items {
+					if it.Template == chosen {
+						matched = true
+						break
+					}
+				}
+			}
+			if !matched {
+				for _, catItems := range def.Categories {
+					for _, it := range catItems {
+						if it.Template == chosen {
+							items = catItems
+							ok = true
+							matched = true
+							break
+						}
+					}
+					if matched {
+						break
+					}
+				}
+			}
+		}
+		if !ok || len(items) == 0 {
+			return nil, fmt.Errorf("invalid category %d", category)
+		}
+		out := make([]boosterAward, 0, len(items))
+		for _, it := range items {
+			out = append(out, boosterAward{
+				Template: it.Template,
+				Quantity: it.Quantity * uint32(openCount),
+				Avatar:   it.Avatar,
+			})
+		}
+		return out, nil
+	}
+
+	// Single-item selection box (SelectNum >= 1).
+	if chosen != 0 {
+		if items, ok := def.Categories[category]; ok {
+			for _, it := range items {
+				if it.Template == chosen {
+					return []boosterAward{{
+						Template: it.Template,
+						Quantity: it.Quantity * uint32(openCount),
+						Avatar:   it.Avatar,
+					}}, nil
+				}
+			}
+		}
+		for _, items := range def.Categories {
+			for _, it := range items {
+				if it.Template == chosen {
+					return []boosterAward{{
+						Template: it.Template,
+						Quantity: it.Quantity * uint32(openCount),
+						Avatar:   it.Avatar,
+					}}, nil
+				}
+			}
+		}
+		return nil, fmt.Errorf("invalid choice %d (category %d)", chosen, category)
+	}
+	if items, ok := def.Categories[category]; ok && len(items) == 1 {
+		it := items[0]
+		return []boosterAward{{
+			Template: it.Template,
+			Quantity: it.Quantity * uint32(openCount),
+			Avatar:   it.Avatar,
+		}}, nil
+	}
+	return nil, fmt.Errorf("missing item selection (category %d)", category)
 }
 
 type boosterAward struct {
 	Template uint32 `json:"template"`
 	Quantity uint32 `json:"quantity"`
+	Avatar   bool   `json:"avatar,omitempty"`
 }
 
 func contractBoosterAward(box, openCount uint32) boosterAward {
@@ -539,6 +658,7 @@ func finalizeBoosterPackets(
 	awards []boosterAward,
 	applied bool,
 	changedKinds map[byte]bool,
+	syncAvatars bool,
 ) (storage.Character, []outboundPacket, uint32, uint32, uint32, bool, error) {
 	bag, err := inventory.ReadBag(saved.State)
 	if err != nil {
@@ -564,6 +684,13 @@ func finalizeBoosterPackets(
 		plan = append(plan, outboundPacket{"booster_open_ack", 1, 160, ack})
 	}
 	plan = append(plan, outboundPacket{"booster_inventory_restored", 0, 13, inv})
+	if syncAvatars {
+		avInv, aerr := protocol.US224AvatarRestore(inventory.AvatarBagCapacity, bag.AvatarRows())
+		if aerr != nil {
+			return saved, nil, box, 0, 0, applied, aerr
+		}
+		plan = append(plan, outboundPacket{"booster_avatar_restored", 0, 13, avInv})
+	}
 	if len(changedKinds) > 0 {
 		if cpkts, cerr := buildContractRefreshPackets(ctx, store, fatigue, account, saved.ID, changedKinds); cerr == nil {
 			plan = append(plan, cpkts...)
