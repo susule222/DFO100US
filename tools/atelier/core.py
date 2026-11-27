@@ -56,6 +56,95 @@ def db_exists():
     return db_path().is_file()
 
 
+def database_summary():
+    """Return lightweight metadata about the current local database file."""
+    db = db_path()
+    if not db.is_file():
+        return {
+            'exists': False,
+            'db_path': str(db),
+            'size_bytes': 0,
+            'account_count': 0,
+            'character_count': 0,
+            'corrupted': False,
+        }
+    size_bytes = db.stat().st_size
+    account_count = 0
+    character_count = 0
+    corrupted = False
+    try:
+        tables = read(db).get('tables', {})
+        if isinstance(tables, dict):
+            accts = tables.get('accounts', {})
+            if isinstance(accts, dict):
+                account_count = sum(
+                    1 for r in accts.values()
+                    if isinstance(r, dict) and str(r.get('username') or '').strip()
+                )
+            chars = tables.get('characters', {})
+            if isinstance(chars, dict):
+                character_count = sum(
+                    1 for r in chars.values()
+                    if isinstance(r, dict) and not r.get('deleted_at')
+                )
+    except Exception:
+        corrupted = True
+    return {
+        'exists': True,
+        'db_path': str(db),
+        'size_bytes': size_bytes,
+        'account_count': account_count,
+        'character_count': character_count,
+        'corrupted': corrupted,
+    }
+
+
+def delete_database(clear_pending=True):
+    """Delete local us100.db cleanly so users can reset forgotten credentials without creating extra DBs."""
+    if client_up():
+        raise ValueError('游戏客户端正在运行，请先退出游戏后再删除数据库。')
+    db = db_path()
+    if not db.is_file():
+        raise ValueError(f'当前不存在可删除的数据库文件：{db}')
+
+    summary = database_summary()
+    server_stopped = False
+    if gateway() is not None:
+        stop_server()
+        server_stopped = True
+
+    db.unlink()
+    for suffix in ('-wal', '-shm', '-journal', '.tmp'):
+        sidecar = db.with_name(db.name + suffix)
+        try:
+            sidecar.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+    pending_cleared = 0
+    if clear_pending:
+        pending_dir = DATA / 'pending'
+        if pending_dir.is_dir():
+            for p in pending_dir.glob('*.json'):
+                try:
+                    p.unlink(missing_ok=True)
+                    pending_cleared += 1
+                except OSError:
+                    pass
+
+    logout_account()
+    return {
+        'deleted': True,
+        'db_path': str(db),
+        'size_bytes': summary['size_bytes'],
+        'account_count': summary['account_count'],
+        'character_count': summary['character_count'],
+        'corrupted': summary['corrupted'],
+        'server_stopped': server_stopped,
+        'pending_cleared': pending_cleared,
+    }
+
+
 def _load_db_tables():
     db = db_path()
     if not db.exists():
@@ -938,6 +1027,11 @@ def login(server_only=False, account=None):
         try:
             import localize_event_tooltips as _let
             _let.apply_staged_if_pending()
+        except Exception:
+            pass
+        try:
+            import fix_event_detail_ui as _fed
+            _fed.apply_staged_if_pending()
         except Exception:
             pass
         from game_fonts import ORIGINAL

@@ -194,6 +194,42 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 	if evBytes[len(evBytes)-1] != 0 {
 		t.Fatalf("expected trailing paramCount=0 in NOTI 108")
 	}
+	// Verify every NOTI 108 entry leaves Description (URL) empty and puts [text_control] markup in Notice!
+	{
+		rd := func(off int) (string, int) {
+			n := int(binary.LittleEndian.Uint32(evBytes[off : off+4]))
+			return string(evBytes[off+4 : off+4+n]), off + 4 + n
+		}
+		cnt := int(binary.LittleEndian.Uint16(evBytes[0:2]))
+		off := 2
+		for i := 0; i < cnt; i++ {
+			off += 2 // eventID
+			hasDetail := evBytes[off]
+			off++
+			if hasDetail != 1 {
+				t.Fatalf("entry %d hasDetail=%d, want 1", i, hasDetail)
+			}
+			off += 2 // eventType + colorType
+			_, off = rd(off) // title
+			_, off = rd(off) // subtitle
+			descURL, next := rd(off)
+			off = next
+			if descURL != "" {
+				t.Fatalf("entry %d Description(URL)=%q, want empty so dead hyperlink stays hidden", i, descURL)
+			}
+			off += 8         // start + end
+			_, off = rd(off) // link
+			notice, next := rd(off)
+			off = next
+			if len(notice) == 0 || notice[:14] != "[text_control]" {
+				t.Fatalf("entry %d Notice=%q, want [text_control] markup", i, notice)
+			}
+			if evBytes[off] != 1 {
+				t.Fatalf("entry %d ShowOnCalendar=%d, want 1", i, evBytes[off])
+			}
+			off++
+		}
+	}
 
 	// 2) Verify syncGrantedBag hot-pushes CMD 1959 (time sync), NOTI 108 (events),
 	// NOTI 36 (fatigue 156+30+117 = 303), and automatic extra.* login perks!

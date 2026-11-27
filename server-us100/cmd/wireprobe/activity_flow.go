@@ -35,20 +35,54 @@ const (
 	eventIDPCBangBonus     uint16 = 306  // btn=110, grp=3, cc="", PC room HUD icon
 )
 
+// formatEventDesignNotice builds a DFO EventDesignWindow [text_control] markup
+// string (plus trailing invisible newline spacers for auto-height layout) so
+// even an unpatched client renders crisp multi-line details inside window 0x244.
+// When Script.pvf includes the localized Event/EventListWindow.evt overlay,
+// EventCalendar Loop 1 (0x14383d288) automatically supersedes these ASCII
+// fallbacks with full UTF-16LE Chinese titles and detail panels.
+func formatEventDesignNotice(lines ...string) string {
+	if len(lines) == 0 {
+		return ""
+	}
+	out := fmt.Sprintf("[text_control] %d", len(lines))
+	y := 12
+	for idx, line := range lines {
+		color := "COLOR_WHITE"
+		if idx == 0 {
+			color = "COLOR_YELLOW01"
+		} else if idx == len(lines)-1 {
+			color = "COLOR_GREEN_LIGHT"
+		}
+		out += fmt.Sprintf(" ```%s ``` 12 %d %s", line, y, color)
+		y += 22
+	}
+	spacerLines := len(lines)*2 + 1
+	out += " "
+	for i := 0; i < spacerLines; i++ {
+		if i > 0 {
+			out += "\n"
+		}
+		out += "."
+	}
+	return out
+}
+
 // buildActiveEventsPayload builds the full NOTI 108 payload for DANJI plus all
 // currently enabled server activities in events.json. Each entry sets
 // HasDetail=true and ShowOnCalendar=true with a current time window so the
 // client renders them inside EventCalendar.xui and lights up matching HUD
 // notification icons via InformationButtonInfo.evn (0x14384d77a).
 //
-// Wire strings are ASCII because DFO US100's MultiByteToWideChar codepage
-// global (0x14a3ef854) defaults to CP437.
+// In EventInfo (0x143852a99), Description (+0x70) is the external webpage URL
+// (leaving it empty cleanly hides the dead "Visit Event Page" link), while
+// Notice (+0xc0) feeds EventDetailInfo.Notice (+0x118) for EventDesignWindow.
 func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) {
 	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
 	startTS := int32(dayStart.AddDate(0, 0, -2).Unix())
 	endTS := int32(dayStart.AddDate(0, 0, 14).Unix())
 
-	makeEntry := func(id uint16, color byte, title, subtitle, desc string) protocol.ActiveEventEntry {
+	makeEntry := func(id uint16, color byte, title, subtitle string, detailLines ...string) protocol.ActiveEventEntry {
 		return protocol.ActiveEventEntry{
 			EventID:        id,
 			HasDetail:      true,
@@ -56,7 +90,8 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			ColorType:      color,
 			Title:          title,
 			Subtitle:       subtitle,
-			Description:    desc,
+			Description:    "",
+			Notice:         formatEventDesignNotice(detailLines...),
 			StartTime:      startTS,
 			EndTime:        endTS,
 			ShowOnCalendar: true,
@@ -64,14 +99,21 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 	}
 
 	entries := []protocol.ActiveEventEntry{
-		makeEntry(protocol.EventIDDanji, 4, "DANJI Secret Jar", "DANJI Event", "Open DANJI Pots for rare rewards and stack milestones."),
+		makeEntry(protocol.EventIDDanji, 4, "DANJI Secret Jar", "DANJI Event",
+			"DANJI Secret Jar Event",
+			"Open DANJI Pots for rare rewards.",
+			"Stack milestones grant bonus items.",
+			"Status: Active on server"),
 	}
 	if pol.ExpEventEnabled && pol.ExpMultiplier > 1.0 {
 		entries = append(entries, makeEntry(
 			eventIDExpHotTime, 1,
 			fmt.Sprintf("EXP Boost Event (x%.1f)", pol.ExpMultiplier),
 			"Combat EXP Event",
-			fmt.Sprintf("Monster and dungeon clear EXP boosted by x%.1f.", pol.ExpMultiplier),
+			fmt.Sprintf("Combat & Clear EXP x%.1f", pol.ExpMultiplier),
+			"Applies to monster kills and clears.",
+			"Adjustable live from the launcher.",
+			"Status: Active on server",
 		))
 	}
 	if (pol.DropEventEnabled && (pol.DropRateMultiplier > 1.0 || pol.GoldMultiplier > 1.0)) ||
@@ -80,7 +122,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDDropGoldBoost, 4,
 			fmt.Sprintf("Drop & Gold Boost (x%.1f)", math.Max(pol.DropRateMultiplier, math.Max(pol.GoldMultiplier, pol.CardGoldMultiplier))),
 			"Loot & Gold Event",
-			fmt.Sprintf("Drop x%.1f / Gold x%.1f / Clear Card x%.1f.", pol.DropRateMultiplier, pol.GoldMultiplier, pol.CardGoldMultiplier),
+			"Drop & Gold Boost Event",
+			fmt.Sprintf("Drop x%.1f / Gold x%.1f", pol.DropRateMultiplier, pol.GoldMultiplier),
+			fmt.Sprintf("Clear Card Gold x%.1f", pol.CardGoldMultiplier),
+			"Status: Active on server",
 		))
 	}
 	if pol.Fatigue.BurningEnabled || pol.Fatigue.WeekendDouble || pol.Fatigue.ZeroCost || pol.Fatigue.BonusLimit > 0 {
@@ -94,7 +139,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDFatigueBurning, 1,
 			title,
 			"Fatigue Bonus",
-			fmt.Sprintf("Burning=%v Weekend2x=%v BonusFP=+%d ZeroCost=%v", pol.Fatigue.BurningEnabled, pol.Fatigue.WeekendDouble, pol.Fatigue.BonusLimit, pol.Fatigue.ZeroCost),
+			title,
+			fmt.Sprintf("Burning: %v / Weekend 2x: %v", pol.Fatigue.BurningEnabled, pol.Fatigue.WeekendDouble),
+			fmt.Sprintf("Bonus FP: +%d / Zero Cost: %v", pol.Fatigue.BonusLimit, pol.Fatigue.ZeroCost),
+			"Status: Active on server",
 		))
 	}
 	if pol.Mileage.Enabled {
@@ -102,7 +150,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDMileageBonus, 3,
 			fmt.Sprintf("Mileage Event (+%d/Clear)", pol.Mileage.DungeonClearPoints),
 			"Mileage Shop",
-			fmt.Sprintf("Earn +%d Mileage per clear (Daily cap %d).", pol.Mileage.DungeonClearPoints, pol.Mileage.DailyCap),
+			"Mileage Shop Event",
+			fmt.Sprintf("Earn +%d Mileage per dungeon clear.", pol.Mileage.DungeonClearPoints),
+			fmt.Sprintf("Daily grind cap: %d Mileage.", pol.Mileage.DailyCap),
+			"Status: Active on server",
 		))
 	}
 	if pol.HellParty.Enabled {
@@ -110,7 +161,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDHellParty, 4,
 			fmt.Sprintf("Hell Party Event (%d%%)", pol.HellParty.TriggerChance),
 			"Random Hell Party",
-			fmt.Sprintf("Random Hell trigger %d%% with Epic/Mythic drops.", pol.HellParty.TriggerChance),
+			fmt.Sprintf("Random Hell Party (%d%%)", pol.HellParty.TriggerChance),
+			"Chance to spawn Hell Party in dungeons.",
+			"Defeat APCs for Epic/Mythic loot.",
+			"Status: Active on server",
 		))
 	}
 	if pol.DailyChallenge.Enabled {
@@ -118,7 +172,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDDailyChallenge, 2,
 			fmt.Sprintf("Daily Challenge (%d Kills / %d Clears)", pol.DailyChallenge.KillTarget, pol.DailyChallenge.ClearTarget),
 			"Daily Mission",
-			fmt.Sprintf("Auto reward: %d Gold + %d Mileage.", pol.DailyChallenge.RewardGold, pol.DailyChallenge.RewardMileage),
+			"Daily Challenge Mission",
+			fmt.Sprintf("Goal: %d kills / %d clears.", pol.DailyChallenge.KillTarget, pol.DailyChallenge.ClearTarget),
+			fmt.Sprintf("Reward: %d Gold + %d Mileage.", pol.DailyChallenge.RewardGold, pol.DailyChallenge.RewardMileage),
+			"Resets daily automatically.",
 		))
 	}
 	if pol.WeeklyDungeon.Enabled {
@@ -126,7 +183,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDWeeklyDungeon, 2,
 			fmt.Sprintf("Weekly Dungeon Bonus (%d/Week)", pol.WeeklyDungeon.WeeklyLimit),
 			"Weekly Mission",
-			fmt.Sprintf("Auto reward up to %d clears/week: %d Gold + %d Mileage.", pol.WeeklyDungeon.WeeklyLimit, pol.WeeklyDungeon.RewardGold, pol.WeeklyDungeon.RewardMileage),
+			"Weekly Dungeon Bonus",
+			fmt.Sprintf("Up to %d rewarded clears per week.", pol.WeeklyDungeon.WeeklyLimit),
+			fmt.Sprintf("Reward: %d Gold + %d Mileage.", pol.WeeklyDungeon.RewardGold, pol.WeeklyDungeon.RewardMileage),
+			"Resets weekly automatically.",
 		))
 	}
 	if pol.Extra.DailyCheckinEnabled {
@@ -134,7 +194,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDDailyCheckin, 3,
 			"Daily Check-in Event",
 			"Attendance",
-			"Daily login auto-reward: 100k Gold, 20 Ryan Cores, 10 Mileage.",
+			"Daily Check-in Attendance",
+			"Auto-granted on daily login:",
+			"100k Gold + 20 Ryan Cores + 10 Mileage.",
+			"Status: Active on server",
 		))
 	}
 	if pol.Extra.SeriaWelcomeEnabled {
@@ -142,7 +205,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDSeriaWelcome, 3,
 			"Seria's Welcome Event",
 			"Adventurer Gift",
-			"Welcome gift: 300k Gold, 30 Remy's Touch, 20 Mileage.",
+			"Seria's Welcome Gift",
+			"Auto-granted welcome supply:",
+			"300k Gold + 30 Remy's Touch + 20 Mileage.",
+			"Status: Active on server",
 		))
 	}
 	if pol.Extra.ReturneeCareEnabled {
@@ -150,7 +216,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDReturneeCare, 2,
 			"Returnee Care Event",
 			"Weekly Supply",
-			"Weekly care gift: 500k Gold, 50 Harmonious Crystals, 30 Mileage.",
+			"Returnee Care Weekly Supply",
+			"Auto-granted weekly care pack:",
+			"500k Gold + 50 Crystals + 30 Mileage.",
+			"Status: Active on server",
 		))
 	}
 	if pol.Extra.OTPSecurityEnabled {
@@ -158,7 +227,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDOTPSecurity, 2,
 			"Security Protection Bonus",
 			"Daily Security",
-			"Daily security reward: 50k Gold, 10 Kaleido Boxes, 5 Mileage.",
+			"Security Protection Bonus",
+			"Auto-granted daily reward:",
+			"50k Gold + 10 Kaleido Boxes + 5 Mileage.",
+			"Status: Active on server",
 		))
 	}
 	if pol.Extra.PCBangBonusEnabled {
@@ -166,7 +238,10 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			eventIDPCBangBonus, 4,
 			"PC Bang Bonus (+30 FP / +20% EXP)",
 			"PC Room Benefit",
-			"Active PC Bang perks: +30 Daily Fatigue and +20% Combat EXP.",
+			"PC Bang Special Perks",
+			"+30 Daily Fatigue limit bonus.",
+			"+20% bonus combat EXP in dungeons.",
+			"Status: Active on server",
 		))
 	}
 	return protocol.ActiveEventsDetailed(entries)

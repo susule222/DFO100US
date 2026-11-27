@@ -106,6 +106,13 @@ def main():
             print(applied_msg, flush=True)
     except Exception as exc:
         print('warning: staged event tooltip localization skipped: %s' % exc, flush=True)
+    try:
+        import fix_event_detail_ui as _fed
+        applied_msg = _fed.apply_staged_if_pending()
+        if applied_msg:
+            print(applied_msg, flush=True)
+    except Exception as exc:
+        print('warning: staged event detail UI fix skipped: %s' % exc, flush=True)
     exe = preflight.client_exe()
     if mode == '3':
         if not _listening(ch_host, ch_port):
