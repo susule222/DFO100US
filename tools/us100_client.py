@@ -76,6 +76,7 @@ def main():
         client = subprocess.Popen([str(exe), payload], cwd=str(exe.parent))
         print(json.dumps({'time': datetime.now().astimezone().isoformat(), 'event': 'start',
                           'pid': client.pid, 'exe': str(exe), 'mode': mode,
+                          'account': state.get('account', ''),
                           'address': state['address'], 'channel_refresh_address': ch_addr}),
               file=log, flush=True)
         code = client.wait()

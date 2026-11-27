@@ -26,8 +26,10 @@ import (
 var ErrNoRows = errors.New("no rows in result set")
 
 type Config struct {
-	DBPath   string `json:"db_path"`
-	SeedPath string `json:"seed_path"`
+	DBPath          string `json:"db_path"`
+	SeedPath        string `json:"seed_path"`
+	RequireExisting bool   `json:"-"`
+	SkipSeed        bool   `json:"-"`
 }
 
 // LoadConfig reads the JSON config. Empty db_path/seed_path default next to
@@ -65,11 +67,19 @@ func Open(ctx context.Context, c Config) (*Store, error) {
 	if c.DBPath == "" {
 		return nil, errors.New("storage configuration incomplete")
 	}
-	db, e := db100.Open(c.DBPath)
+	var (
+		db *db100.DB
+		e  error
+	)
+	if c.RequireExisting {
+		db, e = db100.OpenExisting(c.DBPath)
+	} else {
+		db, e = db100.Open(c.DBPath)
+	}
 	if e != nil {
 		return nil, e
 	}
-	if c.SeedPath != "" {
+	if !c.SkipSeed && c.SeedPath != "" {
 		if e = db.ImportSeed(c.SeedPath); e != nil {
 			return nil, e
 		}

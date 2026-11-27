@@ -124,13 +124,21 @@ class EpicWindow(LauncherMainWindow):
         self.res_signals=ResourceSignals(self)
         self.res_signals.progress.connect(self._on_pvf_progress)
         self.res_signals.synced.connect(self._on_pvf_synced)
+        self.create_acc_btn.clicked.connect(self._on_create_account_clicked)
+        self.login_acc_btn.clicked.connect(self._on_login_account_clicked)
+        self.logout_acc_btn.clicked.connect(self._on_logout_account_clicked)
+        self.acc_pick_combo.currentIndexChanged.connect(self._on_account_picked)
+        self.pwd_input.returnPressed.connect(self._on_login_account_clicked)
+        self.pwd_confirm_input.returnPressed.connect(self._on_create_account_clicked)
+        self._refresh_account_ui()
         self.timer=QTimer(self);self.timer.setInterval(5000);self.timer.timeout.connect(self.refresh_status)
         self.timer.start();self.refresh_status()
         self.resource_timer=QTimer(self);self.resource_timer.setInterval(3000)
         self.resource_timer.timeout.connect(self._poll_live_resources)
         self.resource_timer.start()
         QTimer.singleShot(350,self._poll_live_resources)
-        self.statusBar().showMessage('就绪 · 本地账号 probe-us100')
+        acct=core.active_account()
+        self.statusBar().showMessage(f'就绪 · 已登录账号 {acct}' if acct else '就绪 · 请先在主页创建账号及密码并登录')
         icon=self.client_exe.parent/'DFO.ico'
         if icon.is_file():self.setWindowIcon(QIcon(str(icon)))
         saved_wp=self.res_cfg.get('wallpaper','wisdom')
@@ -358,12 +366,13 @@ class EpicWindow(LauncherMainWindow):
         if hasattr(self,'home_srv_badge'):
             if state:
                 pid=state.get('pid','-')
+                acct_tag=f'  ·  账号 {state["account"]}' if state.get('account') else ''
                 self.home_srv_badge.setText('● 运行中')
                 self.home_srv_badge.setStyleSheet(
                     'color:#4ade80;font-size:12px;font-weight:bold;background:rgba(34,197,94,0.16);'
                     'border:1px solid rgba(74,222,128,0.45);border-radius:8px;padding:3px 10px;'
                 )
-                self.home_srv_detail.setText(f'网关地址 {state["address"]}  ·  PID {pid}  ·  GM：{gm_txt}')
+                self.home_srv_detail.setText(f'网关地址 {state["address"]}{acct_tag}  ·  PID {pid}  ·  GM：{gm_txt}')
                 self.srv_start_btn.setEnabled(False)
                 self.srv_restart_btn.setEnabled(True)
                 self.srv_stop_btn.setEnabled(True)
@@ -409,8 +418,115 @@ class EpicWindow(LauncherMainWindow):
             except Exception as exc:self.signals.done.emit(False,str(exc))
         threading.Thread(target=run,daemon=True).start()
 
+    def _refresh_account_ui(self):
+        if not hasattr(self,'acc_status_lbl'):
+            return
+        db_ok=core.db_exists()
+        accts=core.list_accounts(include_dev=False) if db_ok else []
+        active=core.active_account()
+        if active and (not db_ok or core.account_id(active) is None):
+            core.logout_account()
+            active=None
+        with QSignalBlocker(self.acc_pick_combo):
+            self.acc_pick_combo.clear()
+            if accts:
+                self.acc_pick_combo.addItem(f'已有账号 ({len(accts)})…','')
+                for row in accts:
+                    self.acc_pick_combo.addItem(row['username'],row['username'])
+                if active:
+                    idx=self.acc_pick_combo.findData(active)
+                    if idx>=0:
+                        self.acc_pick_combo.setCurrentIndex(idx)
+            else:
+                self.acc_pick_combo.addItem('暂无已建账号','')
+        self.logout_acc_btn.setEnabled(bool(active))
+        if active:
+            role_cnt=len(core.roles(active))
+            self.acc_status_lbl.setText(
+                f'● 已登录账号：{active}  ·  数据库已就绪  ·  已建角色 {role_cnt}  ·  可点击「立即进入 100 级世界」选频道游玩'
+            )
+            self.acc_status_lbl.setStyleSheet(
+                'color:#4ade80;font-size:12px;font-weight:bold;border:none;background:transparent;'
+            )
+        elif db_ok and accts:
+            self.acc_status_lbl.setText(
+                f'● 数据库已就绪（共 {len(accts)} 个已注册账号）· 请输入账号和密码点击「登录账号」，或创建新账号'
+            )
+            self.acc_status_lbl.setStyleSheet(
+                'color:#fde047;font-size:12px;font-weight:bold;border:none;background:transparent;'
+            )
+        elif db_ok:
+            self.acc_status_lbl.setText(
+                '● 数据库中尚未创建带密码的玩家账号 · 请输入账号、密码与确认密码点击「创建账号」'
+            )
+            self.acc_status_lbl.setStyleSheet(
+                'color:#fbbf24;font-size:12px;font-weight:bold;border:none;background:transparent;'
+            )
+        else:
+            self.acc_status_lbl.setText(
+                '● 数据库尚未生成 · 只有创建账号及密码才会形成数据库，之后方可进入游戏选频道游玩'
+            )
+            self.acc_status_lbl.setStyleSheet(
+                'color:#f87171;font-size:12px;font-weight:bold;border:none;background:transparent;'
+            )
+
+    def _on_account_picked(self,*_):
+        picked=self.acc_pick_combo.currentData() or ''
+        if picked:
+            self.acc_input.setText(picked)
+            self.pwd_input.setFocus()
+
+    def _on_create_account_clicked(self):
+        username=self.acc_input.text().strip()
+        pwd=self.pwd_input.text()
+        pwd2=self.pwd_confirm_input.text()
+        try:
+            res=core.create_account(username,pwd,confirm_password=pwd2)
+        except Exception as exc:
+            QMessageBox.warning(self,'创建账号失败',str(exc))
+            return
+        self.acc_input.setText(res['username'])
+        self.pwd_input.clear()
+        self.pwd_confirm_input.clear()
+        self._refresh_account_ui()
+        self.refresh_roles()
+        self.refresh_status()
+        db_hint='已自动生成本地数据库 (us100.db)' if res['db_created'] else '已写入本地数据库 (us100.db)'
+        msg=f'账号「{res["username"]}」创建并登录成功，{db_hint}。现在可点击「立即进入 100 级世界」选频道游玩！'
+        self.statusBar().showMessage(msg)
+        QMessageBox.information(self,'创建账号成功',msg)
+
+    def _on_login_account_clicked(self):
+        username=self.acc_input.text().strip()
+        pwd=self.pwd_input.text()
+        try:
+            res=core.authenticate_account(username,pwd)
+        except Exception as exc:
+            QMessageBox.warning(self,'账号登录失败',str(exc))
+            return
+        self.acc_input.setText(res['username'])
+        self.pwd_input.clear()
+        self.pwd_confirm_input.clear()
+        self._refresh_account_ui()
+        self.refresh_roles()
+        self.refresh_status()
+        msg=f'账号「{res["username"]}」验证通过，可点击「立即进入 100 级世界」选频道游玩。'
+        self.statusBar().showMessage(msg)
+
+    def _on_logout_account_clicked(self):
+        old=core.active_account()
+        core.logout_account()
+        self.pwd_input.clear()
+        self.pwd_confirm_input.clear()
+        self._refresh_account_ui()
+        self.refresh_roles()
+        self.refresh_status()
+        if old:
+            self.statusBar().showMessage(f'已退出账号「{old}」，请重新登录或创建账号。')
+
     def finished(self,ok,message):
         self.busy=False;self.statusBar().showMessage(message)
+        self._refresh_account_ui();self.refresh_roles()
         self.refresh_status();self.refresh_mods();self.font_panel.refresh()
         self._refresh_npk_now(silent=True)
         if ok and hasattr(self,'mod_panel') and ('PVF' in message or '原版' in message):

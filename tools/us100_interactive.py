@@ -31,10 +31,37 @@ OUT = ROOT / 'runtime' / 'interactive'
 SHOT = ROOT / 'tools' / 'shot_clean.ps1'
 SHOTS = ROOT / 'runtime' / 'shots'
 
-MODE = sys.argv[1] if len(sys.argv) > 1 else '3'
-STYLE = sys.argv[2] if len(sys.argv) > 2 else 'normal'
-FORCE = '--force' in sys.argv
-NO_CLIENT = '--no-client' in sys.argv
+def _parse_cli(argv):
+    pos = []
+    account = 'probe-us100'
+    require_account = False
+    force = False
+    no_client = False
+    i = 1
+    while i < len(argv):
+        arg = argv[i]
+        if arg == '--force':
+            force = True
+        elif arg == '--no-client':
+            no_client = True
+        elif arg == '--require-account':
+            require_account = True
+        elif arg == '--account' and i + 1 < len(argv):
+            account = argv[i + 1].strip() or account
+            i += 1
+        elif arg.startswith('--account='):
+            val = arg.split('=', 1)[1].strip()
+            if val:
+                account = val
+        elif not arg.startswith('--'):
+            pos.append(arg)
+        i += 1
+    mode = pos[0] if len(pos) > 0 else '3'
+    style = pos[1] if len(pos) > 1 else 'normal'
+    return mode, style, force, no_client, account, require_account
+
+
+MODE, STYLE, FORCE, NO_CLIENT, ACCOUNT, REQUIRE_ACCOUNT = _parse_cli(sys.argv)
 try:
     LOG = open(ROOT / 'runtime' / 'us100_interactive.log', 'a', encoding='utf-8')
 except OSError:
@@ -216,12 +243,20 @@ def main():
         (8, 'characters_ok.bin'), (684, 'name_ok.bin'))}
     (OUT / 'responses.json').write_text(json.dumps(responses))
     storage = rtdir / 'storage' / 'local.json'
+    if REQUIRE_ACCOUNT:
+        cfg = preflight.storage_config()
+        db_file = pathlib.Path(cfg['db_path']) if cfg.get('db_path') else (rtdir / 'us100.db')
+        if not db_file.is_file():
+            log('database not created yet (%s); create an account in the launcher first.' % db_file)
+            return 1
     from atelier_runtime import current as atelier_generation
     atelier = atelier_generation()
     cmd = [str(SERVER_BIN), '-fixture', str(fixture), '-output', str(OUT),
            '-game-listen', '127.0.0.2:0', '-responses', str(OUT / 'responses.json'),
-           '-account', 'probe-us100', '-roster-v224',
+           '-account', ACCOUNT, '-roster-v224',
            '-launcher-gm', str(ROOT / 'runtime' / 'launcher-gm')]
+    if REQUIRE_ACCOUNT:
+        cmd.append('-require-account')
     if STYLE == 'markers':
         cmd.append('-roster-markers')
     if STYLE == 'probe':

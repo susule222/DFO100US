@@ -657,10 +657,10 @@ class LauncherMainWindow(QMainWindow):
 
         # 史诗级 100 版本主视觉横幅（内嵌 1600x900 100 级原画 + 角色高清立绘 + 鎏金启动区）
         self.hero_banner = HeroBannerFrame()
-        self.hero_banner.setMinimumHeight(262)
+        self.hero_banner.setMinimumHeight(318)
         h_lay = QVBoxLayout(self.hero_banner)
-        h_lay.setContentsMargins(26, 22, 26, 22)
-        h_lay.setSpacing(12)
+        h_lay.setContentsMargins(26, 18, 26, 18)
+        h_lay.setSpacing(10)
 
         eyebrow = QLabel("DUNGEON & FIGHTER  ·  LEVEL 100  ·  GUIDE OF WISDOM")
         eyebrow.setObjectName("EyebrowLabel")
@@ -668,55 +668,109 @@ class LauncherMainWindow(QMainWindow):
 
         title = QLabel("地下城与勇士 · 智慧的引导")
         title.setStyleSheet(
-            "font-size: 28px; font-weight: bold; color: #ffe793; "
+            "font-size: 26px; font-weight: bold; color: #ffe793; "
             "background: transparent; border: none;"
         )
         h_lay.addWidget(title)
 
-        sub = QLabel("100级神话纪元 · 实时 PVF/NPK 驱动 · 高清可视化试衣间与角色控制台")
-        sub.setStyleSheet("font-size: 13px; color: #dfd4be; background: transparent; border: none;")
+        sub = QLabel("100级神话纪元 · 先创建账号生成数据库 · 登录后直通选频道游玩")
+        sub.setStyleSheet("font-size: 12px; color: #dfd4be; background: transparent; border: none;")
         h_lay.addWidget(sub)
 
-        # 账号 / 线路 / 客户端路径信息条（放在半透明暗金条中，右侧留白展示 100 级角色立绘）
+        # 账号创建与登录通行证面板（放在半透明暗金条中，右侧留白展示 100 级角色立绘）
         conn_box = QFrame()
-        conn_box.setMaximumWidth(640)
+        conn_box.setMaximumWidth(710)
         conn_box.setStyleSheet(
-            "QFrame{background:rgba(12,10,20,0.72);border:1px solid rgba(235,192,86,0.34);border-radius:10px;}"
+            "QFrame{background:rgba(12,10,20,0.78);border:1px solid rgba(235,192,86,0.40);border-radius:10px;}"
         )
         c_lay = QVBoxLayout(conn_box)
         c_lay.setContentsMargins(14, 10, 14, 10)
-        c_lay.setSpacing(8)
+        c_lay.setSpacing(7)
 
+        # 第 1 行：账号 + 已有账号快捷选择 + 密码
         form_row = QHBoxLayout()
         form_row.setSpacing(8)
         self.acc_input = QLineEdit()
-        self.acc_input.setPlaceholderText("输入账号 / 角色名")
-        self.acc_input.setText("probe-us100")
-        self.acc_input.setReadOnly(True)
+        self.acc_input.setPlaceholderText("输入账号 (3~32位字母/数字/_/-)")
+        self.acc_input.setMaxLength(32)
 
+        self.acc_pick_combo = QComboBox()
+        self.acc_pick_combo.setMinimumWidth(135)
+        self.acc_pick_combo.addItem("已有账号…", "")
+
+        self.pwd_input = QLineEdit()
+        self.pwd_input.setPlaceholderText("输入密码 (4~64位)")
+        self.pwd_input.setEchoMode(QLineEdit.Password)
+        self.pwd_input.setMaxLength(64)
+
+        lbl_acc = QLabel("游戏账号:")
+        lbl_acc.setStyleSheet("color:#e6d3a8;font-weight:bold;border:none;background:transparent;")
+        lbl_pwd = QLabel("密码:")
+        lbl_pwd.setStyleSheet("color:#e6d3a8;font-weight:bold;border:none;background:transparent;")
+        form_row.addWidget(lbl_acc)
+        form_row.addWidget(self.acc_input, 2)
+        form_row.addWidget(self.acc_pick_combo, 1)
+        form_row.addWidget(lbl_pwd)
+        form_row.addWidget(self.pwd_input, 2)
+        c_lay.addLayout(form_row)
+
+        # 第 2 行：确认密码（创建账号时使用）+ 创建账号 / 登录账号 / 退出登录 按钮
+        auth_row = QHBoxLayout()
+        auth_row.setSpacing(8)
+        lbl_pwd2 = QLabel("确认密码:")
+        lbl_pwd2.setStyleSheet("color:#d6c7a8;border:none;background:transparent;")
+        self.pwd_confirm_input = QLineEdit()
+        self.pwd_confirm_input.setPlaceholderText("创建账号时再次输入密码")
+        self.pwd_confirm_input.setEchoMode(QLineEdit.Password)
+        self.pwd_confirm_input.setMaxLength(64)
+
+        self.create_acc_btn = QPushButton("创建账号")
+        self.create_acc_btn.setObjectName("GoldBtn")
+        self.create_acc_btn.setCursor(Qt.PointingHandCursor)
+        self.create_acc_btn.setToolTip("创建新账号及密码并初始化本地数据库 (us100.db)")
+
+        self.login_acc_btn = QPushButton("登录账号")
+        self.login_acc_btn.setObjectName("DarkBtn")
+        self.login_acc_btn.setCursor(Qt.PointingHandCursor)
+        self.login_acc_btn.setToolTip("验证已有账号和密码后解锁进入游戏")
+
+        self.logout_acc_btn = QPushButton("退出账号")
+        self.logout_acc_btn.setObjectName("DarkBtn")
+        self.logout_acc_btn.setCursor(Qt.PointingHandCursor)
+        self.logout_acc_btn.setEnabled(False)
+
+        auth_row.addWidget(lbl_pwd2)
+        auth_row.addWidget(self.pwd_confirm_input, 2)
+        auth_row.addWidget(self.create_acc_btn)
+        auth_row.addWidget(self.login_acc_btn)
+        auth_row.addWidget(self.logout_acc_btn)
+        c_lay.addLayout(auth_row)
+
+        # 第 3 行：数据库与账号状态提示
+        self.acc_status_lbl = QLabel("● 未登录账号 · 请先创建账号及密码以生成数据库，方可进游戏选频道")
+        self.acc_status_lbl.setWordWrap(True)
+        self.acc_status_lbl.setStyleSheet(
+            "color:#fbbf24;font-size:12px;font-weight:bold;border:none;background:transparent;"
+        )
+        c_lay.addWidget(self.acc_status_lbl)
+
+        # 第 4 行：线路与客户端路径
+        exe_row = QHBoxLayout()
+        exe_row.setSpacing(8)
         self.srv_combo = QComboBox()
         self.srv_combo.addItem("智慧的引导 · 本地服 (Lv.100)")
-
         self.exe_path_input = QLineEdit()
         self.exe_path_input.setText(str(self.client_exe))
         self.exe_path_input.setReadOnly(True)
 
-        lbl_acc = QLabel("本地账号:")
-        lbl_acc.setStyleSheet("color:#d6c7a8;border:none;background:transparent;")
         lbl_srv = QLabel("线路:")
         lbl_srv.setStyleSheet("color:#d6c7a8;border:none;background:transparent;")
-        form_row.addWidget(lbl_acc)
-        form_row.addWidget(self.acc_input, 1)
-        form_row.addWidget(lbl_srv)
-        form_row.addWidget(self.srv_combo, 1)
-        c_lay.addLayout(form_row)
-
-        exe_row = QHBoxLayout()
-        exe_row.setSpacing(8)
-        lbl_exe = QLabel("客户端路径:")
+        lbl_exe = QLabel("客户端:")
         lbl_exe.setStyleSheet("color:#d6c7a8;border:none;background:transparent;")
+        exe_row.addWidget(lbl_srv)
+        exe_row.addWidget(self.srv_combo, 1)
         exe_row.addWidget(lbl_exe)
-        exe_row.addWidget(self.exe_path_input, 1)
+        exe_row.addWidget(self.exe_path_input, 2)
         c_lay.addLayout(exe_row)
         h_lay.addWidget(conn_box)
 

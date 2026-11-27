@@ -55,6 +55,16 @@ var (
 // Open loads path, creating an empty database when it does not exist. Callers
 // pair it with Close, which releases the shared instance's reference.
 func Open(path string) (*DB, error) {
+	return openPath(path, true)
+}
+
+// OpenExisting loads path only if the database file already exists on disk.
+// When path is missing it returns os.ErrNotExist without creating any file.
+func OpenExisting(path string) (*DB, error) {
+	return openPath(path, false)
+}
+
+func openPath(path string, createIfMissing bool) (*DB, error) {
 	abs, err := filepath.Abs(path)
 	if err != nil {
 		return nil, err
@@ -69,6 +79,9 @@ func Open(path string) (*DB, error) {
 	raw, err := os.ReadFile(path)
 	switch {
 	case os.IsNotExist(err):
+		if !createIfMissing {
+			return nil, fmt.Errorf("db100: database not found at %s (create an account first): %w", path, os.ErrNotExist)
+		}
 		if err := db.flushLocked(); err != nil {
 			return nil, err
 		}

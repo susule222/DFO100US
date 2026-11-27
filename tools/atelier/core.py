@@ -1,8 +1,11 @@
+from datetime import datetime, timezone
 import hashlib
+import hmac
 import json
 import os
 from pathlib import Path
 import re
+import secrets
 import shutil
 import subprocess
 import sys
@@ -35,9 +38,22 @@ def atomic(path, value):
         tmp.unlink(missing_ok=True)
 
 
+PBKDF2_SCHEME = 'pbkdf2_sha256'
+PBKDF2_ITERATIONS = 100000
+PBKDF2_SALT_BYTES = 16
+PBKDF2_KEY_BYTES = 32
+USERNAME_RE = re.compile(r'^[A-Za-z0-9_.-]{3,32}$')
+
+_ACTIVE_ACCOUNT = None
+
+
 def db_path():
     config = pre.storage_config()
     return Path(config['db_path']) if config.get('db_path') else SERVER/'runtime'/'us100.db'
+
+
+def db_exists():
+    return db_path().is_file()
 
 
 def _load_db_tables():
@@ -47,49 +63,217 @@ def _load_db_tables():
     return read(db).get('tables', {})
 
 
-def account_id(username='probe-us100'):
+def validate_account_credentials(username, password, confirm_password=None):
+    user = (username or '').strip()
+    if not USERNAME_RE.fullmatch(user):
+        raise ValueError('账号长度需为 3~32 位，仅支持字母、数字、下划线(_)、点(.)或短横线(-)。')
+    pwd = password or ''
+    if len(pwd) < 4 or len(pwd) > 64:
+        raise ValueError('密码长度需为 4~64 位。')
+    if confirm_password is not None and pwd != confirm_password:
+        raise ValueError('两次输入的密码不一致，请重新确认。')
+    return user, pwd
+
+
+def hash_password(password):
+    pwd = password or ''
+    if len(pwd) < 4 or len(pwd) > 64:
+        raise ValueError('密码长度需为 4~64 位。')
+    salt = secrets.token_bytes(PBKDF2_SALT_BYTES)
+    dk = hashlib.pbkdf2_hmac('sha256', pwd.encode('utf-8'), salt, PBKDF2_ITERATIONS, dklen=PBKDF2_KEY_BYTES)
+    return f'{PBKDF2_SCHEME}${PBKDF2_ITERATIONS}${salt.hex()}${dk.hex()}'
+
+
+def verify_password(stored, password):
+    if not stored or not password:
+        return False
+    parts = str(stored).split('$')
+    if len(parts) != 4 or parts[0] != PBKDF2_SCHEME:
+        return False
+    try:
+        iterations = int(parts[1])
+        if iterations < 1000 or iterations > 2000000:
+            return False
+        salt = bytes.fromhex(parts[2])
+        expected = bytes.fromhex(parts[3])
+    except ValueError:
+        return False
+    if not salt or not expected:
+        return False
+    actual = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt, iterations, dklen=len(expected))
+    return hmac.compare_digest(actual, expected)
+
+
+def list_accounts(include_dev=False):
+    tables = _load_db_tables()
+    rows = []
+    for raw in tables.get('accounts', {}).values():
+        if not isinstance(raw, dict):
+            continue
+        uname = str(raw.get('username') or '').strip()
+        if not uname:
+            continue
+        has_pwd = bool(raw.get('password_hash'))
+        dev_only = bool(raw.get('development_only', False))
+        if not include_dev and not has_pwd:
+            continue
+        rows.append({
+            'id': int(raw.get('id', 0) or 0),
+            'username': uname,
+            'has_password': has_pwd,
+            'development_only': dev_only,
+            'created_at': str(raw.get('created_at') or ''),
+        })
+    rows.sort(key=lambda r: (r['id'], r['username'].lower()))
+    return rows
+
+
+def active_account():
+    return _ACTIVE_ACCOUNT
+
+
+def set_active_account(username):
+    global _ACTIVE_ACCOUNT
+    _ACTIVE_ACCOUNT = (username or '').strip() or None
+    return _ACTIVE_ACCOUNT
+
+
+def logout_account():
+    global _ACTIVE_ACCOUNT
+    _ACTIVE_ACCOUNT = None
+
+
+def create_account(username, password, confirm_password=None):
+    """Create a password-protected account and initialize us100.db on first creation."""
+    user, pwd = validate_account_credentials(username, password, confirm_password=confirm_password)
+    if client_up():
+        raise ValueError('游戏客户端正在运行，请先退出游戏后再创建新账号。')
+    if gateway() is not None:
+        # db100 keeps an in-memory snapshot in wireprobe; stop the idle gateway
+        # before writing us100.db so the new account is never overwritten.
+        stop_server()
+
+    db = db_path()
+    existed = db.is_file()
+    if existed:
+        doc = read(db)
+        if doc.get('magic') != 'US100DB1' or int(doc.get('version', 0) or 0) != 1:
+            raise ValueError(f'数据库文件格式不受支持：{db}')
+        tables = doc.setdefault('tables', {})
+    else:
+        doc = {'magic': 'US100DB1', 'version': 1, 'revision': 0, 'tables': {}}
+        tables = doc['tables']
+
+    accounts = tables.setdefault('accounts', {})
+    meta = tables.setdefault('meta', {})
+    want = user.lower()
+    max_id = int(meta.get('seq:accounts', 0) or 0)
+    for k, row in accounts.items():
+        if isinstance(row, dict):
+            try:
+                max_id = max(max_id, int(row.get('id', 0) or 0))
+            except (TypeError, ValueError):
+                pass
+            if str(row.get('username') or '').strip().lower() == want:
+                raise ValueError(f'账号「{user}」已存在，请直接登录或更换其他账号名。')
+        try:
+            max_id = max(max_id, int(k))
+        except (TypeError, ValueError):
+            pass
+
+    next_id = max_id + 1
+    now_iso = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    accounts[str(next_id)] = {
+        'id': next_id,
+        'username': user,
+        'password_hash': hash_password(pwd),
+        'development_only': False,
+        'created_at': now_iso,
+    }
+    meta['seq:accounts'] = next_id
+    doc['revision'] = int(doc.get('revision', 0) or 0) + 1
+    atomic(db, doc)
+    set_active_account(user)
+    return {
+        'id': next_id,
+        'username': user,
+        'db_created': not existed,
+        'db_path': str(db),
+    }
+
+
+def authenticate_account(username, password):
+    """Verify username and password against us100.db and activate the session."""
+    user = (username or '').strip()
+    pwd = password or ''
+    if not user or not pwd:
+        raise ValueError('请输入账号与密码。')
+    if not db_exists():
+        raise ValueError('尚未创建账号，数据库未生成。请先在主页输入账号及密码并点击「创建账号」。')
+    tables = _load_db_tables()
+    want = user.lower()
+    matched = None
+    for row in tables.get('accounts', {}).values():
+        if isinstance(row, dict) and str(row.get('username') or '').strip().lower() == want:
+            matched = row
+            break
+    if matched is None:
+        raise ValueError(f'账号「{user}」不存在，请先点击「创建账号」。')
+    stored_hash = matched.get('password_hash')
+    if not stored_hash:
+        raise ValueError(f'账号「{user}」未设置密码（旧开发账号），请新建带密码的账号再登录。')
+    if not verify_password(stored_hash, pwd):
+        raise ValueError('密码错误，请检查后重试。')
+    real_name = str(matched['username'])
+    set_active_account(real_name)
+    return {
+        'id': int(matched['id']),
+        'username': real_name,
+        'created_at': str(matched.get('created_at') or ''),
+    }
+
+
+def _resolve_username(username):
+    if username is not None:
+        return username
+    return active_account()
+
+
+def account_id(username=None):
+    target = _resolve_username(username)
+    if not target:
+        return None
+    want = target.lower()
     tables = _load_db_tables()
     for a in tables.get('accounts', {}).values():
-        if a.get('username') == username:
+        if str(a.get('username') or '').lower() == want:
             return a.get('id')
     return None
 
 
-def account_cera(username='probe-us100'):
-    tables = _load_db_tables()
-    aid = None
-    for a in tables.get('accounts', {}).values():
-        if a.get('username') == username:
-            aid = a.get('id')
-            break
+def account_cera(username=None):
+    aid = account_id(username)
     if aid is None:
         return 0
+    tables = _load_db_tables()
     row = tables.get('account_currency', {}).get(str(aid), {})
     return max(0, int(row.get('cera', 0) or 0))
 
 
-def account_mileage(username='probe-us100'):
-    tables = _load_db_tables()
-    aid = None
-    for a in tables.get('accounts', {}).values():
-        if a.get('username') == username:
-            aid = a.get('id')
-            break
+def account_mileage(username=None):
+    aid = account_id(username)
     if aid is None:
         return 0
+    tables = _load_db_tables()
     row = tables.get('account_currency', {}).get(str(aid), {})
     return max(0, int(row.get('mileage', 0) or 0))
 
 
-def account_contracts(username='probe-us100'):
-    tables = _load_db_tables()
-    aid = None
-    for a in tables.get('accounts', {}).values():
-        if a.get('username') == username:
-            aid = a.get('id')
-            break
+def account_contracts(username=None):
+    aid = account_id(username)
     if aid is None:
         return {}
+    tables = _load_db_tables()
     raw = tables.get('us224_account_premium', {}).get(str(aid), {})
     now = int(time.time())
     out = {}
@@ -131,9 +315,15 @@ def activity_progress(role_id):
     }
 
 
-def roles():
+def roles(username=None):
+    target = _resolve_username(username)
+    if not target:
+        return []
+    want = target.lower()
     tables = _load_db_tables()
-    accounts = {a['id'] for a in tables.get('accounts', {}).values() if a.get('username') == 'probe-us100'}
+    accounts = {a['id'] for a in tables.get('accounts', {}).values() if str(a.get('username') or '').lower() == want}
+    if not accounts:
+        return []
     return sorted((r['id'], r['name']) for r in tables.get('characters', {}).values()
                   if r['account_id'] in accounts and not r.get('deleted_at'))
 
@@ -561,7 +751,12 @@ def gateway():
     return None
 
 
-def login(server_only=False):
+def login(server_only=False, account=None):
+    acct = (account if account is not None else active_account())
+    if not db_exists() or not acct:
+        raise ValueError('请先在主页创建账号及密码并登录，生成数据库后方可进入游戏选频道游玩。')
+    if account_id(acct) is None:
+        raise ValueError(f'账号「{acct}」不在当前数据库中，请重新创建或登录账号。')
     if not server_only and client_up():
         raise ValueError('客户端已经打开；不会启动第二个窗口。')
     if not server_only:
@@ -572,6 +767,11 @@ def login(server_only=False):
             detail=('缺少 '+', '.join(missing)) if missing else '字体切换尚未完成'
             raise ValueError(detail+'。请先到「Mod 工坊 → 游戏字体」应用字体或还原原版，再启动游戏。')
     state = gateway()
+    if state is not None and str(state.get('account') or '').lower() != acct.lower():
+        if client_up():
+            raise ValueError(f'客户端正在运行其他账号（{state.get("account") or "未知"}），请先退出游戏后再切换账号。')
+        stop_server()
+        state = None
     py = Path(sys.executable).with_name('python.exe')
     logs = ROOT/'runtime'/'launcher.log'
     with logs.open('ab') as log:
@@ -579,7 +779,7 @@ def login(server_only=False):
             return subprocess.Popen([str(py),'-u',*args],cwd=ROOT,stdin=subprocess.DEVNULL,
                                     stdout=log,stderr=log,creationflags=subprocess.CREATE_NO_WINDOW)
         if state is None:
-            proc = spawn(['tools/us100_interactive.py','3','normal','--no-client'])
+            proc = spawn(['tools/us100_interactive.py','3','normal','--no-client','--account',acct,'--require-account'])
             for _ in range(600):
                 if proc.poll() is not None:
                     raise ValueError('网关未启动，请查看 runtime/launcher.log 的预检结果')
@@ -588,13 +788,13 @@ def login(server_only=False):
                 time.sleep(.25)
             if not state: raise TimeoutError('网关就绪超时；请查看 runtime/launcher.log')
         if server_only:
-            if state.get('online_item_grants'):return '网关已就绪，支持在线和离线物品发放。'
-            return '网关已就绪，自动处理离线发放。' if state.get('launcher_gm') else '旧网关不支持 GM，请先正常停止旧网关。'
+            if state.get('online_item_grants'):return f'网关已就绪（账号：{acct}），支持在线和离线物品发放。'
+            return f'网关已就绪（账号：{acct}），自动处理离线发放。' if state.get('launcher_gm') else '旧网关不支持 GM，请先正常停止旧网关。'
         # This existing entry verifies a single client and records its PID.
         proc=spawn(['tools/us100_client.py'])
         for _ in range(60):
             if proc.poll() is not None: raise ValueError('客户端已退出，请查看 runtime/launcher.log')
-            if client_up(): return '客户端已启动，请在游戏窗口选择角色。'
+            if client_up(): return f'客户端已启动（账号：{acct}），请在游戏窗口选择频道并进入游戏。'
             time.sleep(.25)
         raise TimeoutError('未确认客户端进程，请查看 runtime/launcher.log')
 
@@ -668,10 +868,13 @@ def stop_server():
     return f'已关闭本地 100 级服务端（已停止 {len(targets) or len(wrappers)} 个进程）。'
 
 
-def restart_server():
-    """Stop the running US100 gateway (if any) and launch a fresh instance."""
+def restart_server(account=None):
+    """Stop the running US100 gateway (if any) and launch a fresh instance for the active account."""
+    acct = (account if account is not None else active_account())
+    if not db_exists() or not acct:
+        raise ValueError('请先在主页创建账号及密码并登录，生成数据库后方可重启服务端。')
     stop_server()
-    return login(server_only=True)
+    return login(server_only=True, account=acct)
 
 
 def digest(path):

@@ -302,7 +302,8 @@ func main() {
 	tutorialRoutesFile := flag.String("tutorial-routes", "", "source per-job starting route table")
 	tutorialDungeonsFile := flag.String("tutorial-dungeons", "", "source starting-route dungeon catalog")
 	gateSetFile := flag.String("gate-set", "configs/us100/gate-set.json", "which optional packets the dungeon gate sends (JSON); see cmd/wireprobe/gate_set.go")
-	accountName := flag.String("account", "probe", "development account the gateway serves")
+	accountName := flag.String("account", "probe", "account the gateway serves")
+	requireAccount := flag.Bool("require-account", false, "require an existing database and pre-created account instead of auto-creating")
 	gmDir := flag.String("launcher-gm", "", "optional local desktop GM inbox and room drop policy")
 	rosterV224 := flag.Bool("roster-v224", false, "encode the roster list with the US100 (2.24) row layout")
 	rosterPad := flag.Int("roster-pad", 0, "extra bytes to insert after each roster row name (layout experiment)")
@@ -427,6 +428,10 @@ func main() {
 		if e != nil {
 			log.Fatal(e)
 		}
+		if *requireAccount {
+			cfg.RequireExisting = true
+			cfg.SkipSeed = true
+		}
 		s, e := storage.Open(ctx, cfg)
 		if e != nil {
 			log.Fatal(e)
@@ -503,9 +508,27 @@ func main() {
 				log.Fatal(e)
 			}
 		}
-		developmentAccount, e = s.DevelopmentAccount(ctx, *accountName)
-		if e != nil {
-			log.Fatal(e)
+		if *requireAccount {
+			var found bool
+			developmentAccount, found, e = s.FindAccount(ctx, *accountName)
+			if e != nil {
+				log.Fatal(e)
+			}
+			if !found {
+				log.Fatalf("account %q does not exist in database (create an account in the launcher first)", *accountName)
+			}
+		} else {
+			var found bool
+			developmentAccount, found, e = s.FindAccount(ctx, *accountName)
+			if e != nil {
+				log.Fatal(e)
+			}
+			if !found {
+				developmentAccount, e = s.DevelopmentAccount(ctx, *accountName)
+				if e != nil {
+					log.Fatal(e)
+				}
+			}
 		}
 	}
 	if *entryAdditionProbe && !*entryBasicProbe {
@@ -848,6 +871,8 @@ func main() {
 	readyInfo := map[string]any{
 		"address":            l.Addr().String(),
 		"pid":                os.Getpid(),
+		"account":            *accountName,
+		"account_id":         developmentAccount,
 		"fixture_bytes":      len(raw),
 		"launcher_gm":        *gmDir != "",
 		"online_item_grants": *gmDir != "",
