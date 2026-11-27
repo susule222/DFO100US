@@ -779,10 +779,22 @@ def login(server_only=False, account=None):
             return subprocess.Popen([str(py),'-u',*args],cwd=ROOT,stdin=subprocess.DEVNULL,
                                     stdout=log,stderr=log,creationflags=subprocess.CREATE_NO_WINDOW)
         if state is None:
+            log_offset = logs.stat().st_size if logs.exists() else 0
             proc = spawn(['tools/us100_interactive.py','3','normal','--no-client','--account',acct,'--require-account'])
             for _ in range(600):
                 if proc.poll() is not None:
-                    raise ValueError('网关未启动，请查看 runtime/launcher.log 的预检结果')
+                    detail = ''
+                    try:
+                        with logs.open('rb') as rf:
+                            rf.seek(log_offset)
+                            chunk = rf.read().decode('utf-8', errors='replace').strip()
+                        if chunk:
+                            lines = [ln.strip() for ln in chunk.splitlines() if ln.strip()]
+                            if lines:
+                                detail = '\n' + '\n'.join(lines[-4:])
+                    except OSError:
+                        pass
+                    raise ValueError('网关未启动，请查看 runtime/launcher.log 的预检结果' + detail)
                 state=gateway()
                 if state: break
                 time.sleep(.25)
