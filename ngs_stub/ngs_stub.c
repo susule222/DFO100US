@@ -791,13 +791,43 @@ static void patch_game_bytes(DWORD rva, const BYTE *expected, const BYTE *replac
     }
 }
 
-static void patch_game_startup_checks(void)
+static void patch_game_startup_checks(int fast_channel_select, int skip_server_select)
 {
     // US100 NGS 初始化成功判定：0x4EC40B7 的 je 0x4EC40E1 -> jmp，
     // 强制 init-OK 包装函数返回成功（等价于跳过 NGS 失败退出路径）。
     static const BYTE ngs_expected[] = { 0x74, 0x28 };
     static const BYTE ngs_replacement[] = { 0xEB, 0x28 };
     patch_game_bytes(0x4EC40B7, ngs_expected, ngs_replacement, 2);
+
+    if (fast_channel_select) {
+        // 1) CNSelectChannelModule::AutoSelectChannel (0x3701fe0):
+        //    0x3702001: cmp dword ptr [rcx + 0xa0], 6 -> 0
+        //    本地频道 IP 为 127.0.0.1 时 MinimumUserSelectChannel (0x3702434) 会过滤掉
+        //    全部 127.0.0.1 频道，原逻辑会以 3000ms 间隔空转重试 6 次（18s+ 纯黑屏）才
+        //    放行打开选服/选频道窗口。将阈值改为 0 后首帧即放行，消除进入频道选择的黑屏等待。
+        static const BYTE retry_expected[]    = { 0x83, 0xB9, 0xA0, 0x00, 0x00, 0x00, 0x06 };
+        static const BYTE retry_replacement[] = { 0x83, 0xB9, 0xA0, 0x00, 0x00, 0x00, 0x00 };
+        patch_game_bytes(0x3702001, retry_expected, retry_replacement, 7);
+
+        // 2) CSelectServerWindow::onConnect (0x4AC9460):
+        //    0x4AC94BE: je 0x4AC94CF -> jmp 0x4AC94CF
+        //    点击「Select Server -> Connect」时原逻辑会因 0x1400fd0f0 恒为真而跳回
+        //    0x3703f40 -> AutoSelectChannel 触发二次黑屏；改为直达 OpenWindow(0xD7) 频道选择界面。
+        static const BYTE srv_expected[]    = { 0x74, 0x0F };
+        static const BYTE srv_replacement[] = { 0xEB, 0x0F };
+        patch_game_bytes(0x4AC94BE, srv_expected, srv_replacement, 2);
+
+        if (skip_server_select) {
+            // 3) CNSelectChannelModule::AutoSelectChannel (0x3702192 / 0x3702258):
+            //    mov edx, 0x364 (SelectServer) -> mov edx, 0xD7 (SelectChannelWindow2017)
+            //    当本地已记录服务器（非 0x13 未选态）时，首帧已通过 0x3419f10 + 0x447ff270
+            //    注册好 0xD7，直接打开频道选择界面；首次启动未选服仍由 0x3702bd4 自动走 0x364。
+            static const BYTE win_expected[]    = { 0xBA, 0x64, 0x03, 0x00, 0x00 };
+            static const BYTE win_replacement[] = { 0xBA, 0xD7, 0x00, 0x00, 0x00 };
+            patch_game_bytes(0x3702192, win_expected, win_replacement, 5);
+            patch_game_bytes(0x3702258, win_expected, win_replacement, 5);
+        }
+    }
 }
 
 // ---- 面板供数（115US 形式）：在索引 getter 边界覆写返回值 ----
@@ -954,6 +984,9 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         ensure_init();
         // 可通过 ngs_stub.ini 的 hooks=0 禁用全部 API 钩子（用于二分排障）
         int hooks_on = 1;
+        int locale_hooks_on = 0;
+        int fast_channel_select = 1;
+        int skip_server_select = 1;
         int panelfill_on = 0;
         {
             char path[MAX_PATH];
@@ -970,6 +1003,15 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
                             if (sscanf(line, "hooks=%d", &v) == 1) {
                                 hooks_on = v;
                             }
+                            if (sscanf(line, "locale_hooks=%d", &v) == 1) {
+                                locale_hooks_on = v;
+                            }
+                            if (sscanf(line, "fast_channel_select=%d", &v) == 1) {
+                                fast_channel_select = v;
+                            }
+                            if (sscanf(line, "skip_server_select=%d", &v) == 1) {
+                                skip_server_select = v;
+                            }
                             if (sscanf(line, "panelfill=%d", &v) == 1) {
                                 panelfill_on = v;
                             }
@@ -980,7 +1022,9 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
             }
         }
         if (hooks_on) {
-            install_locale_hooks();
+            if (locale_hooks_on) {
+                install_locale_hooks();
+            }
             install_jmp_hook("user32.dll", "MessageBoxW", (void *)hook_MessageBoxW);
             install_jmp_hook("user32.dll", "MessageBoxA", (void *)hook_MessageBoxA);
             // File-access swapping detours are legacy diagnostic hooks with
@@ -988,14 +1032,14 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
             install_window_guard();
             install_ods_hook();
         }
-        patch_game_startup_checks();
+        patch_game_startup_checks(fast_channel_select, skip_server_select);
         if (panelfill_on) {
             install_panel_fill();
         }
         if (g_log != NULL) {
             EnterCriticalSection(&g_cs);
-            fprintf(g_log, "=== ngs_stub attached pid=%lu GetACP=%lu hooks=%d ===\n",
-                    GetCurrentProcessId(), GetACP(), hooks_on);
+            fprintf(g_log, "=== ngs_stub attached pid=%lu GetACP=%lu hooks=%d locale=%d fast_ch=%d skip_srv=%d ===\n",
+                    GetCurrentProcessId(), GetACP(), hooks_on, locale_hooks_on, fast_channel_select, skip_server_select);
             fflush(g_log);
             LeaveCriticalSection(&g_cs);
         }

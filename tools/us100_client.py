@@ -93,6 +93,13 @@ def main():
     except Exception as exc:
         print('warning: staged channel UI fix skipped: %s' % exc, flush=True)
     try:
+        import deploy_stub as _dstub
+        stub_msg = _dstub.apply_staged_if_pending()
+        if stub_msg:
+            print(stub_msg, flush=True)
+    except Exception as exc:
+        print('warning: staged NGClient64 stub skipped: %s' % exc, flush=True)
+    try:
         import localize_event_tooltips as _let
         applied_msg = _let.apply_staged_if_pending()
         if applied_msg:

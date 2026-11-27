@@ -12,7 +12,10 @@ import shutil
 import sys
 import time
 
-CLIENT = pathlib.Path(r'D:\DNF\client\US100')
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
+import us100_preflight as preflight  # noqa: E402
+
+CLIENT = preflight.client_dir() or pathlib.Path(r'D:\DNF\client\100US\DFO')
 INI = CLIENT / 'ngs_stub.ini'
 
 apply = '--apply' in sys.argv

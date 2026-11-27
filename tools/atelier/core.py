@@ -931,6 +931,11 @@ def login(server_only=False, account=None):
         except Exception:
             pass
         try:
+            import deploy_stub as _dstub
+            _dstub.apply_staged_if_pending()
+        except Exception:
+            pass
+        try:
             import localize_event_tooltips as _let
             _let.apply_staged_if_pending()
         except Exception:
