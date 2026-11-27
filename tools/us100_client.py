@@ -85,6 +85,13 @@ def main():
         for line in old:
             print('  ' + line.strip())
         return 1
+    try:
+        import fix_channel_select_ui as _fcu
+        applied_msg = _fcu.apply_staged_if_pending()
+        if applied_msg:
+            print(applied_msg, flush=True)
+    except Exception as exc:
+        print('warning: staged channel UI fix skipped: %s' % exc, flush=True)
     exe = preflight.client_exe()
     if mode == '3':
         if not _listening(ch_host, ch_port):
