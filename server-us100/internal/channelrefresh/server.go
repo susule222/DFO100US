@@ -26,12 +26,24 @@ type Channel struct {
 	SourceValues []int32
 }
 type Config struct {
-	Listen, ServerKey, SourceSHA256 string
-	ServerID                        uint32
-	MaxUsers                        uint32
-	AreaLabels                      map[string]string
-	Dungeons                        map[string][]uint32
-	Channels                        []Channel
+	Listen, Advertise, ServerKey, SourceSHA256 string
+	ServerID                                   uint32
+	MaxUsers                                   uint32
+	AreaLabels                                 map[string]string
+	Dungeons                                   map[string][]uint32
+	Channels                                   []Channel
+}
+
+func validIPv4(host string) (net.IP, bool) {
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return nil, false
+	}
+	v4 := ip.To4()
+	if v4 == nil || len(v4.String()) > 15 {
+		return nil, false
+	}
+	return v4, true
 }
 
 func Load(path string) (Config, error) {
@@ -45,8 +57,13 @@ func Load(path string) (Config, error) {
 		return c, e
 	}
 	h, _, e := net.SplitHostPort(c.Listen)
-	if e != nil || net.ParseIP(h) == nil || !net.ParseIP(h).IsLoopback() || len(c.SourceSHA256) != 64 || len(c.Channels) == 0 || len(c.Channels) > 128 || len(c.ServerKey) > 19 || c.MaxUsers == 0 {
-		return c, fmt.Errorf("invalid local channel configuration")
+	if _, ok := validIPv4(h); e != nil || !ok || len(c.SourceSHA256) != 64 || len(c.Channels) == 0 || len(c.Channels) > 128 || len(c.ServerKey) > 19 || c.MaxUsers == 0 {
+		return c, fmt.Errorf("invalid channel configuration")
+	}
+	if c.Advertise != "" {
+		if ip, ok := validIPv4(c.Advertise); !ok || ip.IsUnspecified() {
+			return c, fmt.Errorf("invalid channel advertise host %q", c.Advertise)
+		}
 	}
 	for _, label := range c.AreaLabels {
 		if len(label) == 0 || strings.ContainsAny(label, "`\r\n\x00") {
@@ -97,16 +114,30 @@ func (c Config) Script() []byte {
 	return []byte(b.String())
 }
 
-func parseLoopbackEndpoint(addr string) (string, uint32, error) {
+func parseEndpoint(addr, defaultHost string) (string, uint32, error) {
 	h, p, e := net.SplitHostPort(addr)
 	if e != nil {
 		return "", 0, e
 	}
 	port, e := net.LookupPort("tcp", p)
-	if e != nil || net.ParseIP(h) == nil || !net.ParseIP(h).IsLoopback() || len(h) > 15 {
-		return "", 0, fmt.Errorf("invalid local game endpoint")
+	if e != nil || port <= 0 || port > 65535 {
+		return "", 0, fmt.Errorf("invalid game endpoint port in %q", addr)
 	}
-	return h, uint32(port), nil
+	ip, ok := validIPv4(h)
+	if !ok {
+		return "", 0, fmt.Errorf("invalid IPv4 game endpoint %q", addr)
+	}
+	if ip.IsUnspecified() {
+		if defaultHost == "" {
+			defaultHost = "127.0.0.1"
+		}
+		defIP, defOK := validIPv4(defaultHost)
+		if !defOK || defIP.IsUnspecified() {
+			return "", 0, fmt.Errorf("invalid advertise host %q", defaultHost)
+		}
+		return defIP.String(), uint32(port), nil
+	}
+	return ip.String(), uint32(port), nil
 }
 
 func (c Config) Directory(gameAddress string) ([]byte, error) {
@@ -114,11 +145,18 @@ func (c Config) Directory(gameAddress string) ([]byte, error) {
 }
 
 func (c Config) DirectoryWithEndpoints(endpoints map[uint32]string, fallback string) ([]byte, error) {
+	return c.DirectoryWithEndpointsForHost(endpoints, fallback, c.Advertise)
+}
+
+func (c Config) DirectoryWithEndpointsForHost(endpoints map[uint32]string, fallback, advertiseHost string) ([]byte, error) {
+	if advertiseHost == "" {
+		advertiseHost = c.Advertise
+	}
 	var fallbackHost string
 	var fallbackPort uint32
 	if fallback != "" {
 		var e error
-		fallbackHost, fallbackPort, e = parseLoopbackEndpoint(fallback)
+		fallbackHost, fallbackPort, e = parseEndpoint(fallback, advertiseHost)
 		if e != nil {
 			return nil, e
 		}
@@ -131,7 +169,7 @@ func (c Config) DirectoryWithEndpoints(endpoints map[uint32]string, fallback str
 		h, port := fallbackHost, fallbackPort
 		if addr := endpoints[ch.ID]; addr != "" {
 			var e error
-			h, port, e = parseLoopbackEndpoint(addr)
+			h, port, e = parseEndpoint(addr, advertiseHost)
 			if e != nil {
 				return nil, e
 			}
@@ -183,7 +221,7 @@ func Serve(c Config, gameAddress string, event func(map[string]any)) (net.Listen
 }
 
 func ServeWithEndpoints(c Config, endpoints map[uint32]string, fallback string, event func(map[string]any)) (net.Listener, error) {
-	directory, e := c.DirectoryWithEndpoints(endpoints, fallback)
+	defaultDir, e := c.DirectoryWithEndpoints(endpoints, fallback)
 	if e != nil {
 		return nil, e
 	}
@@ -201,8 +239,21 @@ func ServeWithEndpoints(c Config, endpoints map[uint32]string, fallback string, 
 			go func() {
 				defer conn.Close()
 				start := time.Now()
-				e := handle(conn, script, directory)
-				event(map[string]any{"kind": "channel_refresh_finished", "success": e == nil, "elapsed_ms": time.Since(start).Milliseconds(), "error": errorText(e)})
+				dir := defaultDir
+				// When game endpoints are bound to 0.0.0.0 and no explicit Advertise IP
+				// is pinned, advertise the interface IP this client actually connected to
+				// (e.g. 127.0.0.1 for local play, 192.168.x.x for LAN peers).
+				if c.Advertise == "" {
+					if ta, ok := conn.LocalAddr().(*net.TCPAddr); ok {
+						if v4 := ta.IP.To4(); v4 != nil && !v4.IsUnspecified() {
+							if custom, err := c.DirectoryWithEndpointsForHost(endpoints, fallback, v4.String()); err == nil {
+								dir = custom
+							}
+						}
+					}
+				}
+				e := handle(conn, script, dir)
+				event(map[string]any{"kind": "channel_refresh_finished", "peer": conn.RemoteAddr().String(), "success": e == nil, "elapsed_ms": time.Since(start).Milliseconds(), "error": errorText(e)})
 			}()
 		}
 	}()

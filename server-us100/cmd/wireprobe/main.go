@@ -260,7 +260,9 @@ func shopBagDelivery(src catalog.LootCatalog, rules inventory.BagRules) storage.
 func main() {
 	fixture := flag.String("fixture", "", "verified-format server fixture to send after accept")
 	dir := flag.String("output", "runtime/wireprobe", "capture directory")
-	gameListen := flag.String("game-listen", "127.0.0.1:0", "loopback game endpoint")
+	gameListen := flag.String("game-listen", "0.0.0.0:0", "game TCP listen address (IPv4 host:port)")
+	channelListen := flag.String("channel-listen", "", "optional override for channel-refresh listen address (IPv4 host:port)")
+	advertiseHost := flag.String("advertise-host", "", "optional IPv4 address advertised in channel directory when listening on 0.0.0.0")
 	responseFile := flag.String("responses", "", "JSON mapping command IDs to response fixture paths")
 	characterStorage := flag.String("character-storage", "", "enable experimental persisted character handling with this local storage config")
 	characterCatalog := flag.String("character-catalog", "configs/characters.generated.json", "PVF-derived profession catalog")
@@ -365,8 +367,20 @@ func main() {
 		}
 	}
 	gameHost, _, gameListenError := net.SplitHostPort(*gameListen)
-	if gameListenError != nil || net.ParseIP(gameHost) == nil || !net.ParseIP(gameHost).IsLoopback() {
-		log.Fatal("game-listen must be an explicit loopback address")
+	if gameListenError != nil || net.ParseIP(gameHost) == nil || net.ParseIP(gameHost).To4() == nil {
+		log.Fatal("game-listen must be an explicit IPv4 address")
+	}
+	if *advertiseHost != "" {
+		ip := net.ParseIP(*advertiseHost)
+		if ip == nil || ip.To4() == nil || ip.To4().IsUnspecified() || len(ip.To4().String()) > 15 {
+			log.Fatal("advertise-host must be a non-unspecified IPv4 address")
+		}
+	}
+	if *channelListen != "" {
+		chHost, _, chErr := net.SplitHostPort(*channelListen)
+		if chErr != nil || net.ParseIP(chHost) == nil || net.ParseIP(chHost).To4() == nil {
+			log.Fatal("channel-listen must be an explicit IPv4 host:port")
+		}
 	}
 	if *entryBasicProbe && (*selectProbeConfig == "" || *characterStorage == "") {
 		log.Fatal("entry basic probe requires persisted characters and SELECT probe configuration")
@@ -839,6 +853,12 @@ func main() {
 		if e != nil {
 			log.Fatal(e)
 		}
+		if *channelListen != "" {
+			cfg.Listen = *channelListen
+		}
+		if *advertiseHost != "" {
+			cfg.Advertise = *advertiseHost
+		}
 		endpoints := make(map[uint32]string, len(cfg.Channels))
 		listeners = nil
 		for i, ch := range cfg.Channels {
@@ -882,6 +902,9 @@ func main() {
 	if channelRefreshAddr != "" {
 		readyInfo["channel_refresh_address"] = channelRefreshAddr
 		readyInfo["channels"] = channelEndpoints
+	}
+	if *advertiseHost != "" {
+		readyInfo["advertise_host"] = *advertiseHost
 	}
 	ready, _ := json.Marshal(readyInfo)
 	if err = os.WriteFile(filepath.Join(*dir, "ready.json"), ready, 0600); err != nil {

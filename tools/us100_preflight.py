@@ -166,10 +166,20 @@ def _findings() -> list[tuple[str, str]]:
             out.append((OK, 'server binary is newer than every source file (%d bytes)' % binary_age))
 
     # --- ports ----------------------------------------------------------
-    if not _port_free('127.0.0.1', 7001):
-        out.append((FAIL, '127.0.0.1:7001 is already in use (orphaned server?) — stop it first'))
+    ch_host, ch_port = '0.0.0.0', 7001
+    ch_cfg = SERVER / 'configs' / 'us100' / 'channel.json'
+    if ch_cfg.is_file():
+        try:
+            listen_val = json.loads(ch_cfg.read_text(encoding='utf-8')).get('Listen', '')
+            if ':' in listen_val:
+                h, p = listen_val.rsplit(':', 1)
+                ch_host, ch_port = h, int(p)
+        except Exception:
+            pass
+    if not _port_free(ch_host, ch_port):
+        out.append((FAIL, '%s:%d is already in use (orphaned server?) — stop it first' % (ch_host, ch_port)))
     else:
-        out.append((OK, '127.0.0.1:7001 is free'))
+        out.append((OK, '%s:%d is free' % (ch_host, ch_port)))
 
     # --- storage (db100 single file) ------------------------------------
     try:

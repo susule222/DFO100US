@@ -40,18 +40,43 @@ def _listening(host, port, timeout=0.6):
 
 def main():
     mode = '3'
+    override_host = ''
+    override_port = ''
     if '--mode' in sys.argv:
         idx = sys.argv.index('--mode')
         if idx + 1 < len(sys.argv) and sys.argv[idx + 1] in ('3', '13'):
             mode = sys.argv[idx + 1]
-    if not READY.exists():
-        print('no running server: %s is missing' % READY)
-        print('start the server first (启动服务端.cmd, or us100_interactive.py 3 <style> --no-client)')
-        return 1
-    state = json.loads(READY.read_text(encoding='utf-8'))
-    host, port = state['address'].split(':')
-    ch_addr = state.get('channel_refresh_address') or '127.0.0.1:7001'
-    ch_host, ch_port = ch_addr.rsplit(':', 1)
+    if '--host' in sys.argv:
+        idx = sys.argv.index('--host')
+        if idx + 1 < len(sys.argv):
+            override_host = sys.argv[idx + 1].strip()
+    if '--port' in sys.argv:
+        idx = sys.argv.index('--port')
+        if idx + 1 < len(sys.argv):
+            override_port = sys.argv[idx + 1].strip()
+    if override_host:
+        state = {'account': ''}
+        host = override_host
+        port = override_port or '7001'
+        ch_host = override_host
+        ch_port = override_port or '7001'
+        ch_addr = '%s:%s' % (ch_host, ch_port)
+        state['address'] = '%s:%s' % (host, port)
+    else:
+        if not READY.exists():
+            print('no running server: %s is missing' % READY)
+            print('start the server first (启动服务端.cmd, or us100_interactive.py 3 <style> --no-client)')
+            return 1
+        state = json.loads(READY.read_text(encoding='utf-8'))
+        adv = str(state.get('advertise_host') or '').strip()
+        host, port = state['address'].rsplit(':', 1)
+        if host == '0.0.0.0':
+            host = adv or '127.0.0.1'
+        ch_addr = state.get('channel_refresh_address') or '127.0.0.1:7001'
+        ch_host, ch_port = ch_addr.rsplit(':', 1)
+        if ch_host == '0.0.0.0':
+            ch_host = adv or '127.0.0.1'
+            ch_addr = '%s:%s' % (ch_host, ch_port)
     old = running_clients()
     if old:
         # Not an error of this script's own making: the game refuses to run two

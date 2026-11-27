@@ -37,6 +37,8 @@ def _parse_cli(argv):
     require_account = False
     force = False
     no_client = False
+    listen_host = '0.0.0.0'
+    advertise_host = ''
     i = 1
     while i < len(argv):
         arg = argv[i]
@@ -53,15 +55,27 @@ def _parse_cli(argv):
             val = arg.split('=', 1)[1].strip()
             if val:
                 account = val
+        elif arg == '--listen-host' and i + 1 < len(argv):
+            listen_host = argv[i + 1].strip() or listen_host
+            i += 1
+        elif arg.startswith('--listen-host='):
+            val = arg.split('=', 1)[1].strip()
+            if val:
+                listen_host = val
+        elif arg == '--advertise-host' and i + 1 < len(argv):
+            advertise_host = argv[i + 1].strip()
+            i += 1
+        elif arg.startswith('--advertise-host='):
+            advertise_host = arg.split('=', 1)[1].strip()
         elif not arg.startswith('--'):
             pos.append(arg)
         i += 1
     mode = pos[0] if len(pos) > 0 else '3'
     style = pos[1] if len(pos) > 1 else 'normal'
-    return mode, style, force, no_client, account, require_account
+    return mode, style, force, no_client, account, require_account, listen_host, advertise_host
 
 
-MODE, STYLE, FORCE, NO_CLIENT, ACCOUNT, REQUIRE_ACCOUNT = _parse_cli(sys.argv)
+MODE, STYLE, FORCE, NO_CLIENT, ACCOUNT, REQUIRE_ACCOUNT, LISTEN_HOST, ADVERTISE_HOST = _parse_cli(sys.argv)
 try:
     LOG = open(ROOT / 'runtime' / 'us100_interactive.log', 'a', encoding='utf-8')
 except OSError:
@@ -252,9 +266,11 @@ def main():
     from atelier_runtime import current as atelier_generation
     atelier = atelier_generation()
     cmd = [str(SERVER_BIN), '-fixture', str(fixture), '-output', str(OUT),
-           '-game-listen', '127.0.0.2:0', '-responses', str(OUT / 'responses.json'),
+           '-game-listen', '%s:0' % LISTEN_HOST, '-responses', str(OUT / 'responses.json'),
            '-account', ACCOUNT, '-roster-v224',
            '-launcher-gm', str(ROOT / 'runtime' / 'launcher-gm')]
+    if ADVERTISE_HOST:
+        cmd += ['-advertise-host', ADVERTISE_HOST]
     if REQUIRE_ACCOUNT:
         cmd.append('-require-account')
     if STYLE == 'markers':
@@ -349,10 +365,12 @@ def main():
         return
     log('server ready at %s:%d (channel directory %s:%d)' % (host, port, channel_host, channel_port))
     record_run(server.pid, port)
+    connect_host = (ADVERTISE_HOST or '127.0.0.1') if host == '0.0.0.0' else host
+    connect_ch_host = (ADVERTISE_HOST or '127.0.0.1') if channel_host == '0.0.0.0' else channel_host
     if MODE == '3':
-        payload = '3?%s?%d?probe?00000000000000000000000000000000?0?0?30?0?0?0' % (channel_host, channel_port)
+        payload = '3?%s?%d?probe?00000000000000000000000000000000?0?0?30?0?0?0' % (connect_ch_host, channel_port)
     else:
-        payload = '13?%s?%d?probe?00000000000000000000000000000000?0?0?30?0?0?0' % (host, port)
+        payload = '13?%s?%d?probe?00000000000000000000000000000000?0?0?30?0?0?0' % (connect_host, port)
     client_exe = preflight.client_exe()
     if NO_CLIENT:
         # Server-only run: the client is started by something else (a frida probe

@@ -902,14 +902,14 @@ def client_up():
 
 def gateway():
     try:
+        import ipaddress
         state = read(READY)
         p = psutil.Process(state['pid'])
         if Path(p.exe()).resolve()!=pre.SERVER_BIN.resolve():
             return None
         host,port = state['address'].rsplit(':',1)
-        if host not in ('127.0.0.1','127.0.0.2'):
-            return None
-        if any(c.status=='LISTEN' and c.laddr==(host,int(port)) for c in p.net_connections(kind='tcp')):
+        ipaddress.IPv4Address(host)
+        if any(c.status=='LISTEN' and len(c.laddr)>=2 and c.laddr[1]==int(port) and c.laddr[0] in (host,'0.0.0.0') for c in p.net_connections(kind='tcp')):
             return state
     except (OSError,ValueError,KeyError,psutil.Error):
         pass

@@ -291,3 +291,39 @@ func TestInGameRefreshSkipsScript(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestLANAndWildcardEndpoints(t *testing.T) {
+	c, err := Load("../../configs/us100/channel.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Explicit LAN IP must be accepted (no longer restricted to loopback).
+	d, err := c.Directory("192.168.1.50:12345")
+	if err != nil {
+		t.Fatalf("LAN endpoint rejected: %v", err)
+	}
+	ip := string(bytes.TrimRight(d[28+28:28+44], "\x00"))
+	port := binary.LittleEndian.Uint32(d[28+44 : 28+48])
+	if ip != "192.168.1.50" || port != 12345 {
+		t.Fatalf("got %s:%d, want 192.168.1.50:12345", ip, port)
+	}
+	// Wildcard 0.0.0.0 must resolve to per-connection advertise host (never emit 0.0.0.0 to clients).
+	d2, err := c.DirectoryWithEndpointsForHost(nil, "0.0.0.0:23456", "10.0.0.8")
+	if err != nil {
+		t.Fatalf("wildcard endpoint failed: %v", err)
+	}
+	ip2 := string(bytes.TrimRight(d2[28+28:28+44], "\x00"))
+	port2 := binary.LittleEndian.Uint32(d2[28+44 : 28+48])
+	if ip2 != "10.0.0.8" || port2 != 23456 {
+		t.Fatalf("got %s:%d, want 10.0.0.8:23456", ip2, port2)
+	}
+	// Default fallback for 0.0.0.0 without advertise host is 127.0.0.1.
+	d3, err := c.Directory("0.0.0.0:34567")
+	if err != nil {
+		t.Fatalf("wildcard default fallback failed: %v", err)
+	}
+	ip3 := string(bytes.TrimRight(d3[28+28:28+44], "\x00"))
+	if ip3 != "127.0.0.1" {
+		t.Fatalf("got %s, want 127.0.0.1", ip3)
+	}
+}
