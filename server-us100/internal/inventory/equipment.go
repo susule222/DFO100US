@@ -166,6 +166,9 @@ type BagEquipment struct {
 	Slot        uint16 `json:"slot"`
 	Template    uint32 `json:"template"`
 	Durability  uint16 `json:"durability"`
+	SortLocked  bool   `json:"sort_locked,omitempty"`
+	ItemLock    byte   `json:"item_lock,omitempty"`
+	UnlockAt    int64  `json:"unlock_at,omitempty"`
 }
 
 // Reward accepts the gear a quest or an operator hands out. It keeps every
@@ -222,6 +225,9 @@ func EquipmentRow(i BagEquipment) [protocol.CurrentItemRecordSize]byte {
 		r[10] = 7
 	} // US224 equipment upgrade byte; PC rental selection is +7.
 	binary.LittleEndian.PutUint16(r[11:], i.Durability)
+	if i.SortLocked {
+		r[protocol.ItemSortLockOffset] = 1
+	}
 	return r
 }
 func (b Bag) AddEquipment(c *EquipmentCatalog, slots [2]uint16, id, count uint32) (Bag, []uint16, error) {

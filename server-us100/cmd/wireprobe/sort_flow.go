@@ -116,7 +116,12 @@ func sortInventory(
 	saved.WireID = role.WireID
 	plan := []outboundPacket{
 		{"sort_inventory_restored", 0, 13, invRestore},
-		{"sort_items_ack", 1, 20, protocol.SortItemsSuccess(req.Space)},
 	}
+	if locks := bag.LockedItemEntries(0); len(locks) > 0 {
+		if lockBody, lockErr := protocol.ItemLockListNoti(locks); lockErr == nil {
+			plan = append(plan, outboundPacket{"item_locks_restored", 0, protocol.NotiItemLockList, lockBody})
+		}
+	}
+	plan = append(plan, outboundPacket{"sort_items_ack", 1, 20, protocol.SortItemsSuccess(req.Space)})
 	return saved, plan, req.Space, nil
 }

@@ -1132,6 +1132,56 @@ func main() {
 					}
 					continue
 				}
+				if frame.Type == 1 && (frame.ID == protocol.CmdSortLock || frame.ID == protocol.CmdSortUnlock) {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					saved, plan, err := setSortLock(ctx, characters.Store, developmentAccount, worldState.role, frame.Raw, plaintext, frame.ID == protocol.CmdSortLock)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "sort_lock_refused", "id": frame.ID, "character_id": selectedCharacterID, "reason": err.Error()})
+						if sendPayload(1, frame.ID, protocol.SortLockRefused(4)) != nil {
+							return
+						}
+						continue
+					}
+					worldState.role = saved
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
+				if frame.Type == 1 && (frame.ID == protocol.CmdItemLock || frame.ID == protocol.CmdItemUnlock || frame.ID == protocol.CmdItemCancelUnlock || frame.ID == protocol.CmdItemUnlockNow) {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					saved, plan, err := handleItemLockCommand(ctx, characters.Store, developmentAccount, worldState.role, frame.ID, frame.Raw, plaintext)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "item_lock_refused", "id": frame.ID, "character_id": selectedCharacterID, "reason": err.Error()})
+						refusal := protocol.Refusal(0x13)
+						if frame.ID == protocol.CmdItemUnlock {
+							refusal = protocol.ItemUnlockRefused(0x13, 0)
+						}
+						if sendPayload(1, frame.ID, refusal) != nil {
+							return
+						}
+						continue
+					}
+					worldState.role = saved
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
 				if frame.ID == 19 && bootstrapped && verified && wearService != nil {
 					plan, e := equipmentState.handle(wearService, worldState, plaintext, frame.Raw)
 					if e != nil {
@@ -2366,6 +2416,11 @@ func main() {
 						event(map[string]any{"kind": "danji_inventory_read_error", "error": djErr.Error()})
 					} else {
 						plan.DanjiInventory = djInv
+					}
+					if locksBody, lockErr := itemLocksOnEntry(role.State); lockErr != nil {
+						event(map[string]any{"kind": "item_locks_read_error", "error": lockErr.Error()})
+					} else {
+						plan.ItemLocks = locksBody
 					}
 					packets := plan.packets()
 					if body, ke := basicKeysOnEntry(characters.Store, developmentAccount); ke != nil {

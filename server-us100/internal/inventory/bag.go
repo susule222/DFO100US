@@ -89,8 +89,12 @@ func LoadBagRules(p string) (BagRules, error) {
 const AvatarBagCapacity uint16 = 280
 
 type BagItem struct {
-	Slot             uint16 `json:"slot"`
-	Template, Amount uint32
+	Slot       uint16 `json:"slot"`
+	Template   uint32
+	Amount     uint32
+	SortLocked bool  `json:"sort_locked,omitempty"`
+	ItemLock   byte  `json:"item_lock,omitempty"`
+	UnlockAt   int64 `json:"unlock_at,omitempty"`
 }
 type Bag struct {
 	Version     string         `json:"version"`
@@ -180,7 +184,11 @@ func (b Bag) Rows() [][protocol.CurrentItemRecordSize]byte {
 	sort.Slice(items, func(i, j int) bool { return items[i].Slot < items[j].Slot })
 	rows := [][protocol.CurrentItemRecordSize]byte{protocol.OrdinaryItem(0, 0, b.Gold)}
 	for _, i := range items {
-		rows = append(rows, protocol.OrdinaryItem(i.Slot, i.Template, i.Amount))
+		row := protocol.OrdinaryItem(i.Slot, i.Template, i.Amount)
+		if i.SortLocked {
+			row[protocol.ItemSortLockOffset] = 1
+		}
+		rows = append(rows, row)
 	}
 	for _, i := range b.Equipment {
 		rows = append(rows, EquipmentRow(i))
@@ -189,6 +197,59 @@ func (b Bag) Rows() [][protocol.CurrentItemRecordSize]byte {
 		return uint16(rows[i][0])|uint16(rows[i][1])<<8 < uint16(rows[j][0])|uint16(rows[j][1])<<8
 	})
 	return rows
+}
+
+// LockedItemEntries collects active item safety locks (Alt+Left-Click) across
+// ordinary (space 0), avatar (space 1), and worn (space 3) slots for NOTI 251.
+func (b Bag) LockedItemEntries(now int64) []protocol.ItemLockEntry {
+	if now <= 0 {
+		now = time.Now().Unix()
+	}
+	var out []protocol.ItemLockEntry
+	add := func(space byte, slot uint16, state byte, unlockAt int64) {
+		if state == 0 {
+			return
+		}
+		var rem uint32
+		if state == 2 {
+			if unlockAt <= now {
+				return
+			}
+			diff := unlockAt - now
+			if diff > math.MaxUint32 {
+				diff = math.MaxUint32
+			}
+			rem = uint32(diff)
+		}
+		out = append(out, protocol.ItemLockEntry{
+			Space:            space,
+			Slot:             slot,
+			State:            state,
+			RemainingSeconds: rem,
+		})
+	}
+	for _, it := range b.Items {
+		add(0, it.Slot, it.ItemLock, it.UnlockAt)
+	}
+	for _, eq := range b.Equipment {
+		add(0, eq.Slot, eq.ItemLock, eq.UnlockAt)
+	}
+	for _, av := range b.Avatars {
+		add(1, av.Slot, av.ItemLock, av.UnlockAt)
+	}
+	for _, eq := range b.Worn {
+		add(3, eq.Slot, eq.ItemLock, eq.UnlockAt)
+	}
+	for _, av := range b.WornAvatars {
+		add(3, av.Slot, av.ItemLock, av.UnlockAt)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Space != out[j].Space {
+			return out[i].Space < out[j].Space
+		}
+		return out[i].Slot < out[j].Slot
+	})
+	return out
 }
 
 // AvatarRows projects the character's Avatar Inventory (space 1) sorted by slot.
@@ -278,7 +339,7 @@ func (b Bag) Add(c catalog.LootCatalog, r BagRules, id, amount uint32) (Bag, uin
 	for n := uint32(slots[0]); n <= uint32(slots[1]); n++ {
 		slot := uint16(n)
 		if !occupied[slot] {
-			b.Items = append(b.Items, BagItem{slot, id, amount})
+			b.Items = append(b.Items, BagItem{Slot: slot, Template: id, Amount: amount})
 			return b, slot, nil
 		}
 	}

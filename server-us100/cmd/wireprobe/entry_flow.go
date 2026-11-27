@@ -25,6 +25,7 @@ type entryPayloads struct {
 	Avatars                                                                   []byte
 	AvailableQuests                                                           []byte
 	Worn                                                                      []byte
+	ItemLocks                                                                 []byte
 	AccountMaterials                                                          []byte
 	GeneralOptions                                                            []byte
 	AccountOptions                                                            []byte
@@ -71,6 +72,7 @@ func (p entryPayloads) packets() []outboundPacket {
 		{"danji_inventory_restored", 0, 13, p.DanjiInventory},
 		{"avatar_inventory_restored", 0, 13, p.Avatars},
 		{"worn_equipment_restored", 0, 13, p.Worn},
+		{"item_locks_restored", 0, 251, p.ItemLocks},
 		{"account_materials_restored", 0, 1140, p.AccountMaterials},
 		// Restore the saved scale before the first town scene, not after world entry.
 		{"general_options_initialized", 0, 173, p.GeneralOptions},

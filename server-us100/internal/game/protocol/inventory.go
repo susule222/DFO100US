@@ -5,6 +5,12 @@ import (
 	"fmt"
 )
 
+// ItemSortLockOffset is the byte index within the 0xb1-byte US224 item row
+// that maps to CItem::sortLocked (+0x62b). Verified from DFO_unpacked.exe:
+// 0x14391b6e6 reads [raw+0x55] -> [decoded+0xd2], then 0x143260f95 writes
+// [decoded+0xd2] -> [item+0x62b].
+const ItemSortLockOffset = 0x55
+
 // OrdinaryItem is the current 181-byte base row. Special equipment branches
 // require extra source/type validation and are deliberately separate.
 func OrdinaryItem(slot uint16, template, amount uint32) [CurrentItemRecordSize]byte {
