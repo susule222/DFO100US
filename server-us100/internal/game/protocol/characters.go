@@ -226,7 +226,7 @@ func CharacterListV224(capacity uint16, roles []CharacterRow) ([]byte, error) {
 	p = add32(p, 0)
 	p = add16(p, uint16(len(roles)))
 	for index, r := range roles {
-		if r.Slot != uint16(index) || r.Level == 0 || len(r.Equipment) > 0 {
+		if r.Slot != uint16(index) || r.Level == 0 {
 			return nil, fmt.Errorf("invalid character row")
 		}
 		if _, _, e := parseName(addName(nil, r.Name)); e != nil {
@@ -248,7 +248,13 @@ func CharacterListV224(capacity uint16, roles []CharacterRow) ([]byte, error) {
 		// the Slayer portrait with the "berserker" class text.
 		p = append(p, 0, r.Profession&0xf|(r.Advancement&7)<<4, 0, r.Level, 0, 0)
 		p = add32(add32(p, 0), 0)
-		p = append(p, 0)
+		// 0x143807725 calls the exact same 0x143803660 appearance parser as
+		// NOTI 2 mode 0: u8 count followed by 31 bytes per worn avatar/weapon slot.
+		var err error
+		p, err = appendAppearanceRowsV224(p, r.Equipment)
+		if err != nil {
+			return nil, err
+		}
 		p = add32(p, 0)
 		p = append(p, 0, 0, 0, 0)
 		p = add32(add32(p, 0), 0)

@@ -141,6 +141,10 @@ func (s *Service) ListWithFatigue(ctx context.Context, account int64, fatigue *F
 		// this tests whether the block is what makes a character drawable.
 		if len(RosterEquipment) > 0 {
 			row.Equipment = RosterEquipment
+		} else if s.V224 {
+			if bag, bagErr := inventory.ReadBag(c.State); bagErr == nil {
+				row.Equipment = mode0Appearance(bag)
+			}
 		}
 		rows = append(rows, row)
 	}

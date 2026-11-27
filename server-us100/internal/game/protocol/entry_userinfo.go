@@ -48,6 +48,39 @@ func WithUserInfoContext(payload []byte, context [2]byte) []byte {
 	return out
 }
 
+// appendAppearanceRowsV224 encodes the US100 v2.24 appearance slot list read
+// by native helper 0x143803660 (shared by NOTI 2 mode 0 at 0x14380848a and
+// NOTI 2 mode 2 roster row parser at 0x143807725):
+//
+//	u8 count, followed by 31 bytes per visual slot (when dyeLen == 0 and
+//	lookTemplate == 0):
+//	  u8 slot, u32 itemID, u32 dyeLen(0), u8 upgradeFlag(0), u8(0), u8(0),
+//	  [10]byte(0), u32 lookTemplate(0), u32(0), u8(0).
+func appendAppearanceRowsV224(p []byte, equipment []Equipment) ([]byte, error) {
+	if len(equipment) > mode0AppearanceSlotLimit {
+		return nil, fmt.Errorf("mode-0 appearance row count %d exceeds %d", len(equipment), mode0AppearanceSlotLimit)
+	}
+	seenSlots := make(map[byte]bool, len(equipment))
+	for _, eq := range equipment {
+		if eq.Slot >= mode0AppearanceSlotLimit || eq.Item == 0 || seenSlots[eq.Slot] {
+			return nil, fmt.Errorf("invalid or duplicate mode-0 appearance slot %d item %d", eq.Slot, eq.Item)
+		}
+		seenSlots[eq.Slot] = true
+	}
+	p = append(p, byte(len(equipment)))
+	for _, eq := range equipment {
+		p = append(p, eq.Slot)
+		p = add32(p, eq.Item)
+		p = add32(p, 0) // 0x143a4cdb0 -> 0x144e6eda0: dye length 0
+		p = append(p, 0, 0, 0)
+		p = append(p, make([]byte, 10)...)
+		p = add32(p, 0) // look template (0 keeps default -1 and skips slot-9 emblem read at 0x14380384c)
+		p = add32(p, 0)
+		p = append(p, 0)
+	}
+	return p, nil
+}
+
 func UserInfoBasicProbe(s EntryBasicProbe) ([]byte, error) {
 	r := s.Character
 	if s.ActorServerID == 0 || s.ActorServerID == 0xffff || r.Level == 0 {
@@ -55,16 +88,6 @@ func UserInfoBasicProbe(s EntryBasicProbe) ([]byte, error) {
 	}
 	if _, _, err := parseName(addName(nil, r.Name)); err != nil {
 		return nil, err
-	}
-	if len(r.Equipment) > mode0AppearanceSlotLimit {
-		return nil, fmt.Errorf("mode-0 appearance row count %d exceeds %d", len(r.Equipment), mode0AppearanceSlotLimit)
-	}
-	seenSlots := make(map[byte]bool, len(r.Equipment))
-	for _, eq := range r.Equipment {
-		if eq.Slot >= mode0AppearanceSlotLimit || eq.Item == 0 || seenSlots[eq.Slot] {
-			return nil, fmt.Errorf("invalid or duplicate mode-0 appearance slot %d item %d", eq.Slot, eq.Item)
-		}
-		seenSlots[eq.Slot] = true
 	}
 
 	p := append(add16([]byte{0}, 1), s.Context[:]...)
@@ -81,20 +104,10 @@ func UserInfoBasicProbe(s EntryBasicProbe) ([]byte, error) {
 	//   u8 level ([tmp+0x18]), u8 ([tmp+0x314]), u8 ([tmp+0x20]).
 	p = append(p, r.Profession, r.Advancement&0x0f, r.Level, 0, 0)
 
-	// Native 0x143803660 reads u8 count followed by 31 bytes per equipped visual
-	// slot (when dye length at +5 is 0):
-	//   u8 slot, u32 itemID, u32 dyeLen(0), u8 upgradeFlag(0), u8(0), u8(0),
-	//   [10]byte(0), u32 lookTemplate(0), u32(0), u8(0).
-	p = append(p, byte(len(r.Equipment)))
-	for _, eq := range r.Equipment {
-		p = append(p, eq.Slot)
-		p = add32(p, eq.Item)
-		p = add32(p, 0) // 0x143a4cdb0 -> 0x144e6eda0: dye length 0
-		p = append(p, 0, 0, 0)
-		p = append(p, make([]byte, 10)...)
-		p = add32(p, 0) // look template (0 keeps default -1)
-		p = add32(p, 0)
-		p = append(p, 0)
+	var err error
+	p, err = appendAppearanceRowsV224(p, r.Equipment)
+	if err != nil {
+		return nil, err
 	}
 
 	// Exact US100 (2.24) tail consumed by 0x14380849e..0x143809e00 (117 bytes).

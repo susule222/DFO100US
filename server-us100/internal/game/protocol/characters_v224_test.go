@@ -81,10 +81,52 @@ func TestCharacterListV224FatigueOffsets(t *testing.T) {
 	}
 }
 
-func TestCharacterListV224RejectsEquipmentRows(t *testing.T) {
+func TestCharacterListV224EncodesAppearanceRows(t *testing.T) {
+	p, err := CharacterListV224(2, []CharacterRow{
+		{
+			Slot:             0,
+			Name:             "us100a",
+			Profession:       0,
+			Level:            16,
+			FatigueRemaining: 254,
+			FatigueBonus:     10,
+			Equipment: []Equipment{
+				{Slot: 0, Item: 39165},
+				{Slot: 8, Item: 42215},
+				{Slot: 12, Item: 100001},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantLen := 15 + (95 + 6 + 3*31) + 10
+	if len(p) != wantLen {
+		t.Fatalf("roster size=%d want=%d", len(p), wantLen)
+	}
+	row := 15
+	// After u16 slot (2) + u32 nameLen (4) + 6-byte name + 6 u8 + 2 u32 = +26:
+	eqCountOff := row + 26
+	if p[eqCountOff] != 3 {
+		t.Fatalf("appearance count = %d, want 3", p[eqCountOff])
+	}
+	wantSlots := [][2]uint32{{0, 39165}, {8, 42215}, {12, 100001}}
+	for i, w := range wantSlots {
+		entry := p[eqCountOff+1+i*31 : eqCountOff+1+(i+1)*31]
+		if uint32(entry[0]) != w[0] || binary.LittleEndian.Uint32(entry[1:5]) != w[1] {
+			t.Fatalf("slot %d = (%d,%d), want (%d,%d)", i, entry[0], binary.LittleEndian.Uint32(entry[1:5]), w[0], w[1])
+		}
+	}
+	// Fatigue pair shifts cleanly by 3*31 bytes after the appearance block.
+	if got := binary.LittleEndian.Uint16(p[row+93+3*31:]); got != 254 {
+		t.Fatalf("fatigue remaining = %d, want 254", got)
+	}
+	if got := binary.LittleEndian.Uint16(p[row+95+3*31:]); got != 10 {
+		t.Fatalf("fatigue bonus = %d, want 10", got)
+	}
 	if _, err := CharacterListV224(2, []CharacterRow{
-		{Slot: 0, Name: "a", Level: 1, Equipment: []Equipment{{Slot: 0, Item: 1}}},
+		{Slot: 0, Name: "a", Level: 1, Equipment: []Equipment{{Slot: 0, Item: 1}, {Slot: 0, Item: 2}}},
 	}); err == nil {
-		t.Fatal("accepted equipment row the 2.24 layout cannot carry")
+		t.Fatal("accepted duplicate appearance slot")
 	}
 }

@@ -106,3 +106,53 @@ func TestTownEntryProjectsEquippedTitleSlot13(t *testing.T) {
 		t.Fatalf("row1 = (%d,%d), want (13,100331498)", row1[0], binary.LittleEndian.Uint32(row1[1:5]))
 	}
 }
+
+func TestRosterV224ProjectsEquippedAvatarsAndWeapon(t *testing.T) {
+	ctx := t.Context()
+	store, err := storage.Open(ctx, storage.Config{DBPath: filepath.Join(t.TempDir(), "roster.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	if err := store.Migrate(ctx); err != nil {
+		t.Fatal(err)
+	}
+	acc, err := store.DevelopmentAccount(ctx, "probe")
+	if err != nil {
+		t.Fatal(err)
+	}
+	st := json.RawMessage(`{
+		"level":16,
+		"advancement":0,
+		"inventory":{
+			"version":"ordinary-bag-v1",
+			"worn_avatars":[{"slot":0,"template":39165},{"slot":8,"template":42215}],
+			"worn":[{"slot":12,"template":100001},{"slot":20,"template":22006}]
+		}
+	}`)
+	if _, err := store.CreateCharacter(ctx, storage.Character{
+		AccountID: acc, Name: "2", Profession: 0, ConfigVersion: "test", State: st,
+	}, 8); err != nil {
+		t.Fatal(err)
+	}
+	svc := &Service{Store: store, Rules: Rules{MaxCharacters: 8, InitialLevel: 1}, V224: true}
+	p, err := svc.List(ctx, acc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Header(15) + row(95 + 1 name byte + 3*31 visual slots) + tail(10)
+	if want := 15 + 95 + 1 + 3*31 + 10; len(p) != want {
+		t.Fatalf("roster length = %d, want %d", len(p), want)
+	}
+	// eqCount sits at header(15) + slot(2) + nameLen(4) + name(1) + 6 u8 + 2 u32 = 36
+	if p[36] != 3 {
+		t.Fatalf("roster appearance count = %d, want 3", p[36])
+	}
+	wantVisual := [][2]uint32{{0, 39165}, {8, 42215}, {12, 100001}}
+	for i, w := range wantVisual {
+		entry := p[37+i*31 : 37+(i+1)*31]
+		if uint32(entry[0]) != w[0] || binary.LittleEndian.Uint32(entry[1:5]) != w[1] {
+			t.Fatalf("roster visual %d = (%d,%d), want (%d,%d)", i, entry[0], binary.LittleEndian.Uint32(entry[1:5]), w[0], w[1])
+		}
+	}
+}
