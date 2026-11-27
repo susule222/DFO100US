@@ -260,6 +260,18 @@ func (s *Session) ClearedMaps() []uint32 {
 	if s.Room.Map != 0 {
 		seen[s.Room.Map] = true
 	}
+	// Story boss/event rooms paired with a PVF "layered" overlay map (e.g.
+	// Dark Thunderland quest 3151: boss 76186 + layered 76187) satisfy [clear map]
+	// objectives naming either the base room or its layered overlay once cleared.
+	for _, r := range s.Maze.Rooms {
+		if seen[r.Map] {
+			for _, layerID := range r.LayeredMaps {
+				if layerID != 0 {
+					seen[layerID] = true
+				}
+			}
+		}
+	}
 	out := make([]uint32, 0, len(seen))
 	for id := range seen {
 		out = append(out, id)

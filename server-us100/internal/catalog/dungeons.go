@@ -8,9 +8,10 @@ import (
 )
 
 type DungeonRoom struct {
-	X, Y byte
-	Map  uint32
-	Boss bool
+	X, Y        byte
+	Map         uint32
+	Boss        bool
+	LayeredMaps []uint32 `json:"layered_maps,omitempty"`
 }
 type DungeonMaze struct {
 	Index             byte   `json:"index"`
@@ -83,7 +84,7 @@ func ParseDungeon(id uint32, s ScriptRecord) (DungeonDefinition, error) {
 		m := DungeonMaze{Index: byte(len(d.Mazes))}
 		q := sectionCells(c, "[quest connection]")
 		if len(q) > 0 {
-			if len(q) != 3 || q[0].Type != 0 || q[0].Value != 0 || q[1].Type != 0 || q[1].Value < 1 || q[1].Value > 65535 || q[2].Type != 0 || q[2].Value != -1 {
+			if len(q) != 3 || q[0].Type != 0 || q[0].Value != 0 || q[1].Type != 0 || q[1].Value < 1 || q[1].Value > 65535 || q[2].Type != 0 || q[2].Value < -1 {
 				m.Pending = append(m.Pending, "unsupported quest connection")
 			} else {
 				m.Quest = uint16(q[1].Value)
@@ -101,17 +102,61 @@ func ParseDungeon(id uint32, s ScriptRecord) (DungeonDefinition, error) {
 			}
 		}
 		nodes := sectionCells(c, "[map specification]")
-		if len(nodes) == 0 || len(nodes)%4 != 0 {
+		if len(nodes) == 0 {
 			m.Pending = append(m.Pending, "unsupported room specification")
 		} else {
-			for j := 0; j < len(nodes); j += 4 {
-				xy, e := dungeonPair(nodes[j+1 : j+3])
+			layeredByXY := map[[2]byte][]uint32{}
+			validSpec := true
+			for j := 0; j < len(nodes); {
 				label := nodes[j]
-				if e != nil || label.Type != 6 || (label.Text != "map" && label.Text != "boss") || nodes[j+3].Type != 0 || nodes[j+3].Value <= 0 || xy[0] >= m.Size[0] || xy[1] >= m.Size[1] {
+				if label.Type != 6 || (label.Text != "map" && label.Text != "boss" && label.Text != "layered") || j+3 >= len(nodes) {
 					m.Pending = append(m.Pending, "invalid room specification")
+					validSpec = false
 					break
 				}
-				m.Rooms = append(m.Rooms, DungeonRoom{xy[0], xy[1], uint32(nodes[j+3].Value), label.Text == "boss"})
+				xy, e := dungeonPair(nodes[j+1 : j+3])
+				if e != nil || xy[0] >= m.Size[0] || xy[1] >= m.Size[1] {
+					m.Pending = append(m.Pending, "invalid room specification")
+					validSpec = false
+					break
+				}
+				k := j + 3
+				var mapIDs []uint32
+				for k < len(nodes) && nodes[k].Type == 0 {
+					if nodes[k].Value <= 0 {
+						validSpec = false
+						break
+					}
+					mapIDs = append(mapIDs, uint32(nodes[k].Value))
+					k++
+				}
+				if !validSpec || len(mapIDs) == 0 {
+					m.Pending = append(m.Pending, "invalid room specification")
+					validSpec = false
+					break
+				}
+				if label.Text == "layered" {
+					layeredByXY[xy] = append(layeredByXY[xy], mapIDs...)
+				} else {
+					m.Rooms = append(m.Rooms, DungeonRoom{X: xy[0], Y: xy[1], Map: mapIDs[0], Boss: label.Text == "boss"})
+				}
+				j = k
+			}
+			if validSpec && len(layeredByXY) > 0 {
+				attached := map[[2]byte]bool{}
+				for idx := range m.Rooms {
+					xy := [2]byte{m.Rooms[idx].X, m.Rooms[idx].Y}
+					if layers, ok := layeredByXY[xy]; ok {
+						m.Rooms[idx].LayeredMaps = append(m.Rooms[idx].LayeredMaps, layers...)
+						attached[xy] = true
+					}
+				}
+				for xy := range layeredByXY {
+					if !attached[xy] {
+						m.Pending = append(m.Pending, "layered room without base room")
+						break
+					}
+				}
 			}
 		}
 		d.Mazes = append(d.Mazes, m)
