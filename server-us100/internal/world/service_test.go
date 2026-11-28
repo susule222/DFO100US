@@ -186,3 +186,57 @@ func TestEnterPersistsSeriaRoomSpawn(t *testing.T) {
 		t.Fatalf("re-entry from 51/1 should land in 51/0 Seria's Room, got %+v", st2.Position)
 	}
 }
+
+func TestElvengardToHendonMyreAndWestCoastTransitions(t *testing.T) {
+	cat, err := catalog.LoadWorld("../../configs/us100/world.generated.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	store, err := storage.Open(ctx, storage.Config{DBPath: filepath.Join(t.TempDir(), "town_nav.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	acctID, err := store.DevelopmentAccount(ctx, "nav-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := store.CreateCharacter(ctx, storage.Character{
+		AccountID:     acctID,
+		Name:          "Walker",
+		ConfigVersion: cat.Source.Checksum,
+		State:         []byte(`{"level":19}`),
+	}, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := Service{Store: store, Catalog: cat, Rules: Rules{RequirePortalProximity: true, PortalMargin: 64}}
+	owner := QuestAccess{Account: acctID, Character: role.ID}
+
+	// 1. Elvengard 38/0 -> 38/3 with landing coordinate inside 38/3's return portal [207,134,120,40]
+	//    just above 38/3's walkable [207,165,120,30] must succeed and clamp to walkable.
+	from38 := storage.WorldPosition{Town: 38, Area: 0, X: 1393, Y: 364}
+	to383, err := svc.Transition(19, from38, protocol.AreaChangeRequest{
+		Town: 38, Area: 3, X: 267, Y: 154, PreviousTown: 38, PreviousArea: 0,
+	}, owner)
+	if err != nil {
+		t.Fatalf("38/0 -> 38/3 transition failed: %v", err)
+	}
+	if to383.Town != 38 || to383.Area != 3 || !Walkable(cat.Areas["38/3"], to383.X, to383.Y) {
+		t.Fatalf("38/3 clamped position invalid: %+v", to383)
+	}
+
+	// 2. Recovered portals after [quest condition] in Hendon Myre 39/0 must include
+	//    West Coast (40/0), Elvengard (38/3), and animated Seria's Room door (38/1).
+	hm := cat.Areas["39/0"]
+	for _, want := range [][2]uint32{{40, 0}, {38, 3}, {38, 1}} {
+		if !areaHasPortalTo(hm, want[0], want[1]) {
+			t.Fatalf("Hendon Myre 39/0 missing recovered portal to %d/%d", want[0], want[1])
+		}
+	}
+	// 3. Elvengard 38/0 must also recover walkable rectangles after [quest condition] (e.g. [571,172,210,80]).
+	if !Walkable(cat.Areas["38/0"], 650, 180) {
+		t.Fatalf("Elvengard 38/0 missing recovered walkable rectangle around (650,180)")
+	}
+}

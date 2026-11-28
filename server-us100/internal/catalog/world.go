@@ -331,6 +331,7 @@ func ImportWorld(a *pvf.Archive) (WorldCatalog, error) {
 			if len(area.Walkable) == 0 {
 				area.Pending = append(area.Pending, "no resolved walkable rectangles")
 			}
+			augmentAreaGeometry(&area)
 			w.Areas[key] = area
 		}
 	}
@@ -387,6 +388,148 @@ func LoadWorld(file string) (WorldCatalog, error) {
 		if key != AreaKey(area.Town, area.Area) {
 			return w, fmt.Errorf("world area key mismatch")
 		}
+		augmentAreaGeometry(&area)
+		w.Areas[key] = area
 	}
 	return w, nil
+}
+
+// augmentAreaGeometry recovers walkable rectangles and town portals from the
+// map's raw script tokens that sectionCells previously truncated at nested
+// [quest condition] / [check condition] / [in progress] tags, plus animated
+// portals from [town movable area with animation] (such as Hendon Myre and
+// West Coast Seria's Room doors).
+func augmentAreaGeometry(area *WorldArea) {
+	if area == nil || len(area.Map.Cells) == 0 {
+		return
+	}
+	cells := area.Map.Cells
+	if len(area.ImportedScripts) > 0 {
+		combined := make([]pvf.Token, 0, len(cells))
+		combined = append(combined, cells...)
+		for _, imp := range area.ImportedScripts {
+			combined = append(combined, imp.Cells...)
+		}
+		cells = combined
+	}
+	seenWalk := make(map[[4]int32]bool, len(area.Walkable))
+	for _, r := range area.Walkable {
+		seenWalk[r] = true
+	}
+	for _, r := range parseSectionRectsSkippingNested(cells, "[virtual movable area]", "[/virtual movable area]", 4) {
+		if r[2] < 0 || r[3] < 0 {
+			continue
+		}
+		rect := [4]int32{r[0], r[1], r[2], r[3]}
+		if !seenWalk[rect] {
+			seenWalk[rect] = true
+			area.Walkable = append(area.Walkable, rect)
+		}
+	}
+	seenPortal := make(map[Portal]bool, len(area.Portals))
+	for _, p := range area.Portals {
+		seenPortal[p] = true
+	}
+	for _, r := range parseSectionRectsSkippingNested(cells, "[town movable area]", "[/town movable area]", 6) {
+		if r[2] < 0 || r[3] < 0 || r[4] < 0 || r[5] < 0 {
+			continue
+		}
+		p := Portal{Bounds: [4]int32{r[0], r[1], r[2], r[3]}, Town: uint32(r[4]), Area: uint32(r[5])}
+		if !seenPortal[p] {
+			seenPortal[p] = true
+			area.Portals = append(area.Portals, p)
+		}
+	}
+	for _, p := range parseAnimatedPortals(cells) {
+		if !seenPortal[p] {
+			seenPortal[p] = true
+			area.Portals = append(area.Portals, p)
+		}
+	}
+}
+
+func parseSectionRectsSkippingNested(cells []pvf.Token, startTag, endTag string, width int) [][]int32 {
+	var out [][]int32
+	on := false
+	nestedEnd := ""
+	nums := make([]int32, 0, width)
+	for _, c := range cells {
+		if c.Type == 3 {
+			switch {
+			case c.Text == startTag:
+				on = true
+				nestedEnd = ""
+				nums = nums[:0]
+			case c.Text == endTag:
+				on = false
+				nestedEnd = ""
+				nums = nums[:0]
+			case on && nestedEnd != "" && c.Text == nestedEnd:
+				nestedEnd = ""
+			case on && nestedEnd == "" && strings.HasPrefix(c.Text, "[") && !strings.HasPrefix(c.Text, "[/"):
+				nestedEnd = "[/" + c.Text[1:]
+				nums = nums[:0]
+			}
+			continue
+		}
+		if on && nestedEnd == "" && c.Type == 0 {
+			nums = append(nums, c.Value)
+			if len(nums) == width {
+				row := make([]int32, width)
+				copy(row, nums)
+				out = append(out, row)
+				nums = nums[:0]
+			}
+		}
+	}
+	return out
+}
+
+func parseAnimatedPortals(cells []pvf.Token) []Portal {
+	var out []Portal
+	inAnim := false
+	inMove := false
+	hasRect := false
+	hasDest := false
+	var rect [4]int32
+	var destTown, destArea uint32
+	for i := 0; i < len(cells); i++ {
+		c := cells[i]
+		if c.Type != 3 {
+			continue
+		}
+		switch c.Text {
+		case "[town movable area with animation]":
+			inAnim = true
+		case "[/town movable area with animation]":
+			inAnim = false
+			inMove = false
+		case "[movable area]":
+			if inAnim {
+				inMove = true
+				hasRect = false
+				hasDest = false
+			}
+		case "[/movable area]":
+			if inMove && hasRect && hasDest {
+				out = append(out, Portal{Bounds: rect, Town: destTown, Area: destArea})
+			}
+			inMove = false
+		case "[area]":
+			if inMove && i+4 < len(cells) &&
+				cells[i+1].Type == 0 && cells[i+2].Type == 0 && cells[i+3].Type == 0 && cells[i+4].Type == 0 &&
+				cells[i+3].Value >= 0 && cells[i+4].Value >= 0 {
+				rect = [4]int32{cells[i+1].Value, cells[i+2].Value, cells[i+3].Value, cells[i+4].Value}
+				hasRect = true
+			}
+		case "[move town]":
+			if inMove && i+2 < len(cells) &&
+				cells[i+1].Type == 0 && cells[i+2].Type == 0 &&
+				cells[i+1].Value >= 0 && cells[i+2].Value >= 0 {
+				destTown, destArea = uint32(cells[i+1].Value), uint32(cells[i+2].Value)
+				hasDest = true
+			}
+		}
+	}
+	return out
 }

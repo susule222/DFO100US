@@ -49,8 +49,15 @@ func (s *Service) ValidatePosition(level byte, p storage.WorldPosition, owner ..
 	checkQuests := false
 	for _, pending := range a.Pending {
 		switch pending {
-		case "unsupported permission [need quest]", "unsupported permission [/need quest]", "unsupported permission [need quest or]", "unsupported permission [/need quest or]", "unsupported permission [in progress quest]", "unsupported permission [/in progress quest]":
+		case "unsupported permission [need quest]", "unsupported permission [/need quest]",
+			"unsupported permission [need quest or]", "unsupported permission [/need quest or]",
+			"unsupported permission [in progress quest]", "unsupported permission [/in progress quest]",
+			"unsupported permission [except quest]", "unsupported permission [/except quest]",
+			"unsupported permission [off quest]", "unsupported permission [/off quest]":
 			checkQuests = true
+			continue
+		case "unsupported permission [legend area show gate rate]",
+			"unsupported permission [enterable on party except quest]":
 			continue
 		}
 		// An unresolved outgoing dynamic portal is never selectable in the
@@ -59,7 +66,7 @@ func (s *Service) ValidatePosition(level byte, p storage.WorldPosition, owner ..
 			return fmt.Errorf("area configuration unresolved: %s", pending)
 		}
 	}
-	if !Walkable(a, p.X, p.Y) {
+	if !Walkable(a, p.X, p.Y) && !inPortalBounds(a, p.X, p.Y) {
 		return errors.New("position outside source walkable rectangles")
 	}
 	if checkQuests {
@@ -128,6 +135,16 @@ func (s *Service) Transition(level byte, old storage.WorldPosition, r protocol.A
 	}
 	if !adjacent {
 		return old, errors.New("no authorized source portal to destination")
+	}
+	// Client portal transitions frequently supply a landing coordinate inside
+	// the destination map's return-portal rectangle just outside [virtual movable area]
+	// (e.g. Elvengard 38/0 -> 38/3 lands inside return portal [207,134,120,40]
+	// slightly above walkable [207,165,120,30]). Clamp legitimate portal landings
+	// onto the nearest walkable point while still rejecting arbitrary far-out coordinates.
+	if !Walkable(dest, next.X, next.Y) && nearDestinationEntry(dest, next.X, next.Y) {
+		if sx, sy, ok := nearestWalkable(dest, int32(next.X), int32(next.Y)); ok {
+			next.X, next.Y = sx, sy
+		}
 	}
 	if e := s.ValidatePosition(level, next, owner...); e != nil {
 		return old, e
@@ -449,11 +466,34 @@ func sameWorldPosition(a, b storage.WorldPosition) bool {
 	return true
 }
 
+func inPortalBounds(a catalog.WorldArea, x, y uint16) bool {
+	for _, p := range a.Portals {
+		if p.Bounds[2] > 0 && p.Bounds[3] > 0 && Contains(p.Bounds, x, y, 0) {
+			return true
+		}
+	}
+	return false
+}
+
+func nearDestinationEntry(dest catalog.WorldArea, x, y uint16) bool {
+	for _, p := range dest.Portals {
+		if Contains(p.Bounds, x, y, 64) {
+			return true
+		}
+	}
+	for _, r := range dest.Walkable {
+		if Contains(r, x, y, 80) {
+			return true
+		}
+	}
+	return false
+}
+
 func checkSourceAreaQuests(a catalog.WorldArea, status map[uint16]string) error {
 	found := false
 	for i := 0; i < len(a.Definition); i++ {
 		t := a.Definition[i]
-		if t.Type != 3 || (t.Text != "[need quest]" && t.Text != "[need quest or]" && t.Text != "[in progress quest]") {
+		if t.Type != 3 || (t.Text != "[need quest]" && t.Text != "[need quest or]" && t.Text != "[in progress quest]" && t.Text != "[except quest]" && t.Text != "[off quest]") {
 			continue
 		}
 		found = true
@@ -464,13 +504,20 @@ func checkSourceAreaQuests(a catalog.WorldArea, status map[uint16]string) error 
 			if v.Type != 0 || v.Value <= 0 || v.Value >= 40000 {
 				return fmt.Errorf("unsupported %s identity", t.Text)
 			}
-			want := "completed"
-			if t.Text == "[in progress quest]" {
-				want = "accepted"
-			}
-			ok := status[uint16(v.Value)] == want
-			if !ok && t.Text != "[need quest or]" {
-				return fmt.Errorf("area requires quest %d %s", v.Value, want)
+			var ok bool
+			switch t.Text {
+			case "[except quest]", "[off quest]":
+				ok = status[uint16(v.Value)] != "completed"
+				if !ok {
+					return fmt.Errorf("area blocked by completed quest %d", v.Value)
+				}
+			case "[in progress quest]":
+				ok = status[uint16(v.Value)] == "accepted"
+			default:
+				ok = status[uint16(v.Value)] == "completed"
+				if !ok && t.Text != "[need quest or]" {
+					return fmt.Errorf("area requires quest %d completed", v.Value)
+				}
 			}
 			matched = matched || ok
 			count++

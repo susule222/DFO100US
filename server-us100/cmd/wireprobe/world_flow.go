@@ -117,7 +117,7 @@ func (w *worldSession) handle(id uint16, p []byte, send func(byte, uint16, []byt
 		}
 		next, e = w.service.Transition(w.level, old.Position, r, w.questAccess())
 		if e != nil {
-			event(map[string]any{"kind": "area_refused", "town": r.Town, "area": r.Area, "reason": e.Error()})
+			event(map[string]any{"kind": "area_refused", "town": r.Town, "area": r.Area, "x": r.X, "y": r.Y, "reason": e.Error()})
 			// Code 8 is the native level refusal; code 4 reaches the generic refusal
 			// and clears the client's in-flight transition at 145297a9b.
 			code := uint16(4)
