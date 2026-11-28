@@ -157,9 +157,11 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 		))
 	}
 	if pol.HellParty.Enabled {
+		// Leave NOTI 108 Title empty so calendar.xui preserves its native UTF-16LE
+		// TitleString ("灵魂之铁砧") instead of overwriting the title bar with ASCII.
 		entries = append(entries, makeEntry(
 			eventIDHellParty, 4,
-			fmt.Sprintf("Hell Party Event (%d%%)", pol.HellParty.TriggerChance),
+			"",
 			"Random Hell Party",
 			fmt.Sprintf("Random Hell Party (%d%%)", pol.HellParty.TriggerChance),
 			"Chance to spawn Hell Party in dungeons.",

@@ -309,4 +309,65 @@ func TestInteractiveEventStepByStepProgressionAndClaims(t *testing.T) {
 			t.Fatalf("expected earned reward template %d in character bag", tmpl)
 		}
 	}
+
+	// 10. Event 500 (Forge of Souls): CMD 643 daily gift 78 grants 50060816,
+	//     and CMD 681 reinforces slot 0 (+0 -> +1 at 100% rate) consuming 35x 50060799,
+	//     and CMD 680 claims milestone reward 0 (50060817).
+	giftReq := make([]byte, 2)
+	binary.LittleEndian.PutUint16(giftReq, ev500GiftDailyID)
+	giftPkts, err := w.handleEventGiftCommand(ctx, giftReq, t45m)
+	if err != nil {
+		t.Fatalf("Ev500 CMD 643 daily gift failed: %v", err)
+	}
+	var gotGiftAck, gotGiftNoti bool
+	for _, p := range giftPkts {
+		if p.ID == protocol.CmdRequestEventGift && len(p.Payload) == 4 && p.Payload[0] == 1 && binary.LittleEndian.Uint16(p.Payload[1:3]) == ev500GiftDailyID && p.Payload[3] == 1 {
+			gotGiftAck = true
+		}
+		if p.ID == protocol.NotiEventGiftUpdate {
+			gotGiftNoti = true
+		}
+	}
+	if !gotGiftAck || !gotGiftNoti {
+		t.Fatalf("Ev500 CMD 643 expected ACK 643 + NOTI 559, got ack=%v noti=%v", gotGiftAck, gotGiftNoti)
+	}
+	// Duplicate claim same day must be refused
+	dupGift, err := w.handleEventGiftCommand(ctx, giftReq, t45m)
+	if err != nil || len(dupGift) == 0 || dupGift[0].Payload[0] != 0 {
+		t.Fatalf("Ev500 duplicate daily gift must be refused, got %+v err=%v", dupGift, err)
+	}
+	// Grant 100x Soul Stone (50060799) and reinforce slot 0 via CMD 681 (Event 500, args=[0,0,0])
+	if _, err := w.grantActivityReward(ctx, "ev500_test_stones", "us100-test-v1", 0, ev500MaterialItem, 100, 0, w.activityDay(t45m), 0); err != nil {
+		t.Fatalf("seed Soul Stones failed: %v", err)
+	}
+	forgePkts, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(500, 0, 0, 0), t45m)
+	if err != nil {
+		t.Fatalf("Ev500 CMD 681 forge failed: %v", err)
+	}
+	var gotForgeAck, gotNoti1870 bool
+	for _, p := range forgePkts {
+		if p.ID == protocol.CmdEventQuery && len(p.Payload) == 45 && p.Payload[0] == 1 && binary.LittleEndian.Uint32(p.Payload[9:13]) == 1 {
+			gotForgeAck = true
+		}
+		if p.ID == protocol.NotiEv500SoulAnvil && len(p.Payload) == 64 && binary.LittleEndian.Uint32(p.Payload[0:4]) == 1 && binary.LittleEndian.Uint32(p.Payload[4:8]) == 1 {
+			gotNoti1870 = true
+		}
+	}
+	if !gotForgeAck || !gotNoti1870 {
+		t.Fatalf("Ev500 forge expected ACK 681(success=1) + NOTI 1870(accum=1,lv=1), got ack=%v 1870=%v", gotForgeAck, gotNoti1870)
+	}
+	// Claim cumulative reward 0 via CMD 680
+	rewPkts, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(500, 0), t45m)
+	if err != nil {
+		t.Fatalf("Ev500 CMD 680 reward claim failed: %v", err)
+	}
+	var gotRewMask bool
+	for _, p := range rewPkts {
+		if p.ID == protocol.NotiEv500SoulAnvil && (binary.LittleEndian.Uint32(p.Payload[40:44])&1) != 0 {
+			gotRewMask = true
+		}
+	}
+	if !gotRewMask {
+		t.Fatalf("Ev500 reward 0 claim should set rewardMask bit 0")
+	}
 }

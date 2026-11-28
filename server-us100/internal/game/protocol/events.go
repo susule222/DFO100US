@@ -19,12 +19,15 @@ import (
 //   - NOTI 2222 (0x8ae, 0x140421120): Event 520 Reverse Hot Time state (12 bytes)
 const (
 	CmdUseStackableAction uint16 = 507 // 0x1fb: special [action type] stackable use (0x143a01190)
+	CmdRequestEventGift   uint16 = 643 // 0x283: CMDPACKET_REQUEST_EVENT_GIFT (0x142fae080 / 0x142fad4e0)
 	CmdEventAction        uint16 = 680
 	CmdEventQuery         uint16 = 681
 
+	NotiEventGiftUpdate      uint16 = 559  // 0x22f: incremental event gift claim states (0x142fad6a0)
 	NotiEv388MissionWeekly   uint16 = 1783
 	NotiEv388MissionDaily    uint16 = 1784
 	NotiEv392OneDayPlan      uint16 = 1789
+	NotiEv500SoulAnvil       uint16 = 1870 // 0x74e: Event 500 Forge of Souls state (0x140d1d3e0)
 	NotiEv602RiaCubeLab      uint16 = 1949
 	NotiEv614Melody          uint16 = 2134
 	NotiEv512DungeonMining   uint16 = 2155
@@ -32,6 +35,7 @@ const (
 	NotiEv619DailyCheck      uint16 = 2161
 	NotiEv515EverydayConnect uint16 = 2215
 	NotiEv520ReverseHotTime  uint16 = 2222
+	NotiEventGiftReset       uint16 = 2272 // 0x8e0: full reset + load of event gift states (0x142fad6c0)
 )
 
 // EventInitParam is one 50-byte entry inside NOTI 108 Part 2
@@ -319,5 +323,79 @@ func Ev602RiaCubeLabStatus(st Ev602CubeLabState) []byte {
 	binary.LittleEndian.PutUint32(p[0x28:0x2c], st.TimerSeconds)
 	binary.LittleEndian.PutUint32(p[0x2c:0x30], st.EnergyPoints)
 	binary.LittleEndian.PutUint32(p[0x30:0x34], uint32(st.CurrentItemIdx))
+	return p
+}
+
+// DecodeRequestEventGift decodes CMD 643 (0x283, 0x142fae080): u16 giftID.
+func DecodeRequestEventGift(p []byte) (uint16, error) {
+	if len(p) < 2 {
+		return 0, fmt.Errorf("request event gift requires 2 bytes, got %d", len(p))
+	}
+	return binary.LittleEndian.Uint16(p[0:2]), nil
+}
+
+// RequestEventGiftSuccess encodes ACK 643 (0x283, handler 0x142fad4e0):
+// u8 success=1, u16 giftID, u8 claimedState (1=claimed).
+func RequestEventGiftSuccess(giftID uint16, claimed byte) []byte {
+	p := make([]byte, 4)
+	p[0] = 1
+	binary.LittleEndian.PutUint16(p[1:3], giftID)
+	p[3] = claimed
+	return p
+}
+
+// RequestEventGiftRefused encodes a failed ACK 643 (0x283).
+func RequestEventGiftRefused(code uint16) []byte {
+	p := make([]byte, 3)
+	p[0] = 0
+	binary.LittleEndian.PutUint16(p[1:3], code)
+	return p
+}
+
+// EventGiftEntry is one (giftID, claimed) entry inside NOTI 2272 (0x8e0) or NOTI 559 (0x22f).
+type EventGiftEntry struct {
+	GiftID  uint16
+	Claimed byte
+}
+
+// EventGiftStatus encodes NOTI 2272 (0x8e0, 0x142fad6c0) and NOTI 559 (0x22f, 0x142fad6a0):
+// u16 count + count * (u16 giftID, u8 claimed).
+func EventGiftStatus(entries []EventGiftEntry) []byte {
+	p := make([]byte, 0, 2+len(entries)*3)
+	p = add16(p, uint16(len(entries)))
+	for _, e := range entries {
+		p = add16(p, e.GiftID)
+		p = append(p, e.Claimed)
+	}
+	return p
+}
+
+// Ev500SlotState is one 12-byte weapon slot record inside NOTI 1870 (0x74e, 0x140d1d3e0).
+type Ev500SlotState struct {
+	Upgrade   uint32 `json:"upgrade"`
+	TryCount  uint32 `json:"try_count"`
+	Unlocked  byte   `json:"unlocked"`
+	Extracted byte   `json:"extracted"`
+}
+
+// Ev500SoulAnvilStatus encodes NOTI 1870 (0x74e, 64 bytes, handler 0x140d1d3e0):
+//   - [0..43]  44-byte core block ([obj+0x10..+0x3b]):
+//       [0..3]:   u32 accumCount ([obj+0x10])
+//       [4..39]:  3 * 12-byte slot structs ([obj+0x14..+0x37])
+//       [40..43]: u32 rewardClaimMask ([obj+0x38])
+//   - [44..47] u8(0), u16(0), u8(0)
+//   - [48..51] u32 wideStrByteLen (0)
+//   - [52..63] 3 * u32 reserved (0)
+func Ev500SoulAnvilStatus(accumCount uint32, slots [3]Ev500SlotState, rewardMask uint32) []byte {
+	p := make([]byte, 64)
+	binary.LittleEndian.PutUint32(p[0:4], accumCount)
+	for i := 0; i < 3; i++ {
+		off := 4 + i*12
+		binary.LittleEndian.PutUint32(p[off:off+4], slots[i].Upgrade)
+		binary.LittleEndian.PutUint32(p[off+4:off+8], slots[i].TryCount)
+		p[off+8] = slots[i].Unlocked
+		p[off+9] = slots[i].Extracted
+	}
+	binary.LittleEndian.PutUint32(p[40:44], rewardMask)
 	return p
 }

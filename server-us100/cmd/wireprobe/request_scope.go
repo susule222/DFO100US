@@ -12,7 +12,7 @@ package main
 // exactly that trap until it was added below.
 func observedGameRequest(id uint16) bool {
 	switch id {
-	case 80, 198, 204, 205, 267, 268, 269, 270, 331, 507, 680, 681, 705, 706, 1200, 1201, 1565: // upgrade/purify/grimoire, membership claims, item actions, event actions/queries, Customize, inventory locks, and Skin Storage: verify every occurrence
+	case 80, 198, 204, 205, 267, 268, 269, 270, 331, 507, 643, 680, 681, 705, 706, 1200, 1201, 1565: // upgrade/purify/grimoire, membership claims, item actions, event actions/queries, Customize, inventory locks, and Skin Storage: verify every occurrence
 		return true
 	case 0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 19, 26, 28, 29, 31, 32, 33, 34, 35, 36, 37, 39, 42, 43, 44, 45, 46, 69, 70, 71, 72, 117, 132, 143, 191, 217, 433, 475, 623, 627, 637, 684, 848, 1301, 1554:
 		return true

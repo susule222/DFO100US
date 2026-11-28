@@ -2,10 +2,16 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"dfolan/internal/events"
 	"dfolan/internal/game/protocol"
+	"dfolan/internal/inventory"
+	"dfolan/internal/storage"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"math/bits"
+	"sort"
 	"time"
 )
 
@@ -82,6 +88,13 @@ type persistedEventUIState struct {
 	// Event 367: Time Attendance (1 claim per calendar day, 7-day rotating rewards)
 	Ev367LastClaimDay string `json:"ev367_last_claim_day"`
 	Ev367ClaimCount   uint32 `json:"ev367_claim_count,omitempty"`
+
+	// Event 500: Forge of Souls / Anvil of Souls (UpgradableStoneEventScript.evt)
+	Ev500Initialized   bool                       `json:"ev500_initialized,omitempty"`
+	Ev500AccumCount    uint32                     `json:"ev500_accum_count,omitempty"`
+	Ev500Slots         [3]protocol.Ev500SlotState `json:"ev500_slots,omitempty"`
+	Ev500RewardMask    uint32                     `json:"ev500_reward_mask,omitempty"`
+	Ev500DailyClaimDay string                     `json:"ev500_daily_claim_day,omitempty"`
 }
 
 type eventRewardItem struct {
@@ -174,6 +187,45 @@ var (
 		{{50061696, 2}, {50061706, 1}},
 		{{50061701, 1}, {50061707, 1}},
 		{{50061702, 1}, {50061708, 1}},
+	}
+
+	// Event 500 (UpgradableStoneEventScript.evt: Forge of Souls / Anvil of Souls)
+	ev500MaterialItem uint32 = 50060799 // Soul Stone (灵魂之石)
+	ev500DailyBoxItem uint32 = 50060816 // Kiri's Soul Reinforcement Box (凯丽的灵魂强化礼盒 -> 100x 50060799)
+	ev500GiftBaseID   uint16 = 77       // 0x4d: starter gift flag (dismissed on calendar.xui)
+	ev500GiftDailyID  uint16 = 78       // 0x4e: daily Kiri's Soul Reinforcement Box
+
+	// targetLevel (1..15) -> {rateOutOf10000, materialCost}
+	ev500UpgradeSteps = map[uint32][2]uint32{
+		1:  {10000, 35},
+		2:  {10000, 35},
+		3:  {10000, 35},
+		4:  {10000, 36},
+		5:  {8000, 71},
+		6:  {7000, 78},
+		7:  {6000, 85},
+		8:  {5000, 93},
+		9:  {4000, 100},
+		10: {3000, 107},
+		11: {2500, 107},
+		12: {1500, 178},
+		13: {1400, 286},
+		14: {1300, 427},
+		15: {1200, 605},
+	}
+
+	// Cumulative reinforcement milestone rewards (UpgradableStoneEventScript.evt)
+	ev500MilestoneRewards = map[uint32]eventRewardItem{
+		0: {50060817, 1},
+		1: {50060817, 2},
+		2: {50060817, 4},
+		3: {50060817, 6},
+		4: {50060817, 8},
+		5: {50060819, 1},
+		6: {50060820, 1},
+		7: {50060822, 1},
+		8: {50060824, 1},
+		9: {50060826, 1},
 	}
 )
 
@@ -304,6 +356,13 @@ func (w *worldSession) loadEventUIState(now time.Time) persistedEventUIState {
 				st.Ev512Pickaxes++
 			}
 		}
+	}
+
+	// Event 500: Forge of Souls starts with slot 0 unlocked so the player can
+	// reinforce immediately upon opening the Anvil of Souls window (0x2a6).
+	if !st.Ev500Initialized {
+		st.Ev500Initialized = true
+		st.Ev500Slots[0].Unlocked = 1
 	}
 
 	// Event 619: daily online timer resets each calendar day.
@@ -486,6 +545,25 @@ func (w *worldSession) interactiveEventInitPackets(pol events.Policy, now time.T
 			"event_602_cubelab_status", 0, protocol.NotiEv602RiaCubeLab,
 			ev602Packet(st),
 		})
+	}
+	if pol.HellParty.Enabled {
+		dailyClaimed := byte(0)
+		if st.Ev500DailyClaimDay == day {
+			dailyClaimed = 1
+		}
+		out = append(out,
+			outboundPacket{
+				"event_500_soul_anvil_status", 0, protocol.NotiEv500SoulAnvil,
+				protocol.Ev500SoulAnvilStatus(st.Ev500AccumCount, st.Ev500Slots, st.Ev500RewardMask),
+			},
+			outboundPacket{
+				"event_gift_reset", 0, protocol.NotiEventGiftReset,
+				protocol.EventGiftStatus([]protocol.EventGiftEntry{
+					{GiftID: ev500GiftBaseID, Claimed: 1},
+					{GiftID: ev500GiftDailyID, Claimed: dailyClaimed},
+				}),
+			},
+		)
 	}
 	return out
 }
@@ -1095,8 +1173,207 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 		out = append(out, outboundPacket{"event_367_ack", 1, protocol.CmdEventAction, protocol.EventActionSuccess(req.EventID, ackParams)})
 		return out, nil
 
+	case uint32(eventIDHellParty): // 500: Forge of Souls / Anvil of Souls (UpgradableStoneEventScript.evt)
+		if cmdID == protocol.CmdEventQuery {
+			// CMD 681 (0x140d1e0d0): args = [0, 0, slotIdx(0..2)] -> reinforce Soul Stone
+			slot := arg(2)
+			if slot > 2 {
+				return []outboundPacket{{"event_500_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
+			}
+			curLv := st.Ev500Slots[slot].Upgrade
+			if curLv >= 15 {
+				return []outboundPacket{{"event_500_max_level", 1, cmdID, protocol.EventActionRefused(0x64, req.EventID)}}, nil
+			}
+			nextLv := curLv + 1
+			step, ok := ev500UpgradeSteps[nextLv]
+			if !ok {
+				return []outboundPacket{{"event_500_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
+			}
+			rate, cost := step[0], step[1]
+			key := fmt.Sprintf("ev500_forge:%d:%d", slot, st.Ev500AccumCount+1)
+			matPkts, paid, cerr := w.consumeBagMaterial(ctx, key, "us100-ev500-forge-v1", ev500MaterialItem, cost)
+			if cerr != nil {
+				return nil, cerr
+			}
+			if !paid {
+				return []outboundPacket{{"event_500_no_material", 1, cmdID, protocol.EventActionRefused(0x12, req.EventID)}}, nil
+			}
+			out = append(out, matPkts...)
+
+			success := uint32(1)
+			if rate < 10000 {
+				var rb [4]byte
+				_, _ = rand.Read(rb[:])
+				roll := binary.LittleEndian.Uint32(rb[:]) % 10000
+				if roll >= rate {
+					success = 0
+				}
+			}
+			st.Ev500AccumCount++
+			st.Ev500Slots[slot].Unlocked = 1
+			st.Ev500Slots[slot].TryCount++
+			if success == 1 {
+				st.Ev500Slots[slot].Upgrade = nextLv
+				if nextLv >= 10 && slot+1 < 3 {
+					st.Ev500Slots[slot+1].Unlocked = 1
+				}
+			}
+			_ = w.saveEventUIState(st)
+			var ackParams [10]uint32
+			ackParams[0] = 0
+			ackParams[1] = success
+			ackParams[2] = st.Ev500Slots[slot].Upgrade
+			out = append(out,
+				outboundPacket{"event_500_forge_ack", 1, protocol.CmdEventQuery, protocol.EventActionSuccess(req.EventID, ackParams)},
+				outboundPacket{"event_500_soul_anvil_status", 0, protocol.NotiEv500SoulAnvil, protocol.Ev500SoulAnvilStatus(st.Ev500AccumCount, st.Ev500Slots, st.Ev500RewardMask)},
+			)
+			return out, nil
+		}
+		// CMD 680 (0x140d1e010): args = [rewardIdx] -> claim cumulative reward
+		idx := arg(0)
+		if idx < 32 && (st.Ev500RewardMask&(1<<idx)) == 0 {
+			reward, ok := ev500MilestoneRewards[idx]
+			if !ok {
+				reward = eventRewardItem{Template: 50060817, Count: 1}
+			}
+			key := fmt.Sprintf("ev500_reward:%d", idx)
+			if err := grantItem(key, "us100-ev500-reward-v1", reward); err != nil {
+				return nil, err
+			}
+			st.Ev500RewardMask |= 1 << idx
+			_ = w.saveEventUIState(st)
+		}
+		var ackParams [10]uint32
+		ackParams[0] = idx
+		out = append(out,
+			outboundPacket{"event_500_reward_ack", 1, protocol.CmdEventAction, protocol.EventActionSuccess(req.EventID, ackParams)},
+			outboundPacket{"event_500_soul_anvil_status", 0, protocol.NotiEv500SoulAnvil, protocol.Ev500SoulAnvilStatus(st.Ev500AccumCount, st.Ev500Slots, st.Ev500RewardMask)},
+		)
+		return out, nil
+
 	default:
 		var empty [10]uint32
 		return []outboundPacket{{"event_generic_ack", 1, cmdID, protocol.EventActionSuccess(req.EventID, empty)}}, nil
 	}
+}
+
+// handleEventGiftCommand processes CMD 643 (0x283, CMDPACKET_REQUEST_EVENT_GIFT),
+// including Event 500 daily Kiri's Soul Reinforcement Box (giftID 78 / 0x4e -> 50060816).
+func (w *worldSession) handleEventGiftCommand(ctx context.Context, plaintext []byte, now time.Time) ([]outboundPacket, error) {
+	if w == nil || w.characters == nil || w.loot == nil || w.role.ID == 0 {
+		return nil, fmt.Errorf("world session not ready for event gift command")
+	}
+	giftID, err := protocol.DecodeRequestEventGift(plaintext)
+	if err != nil {
+		return nil, err
+	}
+	st := w.loadEventUIState(now)
+	day := w.activityDay(now)
+	var out []outboundPacket
+
+	switch giftID {
+	case ev500GiftDailyID, ev500GiftBaseID:
+		if giftID == ev500GiftDailyID && st.Ev500DailyClaimDay == day {
+			return []outboundPacket{
+				{"event_gift_already_claimed", 1, protocol.CmdRequestEventGift, protocol.RequestEventGiftRefused(0x13)},
+			}, nil
+		}
+		key := fmt.Sprintf("ev500_gift:%d:%s", giftID, day)
+		pkts, gerr := w.grantActivityReward(ctx, key, "us100-ev500-gift-v1", 0, ev500DailyBoxItem, 1, 0, day, 0)
+		if gerr != nil {
+			return nil, gerr
+		}
+		out = append(out, pkts...)
+		if giftID == ev500GiftDailyID {
+			st.Ev500DailyClaimDay = day
+		}
+		_ = w.saveEventUIState(st)
+		dailyClaimed := byte(0)
+		if st.Ev500DailyClaimDay == day {
+			dailyClaimed = 1
+		}
+		out = append(out,
+			outboundPacket{"event_gift_ack", 1, protocol.CmdRequestEventGift, protocol.RequestEventGiftSuccess(giftID, 1)},
+			outboundPacket{"event_gift_update", 0, protocol.NotiEventGiftUpdate, protocol.EventGiftStatus([]protocol.EventGiftEntry{
+				{GiftID: ev500GiftBaseID, Claimed: 1},
+				{GiftID: ev500GiftDailyID, Claimed: dailyClaimed},
+			})},
+		)
+		return out, nil
+	default:
+		return []outboundPacket{
+			{"event_gift_ack", 1, protocol.CmdRequestEventGift, protocol.RequestEventGiftSuccess(giftID, 1)},
+		}, nil
+	}
+}
+
+func (w *worldSession) consumeBagMaterial(ctx context.Context, key, model string, template, need uint32) ([]outboundPacket, bool, error) {
+	if need == 0 {
+		return nil, true, nil
+	}
+	var consumed bool
+	var emptied []uint16
+	saved, _, err := w.characters.Store.CommitCharacterEvent(ctx, w.account, w.role.ID, w.role.ConfigVersion, key, model, func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
+		b, err := inventory.ReadBag(current.State)
+		if err != nil {
+			return nil, nil, err
+		}
+		var total uint32
+		for _, it := range b.Items {
+			if it.Template == template {
+				total += it.Amount
+			}
+		}
+		if total < need {
+			return current.State, json.RawMessage(`{"ok":false}`), nil
+		}
+		rem := need
+		kept := b.Items[:0]
+		for _, it := range b.Items {
+			if it.Template == template && rem > 0 {
+				if it.Amount > rem {
+					it.Amount -= rem
+					rem = 0
+					kept = append(kept, it)
+				} else {
+					rem -= it.Amount
+					emptied = append(emptied, it.Slot)
+				}
+				continue
+			}
+			kept = append(kept, it)
+		}
+		b.Items = kept
+		updated, err := inventory.SaveBag(current.State, b)
+		if err != nil {
+			return nil, nil, err
+		}
+		consumed = true
+		receipt, err := json.Marshal(map[string]any{"ok": true, "template": template, "spent": need})
+		return updated, receipt, err
+	})
+	if err != nil {
+		return nil, false, err
+	}
+	if !consumed {
+		return nil, false, nil
+	}
+	saved.WireID = w.role.WireID
+	w.role = saved
+	b, err := inventory.ReadBag(saved.State)
+	if err != nil {
+		return nil, true, err
+	}
+	rows := b.Rows()
+	for _, s := range emptied {
+		rows = append(rows, protocol.EmptySlotItem(s))
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return binary.LittleEndian.Uint16(rows[i][:]) < binary.LittleEndian.Uint16(rows[j][:])
+	})
+	update, err := protocol.US224InventoryUpdate(rows)
+	if err != nil {
+		return nil, true, err
+	}
+	return []outboundPacket{{"event_material_consumed", 0, 14, update}}, true, nil
 }

@@ -1024,6 +1024,112 @@ static void patch_game_bytes(DWORD rva, const BYTE *expected, const BYTE *replac
     }
 }
 
+static void *(__fastcall *g_orig_find_npc)(void *mgr, unsigned int npc_id) = NULL;
+static void *(__fastcall *g_fn_open_window)(void *ui_mgr, int win_id, void *a3, void *a4) = NULL;
+static void **g_ui_mgr_ptr = NULL;
+
+static void *__fastcall hook_move_to_npc_find(void *mgr, unsigned int npc_id)
+{
+    // Event 500 (灵魂之铁砧 / Anvil of Souls) calendar.xui 的「前往灵魂铁砧」按钮指向
+    // NPC 100000592，但该 2021 活动 NPC 未放置在主城中导致 FindNpc 返回 NULL 毫无反应。
+    // 直接打开灵魂铁砧主窗口 0x2a6 (UI/Event/20200709_ForgeOfSouls/upgrade_and_spec.xui)。
+    if (npc_id == 100000592u && g_fn_open_window != NULL && g_ui_mgr_ptr != NULL && *g_ui_mgr_ptr != NULL) {
+        g_fn_open_window(*g_ui_mgr_ptr, 0x2a6, NULL, NULL);
+        if (g_log != NULL) {
+            EnterCriticalSection(&g_cs);
+            fprintf(g_log, "ev500-fix: redirected move_to_npc(100000592) -> OpenWindow(0x2a6)\n");
+            fflush(g_log);
+            LeaveCriticalSection(&g_cs);
+        }
+        return NULL;
+    }
+    return g_orig_find_npc != NULL ? g_orig_find_npc(mgr, npc_id) : NULL;
+}
+
+static void patch_ev500_soul_anvil_ui(void)
+{
+    HMODULE exe = GetModuleHandleA(NULL);
+    if (exe == NULL) {
+        return;
+    }
+    // 1) US100 2023 PVF 的 Event/EventGift.evt 移除了 2021 年事件 10002 (gift 77/78)，
+    //    导致 Window 0x2a5 (calendar.xui) 隐藏「领取」按钮并显示已完成勾号。
+    //    三处检查均未解引用 FindEvent(10002) 返回值，NOP 掉 je 后按服务端 NOTI 2272 状态正常显示并可领取。
+    static const BYTE refresh_je[] = { 0x74, 0x62 };
+    static const BYTE nop2[]       = { 0x90, 0x90 };
+    static const BYTE setup_je[]   = { 0x0F, 0x84, 0xDF, 0x02, 0x00, 0x00 };
+    static const BYTE click_je[]   = { 0x0F, 0x84, 0xEC, 0x00, 0x00, 0x00 };
+    static const BYTE nop6[]       = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+    patch_game_bytes(0x144FDA1, refresh_je, nop2, 2);
+    patch_game_bytes(0x144F41E, setup_je, nop6, 6);
+    patch_game_bytes(0x144DEAB, click_je, nop6, 6);
+
+    // 2) 重定向 move_to_npc (RVA 0x365DA2C, 13B) 中的 FindNpc 调用，点击「前往灵魂铁砧」时直开窗口 0x2a6。
+    static const DWORD move_rva = 0x365DA2C;
+    static const BYTE move_expected[] = {
+        0x8B, 0xD6,                         // mov edx, esi
+        0x48, 0x8B, 0xC8,                   // mov rcx, rax
+        0xE8, 0x5A, 0xE5, 0x3B, 0x00,       // call 0x143a1bf90 (FindNpc)
+        0x48, 0x8B, 0xF8                    // mov rdi, rax
+    };
+    if (!is_rva_in_exe_image(exe, move_rva, sizeof(move_expected)) ||
+        !is_rva_in_exe_image(exe, 0x3A1BF90, 16) ||
+        !is_rva_in_exe_image(exe, 0x47F6D80, 16) ||
+        !is_rva_in_exe_image(exe, 0x9788E00, 8)) {
+        return;
+    }
+    BYTE *site = (BYTE *)exe + move_rva;
+    if (memcmp(site, move_expected, sizeof(move_expected)) != 0) {
+        return;
+    }
+    BYTE *stub = (BYTE *)VirtualAlloc(NULL, 64, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+    if (stub == NULL) {
+        return;
+    }
+    g_orig_find_npc = (void *(__fastcall *)(void *, unsigned int))((BYTE *)exe + 0x3A1BF90);
+    g_fn_open_window = (void *(__fastcall *)(void *, int, void *, void *))((BYTE *)exe + 0x47F6D80);
+    g_ui_mgr_ptr = (void **)((BYTE *)exe + 0x9788E00);
+
+    // stub:
+    //   8B D6                 mov edx, esi
+    //   48 8B C8              mov rcx, rax
+    //   49 BB <hook_fn>       mov r11, hook_move_to_npc_find
+    //   41 FF D3              call r11
+    //   48 8B F8              mov rdi, rax
+    //   FF 25 00 00 00 00 <ret_addr>
+    int k = 0;
+    stub[k++] = 0x8B; stub[k++] = 0xD6;
+    stub[k++] = 0x48; stub[k++] = 0x8B; stub[k++] = 0xC8;
+    stub[k++] = 0x49; stub[k++] = 0xBB;
+    *(void **)(stub + k) = (void *)hook_move_to_npc_find; k += 8;
+    stub[k++] = 0x41; stub[k++] = 0xFF; stub[k++] = 0xD3;
+    stub[k++] = 0x48; stub[k++] = 0x8B; stub[k++] = 0xF8;
+    stub[k++] = 0xFF; stub[k++] = 0x25;
+    memset(stub + k, 0, 4); k += 4;
+    *(void **)(stub + k) = site + sizeof(move_expected); k += 8;
+
+    DWORD old = 0;
+    if (!VirtualProtect(stub, 64, PAGE_EXECUTE_READ, &old) ||
+        !VirtualProtect(site, sizeof(move_expected), PAGE_EXECUTE_READWRITE, &old)) {
+        VirtualFree(stub, 0, MEM_RELEASE);
+        return;
+    }
+    // Patch site (13B): 49 BB <stub> 41 FF E3 90 (mov r11, stub; jmp r11; nop)
+    // Wait: mov r11 is 10B + jmp r11 is 3B = 13B exact!
+    site[0] = 0x49; site[1] = 0xBB;
+    *(void **)(site + 2) = (void *)stub;
+    site[10] = 0x41; site[11] = 0xFF; site[12] = 0xE3;
+    VirtualProtect(site, sizeof(move_expected), old, &old);
+    FlushInstructionCache(GetCurrentProcess(), stub, 64);
+    FlushInstructionCache(GetCurrentProcess(), site, sizeof(move_expected));
+    if (g_log != NULL) {
+        EnterCriticalSection(&g_cs);
+        fprintf(g_log, "ev500-fix: hooked move_to_npc(100000592) at %p\n", (void *)site);
+        fflush(g_log);
+        LeaveCriticalSection(&g_cs);
+    }
+}
+
 static void patch_game_startup_checks(int fast_channel_select, int skip_server_select, int ime_fix)
 {
     // US100 NGS 初始化成功判定：0x4EC40B7 的 je 0x4EC40E1 -> jmp，
@@ -1031,6 +1137,8 @@ static void patch_game_startup_checks(int fast_channel_select, int skip_server_s
     static const BYTE ngs_expected[] = { 0x74, 0x28 };
     static const BYTE ngs_replacement[] = { 0xEB, 0x28 };
     patch_game_bytes(0x4EC40B7, ngs_expected, ngs_replacement, 2);
+
+    patch_ev500_soul_anvil_ui();
 
     if (ime_fix) {
         // 美服客户端在 WM_SETFOCUS (0x38B775D) 与 WM_KEYDOWN (0x4FCB15C) 中直接调用

@@ -1240,6 +1240,28 @@ func main() {
 					}
 					continue
 				}
+				if frame.Type == 1 && frame.ID == protocol.CmdRequestEventGift {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || lootService == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					plan, err := worldState.handleEventGiftCommand(ctx, plaintext, time.Now())
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "event_gift_refused", "id": frame.ID, "character_id": selectedCharacterID, "reason": err.Error()})
+						if sendPayload(1, frame.ID, protocol.RequestEventGiftRefused(0x12)) != nil {
+							return
+						}
+						continue
+					}
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
 				if frame.Type == 1 && (frame.ID == protocol.CmdEventAction || frame.ID == protocol.CmdEventQuery) {
 					if !verified || !bootstrapped || characters == nil || worldState == nil || lootService == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
 						continue
