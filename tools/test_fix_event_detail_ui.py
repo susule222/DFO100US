@@ -93,14 +93,20 @@ class FixEventDetailUITest(unittest.TestCase):
         patched, stats = fed.patch_informationbuttoninfo_tokens(orig)
         self.assertTrue(stats['changed'])
         self.assertEqual(stats['blocks'], 2)
-        self.assertEqual(stats['patched_buttons'], [{'id': 110, 'event': 306, 'popup': 'design popup window'}])
+        self.assertEqual(stats['patched_buttons'], [{'id': 110, 'event': 306, 'popup': 'UI/Event/PcBang/PcBangBenefitList.xui'}])
         script = fed.render_evt_script(patched)
-        self.assertIn('`design popup window`', script)
+        self.assertIn('`UI/Event/PcBang/PcBangBenefitList.xui`', script)
         self.assertNotIn('free cash pcroom', script)
         self.assertIn('`daily select mission window`', script)
         patched2, stats2 = fed.patch_informationbuttoninfo_tokens(patched)
         self.assertFalse(stats2['changed'])
         self.assertEqual([fed._token_key(t) for t in patched], [fed._token_key(t) for t in patched2])
+
+    def test_render_pcbang_benefit_xui_is_valid_xml_with_all_ui_keys(self):
+        xui = fed.render_pcbang_benefit_xui()
+        self.assertIn('us100_act_tooltip_306', xui)
+        for key in fed.PCBANG_UI_STRINGS:
+            self.assertIn(f'&lt;20::{key}&gt;', xui)
 
 
 if __name__ == '__main__':

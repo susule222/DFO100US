@@ -49,16 +49,28 @@ EVT_ENTRY = 'event/eventlistwindow.evt'
 STR_ENTRY = 'string/event.uv.str'
 XUI_ENTRY = 'ui/event/eventlistpopupwindow/eventdesignwindow.xui'
 INFO_BTN_ENTRY = 'ui/event/informationbuttoninfo.evn'
-TARGET_ENTRIES = (EVT_ENTRY, STR_ENTRY, XUI_ENTRY, INFO_BTN_ENTRY)
+UI_STR_ENTRY = 'string/ui.uv.str'
+PCBANG_XUI_ENTRY = 'ui/event/pcbang/pcbangbenefitlist.xui'
+TARGET_ENTRIES = (EVT_ENTRY, STR_ENTRY, XUI_ENTRY, INFO_BTN_ENTRY, UI_STR_ENTRY, PCBANG_XUI_ENTRY)
 
 # HUD button popup overrides in ui/event/informationbuttoninfo.evn:
 # Event 306 (btn=110, 网吧特权活动) originally links 'free cash pcroom', which was
 # removed from US100's StringToPopupWindowID (0x14383d800), leaving window_id=0.
-# Mapping it to 'design popup window' (0x14383e55c -> 0x14384abf4 -> 0x244
-# EventDesignWindow) lets generic click handler 0x14379b240 open our localized
-# Event 306 detail card cleanly on click.
+# Pointing it to 'UI/Event/PcBang/PcBangBenefitList.xui' routes through
+# StringToPopupWindowID's ".xui" branch (0x14383d96a -> 0x248 CUIEventPopupWindow)
+# and renders a dedicated native UTF-16LE Chinese PC Bang benefit popup directly.
 INFO_BTN_POPUP_OVERRIDES: dict[tuple[int, int], str] = {
-    (110, 306): 'design popup window',
+    (110, 306): 'UI/Event/PcBang/PcBangBenefitList.xui',
+}
+
+PCBANG_UI_STRINGS: dict[str, str] = {
+    'us100_pcbang_ui_title': '网吧特权活动 — 全服常驻生效',
+    'us100_pcbang_ui_perk1': '【特权一】每日疲劳值上限额外 +30 点',
+    'us100_pcbang_ui_perk2': '【特权二】地下城战斗与通关经验额外 +20%',
+    'us100_pcbang_ui_desc1': '· 自动生效：账号下全部角色登录即享，无需手动领取',
+    'us100_pcbang_ui_desc2': '· 完美叠加：可与双倍经验、燃烧疲劳、黑钻契约叠加',
+    'us100_pcbang_ui_desc3': '· 实时开关：可在启动器活动面板随时一键开启或关闭',
+    'us100_pcbang_ui_status': '当前生效状态：已激活',
 }
 
 STAGE_DIR = ROOT / 'runtime' / 'event-detail-ui-fix'
@@ -555,6 +567,58 @@ def render_event_str_overlay() -> str:
     return '\r\n'.join(lines) + '\r\n'
 
 
+def render_ui_str_overlay() -> str:
+    lines = [f'{k}>{v}' for k, v in sorted(PCBANG_UI_STRINGS.items())]
+    return '\r\n'.join(lines) + '\r\n'
+
+
+def render_pcbang_benefit_xui() -> str:
+    """Build native UTF-16LE-ready XUI popup for Event 306 (Window 0x248)."""
+    xui = (
+        '<?xml version="1.0" encoding="UTF-8" ?>\r\n'
+        '<ROOT ScriptVer="1.0">\r\n'
+        '    <TOOL ToolVer="1.0.0.1" />\r\n'
+        '    <POPUPWINDOW AlignOffset="VECTOR:0, 0" AnchorType="NUM:0" GrayLine="NUM:0" GuideLinkIndex="NUM:0" '
+        'HAlign="STR:CENTER" IsShowCloseButton="BOOL:true" IsShowTitleBar="BOOL:true" IsSortLeftTopWindow="BOOL:false" '
+        'LeftTopDrawOrder="NUM:0" Size="VECTOR:340, 248" TailPos="NUM:0" TileOffset_="VECTOR:11, 11" '
+        'TileSize="VECTOR:12, 13" TileStartingFrame="NUM:97" TileType="NUM:0" TitleAccessoryType="NUM:0" '
+        'TitleStrStartPos="NUM:0" TitleString="STR:&lt;20::us100_act_tooltip_306&gt;" '
+        'UserImagePackName="STR:Interface/WindowCommon.img" VAlign="STR:MIDDLE" />\r\n'
+        '    <CONTROL>\r\n'
+        '        <CNBoardImage BoardDrawType="STR:SCALE" BottomImgIndex="NUM:220" CenterImgIndex="NUM:217" '
+        'HeightUnit="NUM:216" ID="STR:board" ImagePack="STR:Interface/WindowCommon.img" IsMouseEventIgnored="BOOL:false" '
+        'LeftBottomImgIndex="NUM:219" LeftImgIndex="NUM:216" LeftTopImgIndex="NUM:213" Pos="VECTOR:0, 2" '
+        'RightBottomIndex="NUM:221" RightImgIndex="NUM:218" RightTopImgIndex="NUM:215" Size="VECTOR:322, 216" '
+        'TopImgIndex="NUM:214" WidthUnit="NUM:322">\r\n'
+        '            <CNUIControlText ID="STR:101" Pos="VECTOR:14, 14" Size="VECTOR:294, 18" TextColor="COLOR:255, 220, 90" '
+        'isBold="BOOL:true" isOutLine="BOOL:true" isSortToEachLine="BOOL:false" lineGap="NUM:0" lineNum="NUM:0" '
+        'sortType="NUM:0" string="STR:&lt;20::us100_pcbang_ui_title&gt;" stringLenth="NUM:294" />\r\n'
+        '            <CNUIControlText ID="STR:102" Pos="VECTOR:14, 46" Size="VECTOR:294, 18" TextColor="COLOR:255, 245, 190" '
+        'isBold="BOOL:true" isOutLine="BOOL:false" isSortToEachLine="BOOL:false" lineGap="NUM:0" lineNum="NUM:0" '
+        'sortType="NUM:0" string="STR:&lt;20::us100_pcbang_ui_perk1&gt;" stringLenth="NUM:294" />\r\n'
+        '            <CNUIControlText ID="STR:103" Pos="VECTOR:14, 72" Size="VECTOR:294, 18" TextColor="COLOR:255, 245, 190" '
+        'isBold="BOOL:true" isOutLine="BOOL:false" isSortToEachLine="BOOL:false" lineGap="NUM:0" lineNum="NUM:0" '
+        'sortType="NUM:0" string="STR:&lt;20::us100_pcbang_ui_perk2&gt;" stringLenth="NUM:294" />\r\n'
+        '            <CNUIControlText ID="STR:104" Pos="VECTOR:14, 106" Size="VECTOR:294, 18" TextColor="COLOR:230, 225, 210" '
+        'isBold="BOOL:false" isOutLine="BOOL:false" isSortToEachLine="BOOL:false" lineGap="NUM:0" lineNum="NUM:0" '
+        'sortType="NUM:0" string="STR:&lt;20::us100_pcbang_ui_desc1&gt;" stringLenth="NUM:294" />\r\n'
+        '            <CNUIControlText ID="STR:105" Pos="VECTOR:14, 130" Size="VECTOR:294, 18" TextColor="COLOR:230, 225, 210" '
+        'isBold="BOOL:false" isOutLine="BOOL:false" isSortToEachLine="BOOL:false" lineGap="NUM:0" lineNum="NUM:0" '
+        'sortType="NUM:0" string="STR:&lt;20::us100_pcbang_ui_desc2&gt;" stringLenth="NUM:294" />\r\n'
+        '            <CNUIControlText ID="STR:106" Pos="VECTOR:14, 154" Size="VECTOR:294, 18" TextColor="COLOR:150, 210, 255" '
+        'isBold="BOOL:false" isOutLine="BOOL:false" isSortToEachLine="BOOL:false" lineGap="NUM:0" lineNum="NUM:0" '
+        'sortType="NUM:0" string="STR:&lt;20::us100_pcbang_ui_desc3&gt;" stringLenth="NUM:294" />\r\n'
+        '            <CNUIControlText ID="STR:107" Pos="VECTOR:14, 184" Size="VECTOR:294, 18" TextColor="COLOR:130, 255, 130" '
+        'isBold="BOOL:true" isOutLine="BOOL:true" isSortToEachLine="BOOL:false" lineGap="NUM:0" lineNum="NUM:0" '
+        'sortType="NUM:0" string="STR:&lt;20::us100_pcbang_ui_status&gt;" stringLenth="NUM:294" />\r\n'
+        '        </CNBoardImage>\r\n'
+        '    </CONTROL>\r\n'
+        '</ROOT>\r\n'
+    )
+    ET.fromstring(xui)
+    return xui
+
+
 def patch_eventdesignwindow_xui_text(text: str) -> tuple[str, dict]:
     """Hide stray Nexon placeholder ID="STR:bg" (PVP_Fair.img[22] face) safely off-screen.
 
@@ -624,13 +688,24 @@ def _extract_entries(inner_pvf: Path, out_dir: Path) -> dict[str, Path]:
     str_bin = out_dir / f'01-{Path(STR_ENTRY).name}.bin'
     xui_bin = out_dir / f'02-{Path(XUI_ENTRY).name}.bin'
     info_btn_tokens = out_dir / f'03-{Path(INFO_BTN_ENTRY).name}.tokens.json'
-    if not evt_tokens.is_file() or not str_bin.is_file() or not xui_bin.is_file() or not info_btn_tokens.is_file():
+    ui_str_bin = out_dir / f'04-{Path(UI_STR_ENTRY).name}.bin'
+    pcbang_xui_bin = out_dir / f'05-{Path(PCBANG_XUI_ENTRY).name}.bin'
+    if (
+        not evt_tokens.is_file()
+        or not str_bin.is_file()
+        or not xui_bin.is_file()
+        or not info_btn_tokens.is_file()
+        or not ui_str_bin.is_file()
+        or not pcbang_xui_bin.is_file()
+    ):
         raise FileNotFoundError(f'未在 PVF 中找到目标文件：{TARGET_ENTRIES}')
     return {
         'evt_tokens': evt_tokens,
         'str_bin': str_bin,
         'xui_bin': xui_bin,
         'info_btn_tokens': info_btn_tokens,
+        'ui_str_bin': ui_str_bin,
+        'pcbang_xui_bin': pcbang_xui_bin,
     }
 
 
@@ -706,22 +781,45 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
         orig_str_kv = _parse_str_table_utf16(orig_str_raw)
         orig_xui_raw = extracted['xui_bin'].read_bytes()
         orig_info_btn_tokens = json.loads(extracted['info_btn_tokens'].read_text(encoding='utf-8'))
+        orig_ui_str_raw = extracted['ui_str_bin'].read_bytes()
+        orig_ui_str_kv = _parse_str_table_utf16(orig_ui_str_raw)
+        orig_pcbang_xui_raw = extracted['pcbang_xui_bin'].read_bytes()
 
         patched_evt_tokens, evt_stats = patch_eventlistwindow_tokens(orig_evt_tokens)
         patched_xui_bytes, xui_stats = patch_eventdesignwindow_xui_bytes(orig_xui_raw)
         patched_info_btn_tokens, info_btn_stats = patch_informationbuttoninfo_tokens(orig_info_btn_tokens)
+        wanted_pcbang_xui = render_pcbang_benefit_xui()
         str_needs_update = (
             not orig_str_raw.endswith(b'\x00\x00\x00\x00')
             or '\x00' in orig_str_raw[:-4].decode('utf-16-le')
             or any(orig_str_kv.get(k) != v for k, v in wanted_str_kv.items())
+        )
+        ui_str_needs_update = (
+            not orig_ui_str_raw.endswith(b'\x00\x00\x00\x00')
+            or '\x00' in orig_ui_str_raw[:-4].decode('utf-16-le')
+            or any(orig_ui_str_kv.get(k) != v for k, v in PCBANG_UI_STRINGS.items())
         )
         xui_needs_update = (
             xui_stats['bg_patched'] > 0
             or not orig_xui_raw.endswith(b'\x00\x00')
             or '\x00' in orig_xui_raw[:-2].decode('utf-16-le')
         )
+        orig_pcbang_text = orig_pcbang_xui_raw.decode('utf-16-le', 'replace').rstrip('\x00').lstrip('\ufeff')
+        pcbang_xui_needs_update = (
+            orig_pcbang_text != wanted_pcbang_xui
+            or not orig_pcbang_xui_raw.endswith(b'\x00\x00')
+            or '\x00' in orig_pcbang_xui_raw[:-2].decode('utf-16-le')
+        )
 
-        if not evt_stats['changed'] and not str_needs_update and not xui_needs_update and not info_btn_stats['changed'] and inner_override is None:
+        if (
+            not evt_stats['changed']
+            and not str_needs_update
+            and not ui_str_needs_update
+            and not xui_needs_update
+            and not info_btn_stats['changed']
+            and not pcbang_xui_needs_update
+            and inner_override is None
+        ):
             return {'status': 'already_fixed', 'sha256': before_sha, 'evt_stats': evt_stats, 'xui_stats': xui_stats, 'info_btn_stats': info_btn_stats}
 
         layers = []
@@ -737,13 +835,23 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
 
         if xui_needs_update:
             xui_src = tmp / 'eventdesignwindow.xui'
-            xui_src.write_bytes(patched_xui_bytes)
+            xui_src.write_text(patched_xui_bytes.decode('utf-16-le').rstrip('\x00'), encoding='utf-8')
             layers.append({'path': XUI_ENTRY, 'source': str(xui_src), 'mod_id': 'event-detail-ui-fix', 'priority': 2})
 
         if info_btn_stats['changed'] or inner_override is not None:
             info_btn_src = tmp / 'informationbuttoninfo.evn'
             info_btn_src.write_text(render_evt_script(patched_info_btn_tokens), encoding='utf-8')
             layers.append({'path': INFO_BTN_ENTRY, 'source': str(info_btn_src), 'mod_id': 'event-detail-ui-fix', 'priority': 3})
+
+        if ui_str_needs_update or inner_override is not None:
+            ui_str_src = tmp / 'ui.uv.str'
+            ui_str_src.write_text(render_ui_str_overlay(), encoding='utf-8')
+            layers.append({'path': UI_STR_ENTRY, 'source': str(ui_str_src), 'mod_id': 'event-detail-ui-fix', 'priority': 4})
+
+        if pcbang_xui_needs_update or inner_override is not None:
+            pcbang_xui_src = tmp / 'pcbangbenefitlist.xui'
+            pcbang_xui_src.write_text(wanted_pcbang_xui, encoding='utf-8')
+            layers.append({'path': PCBANG_XUI_ENTRY, 'source': str(pcbang_xui_src), 'mod_id': 'event-detail-ui-fix', 'priority': 5})
         plan_file = tmp / 'plan.json'
         plan_file.write_text(json.dumps({'layers': layers}, ensure_ascii=False), encoding='utf-8')
         merged_inner = tmp / 'merged.inner.pvf'
@@ -798,14 +906,32 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
         if recheck_info_btn['changed']:
             raise RuntimeError(f'合并后 {INFO_BTN_ENTRY} 回读校验失败：{recheck_info_btn}')
 
+        v_ui_str_raw = verified['ui_str_bin'].read_bytes()
+        if not v_ui_str_raw.endswith(b'\x00\x00\x00\x00') or '\x00' in v_ui_str_raw[:-4].decode('utf-16-le'):
+            raise RuntimeError(f'合并后 {UI_STR_ENTRY} UTF-16LE NUL 终止符异常')
+        v_ui_str_kv = _parse_str_table_utf16(v_ui_str_raw)
+        for k, v in PCBANG_UI_STRINGS.items():
+            if v_ui_str_kv.get(k) != v:
+                raise RuntimeError(f'合并后 {UI_STR_ENTRY} 缺少或错写 {k}: {v_ui_str_kv.get(k)!r}')
+
+        v_pcbang_xui_raw = verified['pcbang_xui_bin'].read_bytes()
+        if not v_pcbang_xui_raw.endswith(b'\x00\x00') or '\x00' in v_pcbang_xui_raw[:-2].decode('utf-16-le'):
+            raise RuntimeError(f'合并后 {PCBANG_XUI_ENTRY} UTF-16LE NUL 终止符异常')
+        v_pcbang_xui_text = v_pcbang_xui_raw[:-2].decode('utf-16-le').lstrip('\ufeff')
+        ET.fromstring(v_pcbang_xui_text)
+        if 'us100_pcbang_ui_perk1' not in v_pcbang_xui_text:
+            raise RuntimeError(f'合并后 {PCBANG_XUI_ENTRY} 缺少网吧特权中文控件')
+
         stats = {
             'preserved_entries': evt_stats['preserved_entries'],
             'upserted_events': len(US100_EVENT_DETAILS),
             'verified_evt_tokens': len(v_evt_tokens),
             'verified_str_keys': len(v_str_kv),
+            'verified_ui_str_keys': len(v_ui_str_kv),
             'xui_bg_patched': xui_stats['bg_patched'],
             'info_btn_tokens': len(v_info_btn_tokens),
             'info_btn_patched': info_btn_stats['patched_buttons'],
+            'pcbang_xui_updated': pcbang_xui_needs_update,
         }
 
         staged_pvf = STAGE_DIR / 'Script.pvf'
