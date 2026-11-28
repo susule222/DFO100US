@@ -72,6 +72,10 @@ func (p entryPayloads) packets() []outboundPacket {
 	return []outboundPacket{
 		{"select_parser_response", 1, 4, p.Select},
 		{"account_options_restored", 0, 2826, p.AccountOptions},
+		// Register CreatureInfo map (0x1497cf930) BEFORE NOTI 2 mode-1 (slot 26)
+		// and Space 7/Space 3 restore so CreatureRender (0x14400b150) resolves each
+		// creature's instance ID immediately when mode-1 equips slot 26.
+		{"creature_info_restored", 0, protocol.NotiCreatureInfo, p.CreatureInfo},
 		{"entry_basic_probe_sent", 0, 2, p.Basic},
 		{"entry_addition_sent", 0, 2, p.Addition},
 		{"entry_stat_probe_sent", 0, 2, p.Stat},
@@ -82,9 +86,6 @@ func (p entryPayloads) packets() []outboundPacket {
 		{"inventory_restored", 0, 13, p.Inventory},
 		{"danji_inventory_restored", 0, 13, p.DanjiInventory},
 		{"avatar_inventory_restored", 0, 13, p.Avatars},
-		// Register CreatureInfo map (0x1497cf930) BEFORE Space 7 and Space 3 restore
-		// so CreatureRender (0x14400b150) resolves each creature's ItemExtra+0x00 ID.
-		{"creature_info_restored", 0, protocol.NotiCreatureInfo, p.CreatureInfo},
 		{"creature_inventory_restored", 0, 13, p.Creatures},
 		{"insignia_inventory_restored", 0, 13, p.Insignias},
 		{"talisman_inventory_restored", 0, 13, p.Talismans},

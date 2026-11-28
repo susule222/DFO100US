@@ -101,21 +101,35 @@ func (s *Service) EntryAdditionStatsUS100(role storage.Character) ([]byte, error
 		if item.Slot >= 12 || item.Template == 0 || item.Template == 0xffffffff {
 			continue
 		}
-		worn = append(worn, protocol.ActorWornUS224{Slot: item.Slot, Template: item.Template, Durability: item.Durability, Upgrade: item.EffectiveUpgrade(), Avatar: true})
+		worn = append(worn, protocol.ActorWornUS224{
+			Slot:       item.Slot,
+			Template:   item.Template,
+			Durability: item.Durability,
+			Upgrade:    item.EffectiveUpgrade(),
+			Avatar:     true,
+		})
 	}
 	for _, item := range bag.Worn {
-		// NOTI 2 mode-1 ActorWornUS224 covers avatars (0..11) and ordinary
-		// equipment (12..25). Special worn slots >= 26 (creature 26, artifacts
-		// 27..29, insignia 31, talismans 33..35) have distinct client wire
-		// layouts (e.g. creature type 0x1a at 0x1434eb0b1) and are restored via
-		// NOTI 13/14 Space 3 + NOTI CreatureInfo; passing them here makes
-		// appendActorWornUS224 fail and drops the entire mode-1 stat packet
-		// (zeroing base HPMax/MPMax -> 0% / -nan(ind)% HP/MP bars).
-		if item.Slot < 12 || item.Slot > 25 || item.Template == 0 || item.Template == 0xffffffff {
+		// NOTI 13 ignores Space 3 (GetInventoryBySpace(3)==NULL at 0x143a74b60)
+		// and NOTI 14 Space 3 (0x143510a50) only mutates already-equipped slots
+		// (leaving empty avatar 0..11, weapon 12, and special 26..35 slots blank).
+		// NOTI 2 mode-1 (0x1434eae00) is the sole login initializer for all 36
+		// worn slots (0..35), including Creature (slot 26, type 0x1a with its
+		// 5-byte creatureInstanceID+flag block), Artifacts (27..29), Insignia (31),
+		// and Talismans (33..35).
+		if item.Slot < 12 || item.Slot >= 36 || item.Template == 0 || item.Template == 0xffffffff {
 			continue
 		}
-		worn = append(worn, protocol.ActorWornUS224{Slot: item.Slot, Template: item.Template, Durability: item.Durability, Upgrade: item.EffectiveUpgrade(), Avatar: false})
+		worn = append(worn, protocol.ActorWornUS224{
+			Slot:       item.Slot,
+			Template:   item.Template,
+			Durability: item.Durability,
+			Upgrade:    item.EffectiveUpgrade(),
+			Avatar:     false,
+			CreatureID: item.CreatureID,
+		})
 	}
+	sort.Slice(worn, func(i, j int) bool { return worn[i].Slot < worn[j].Slot })
 	return protocol.UserInfoAdditionWithWornUS224(role.WireID, block, blob.Bytes(), trees, worn)
 }
 

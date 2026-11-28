@@ -90,11 +90,14 @@ func TestEntryVitalMaximumUsesProfessionGrowthOnlyForMissingValues(t *testing.T)
 	}
 }
 
-func TestEntryAdditionStatsUS100SkipsSpecialWornSlotsAbove25(t *testing.T) {
-	// Reproduces character 48 wearing title (13), weapon (12), armor/accessories (14,19,20,21),
-	// avatars (0,9), AND special worn slots >= 26 (creature 26, artifact 27, insignia 31, talisman 33).
-	// Previously slot >= 26 made appendActorWornUS224 fail and fell back to the 34-byte zero-stat stub,
-	// leaving base HPMax/MPMax=0 and turning the HP/MP orbs into 0% / -nan(ind)% when toggling a title.
+func TestEntryAdditionStatsUS100IncludesAllWornAvatarsAndSpecialSlots(t *testing.T) {
+	// Reproduces character 48 wearing all 11 avatars (0..10 including Aura=9
+	// and Weapon Avatar=10), ordinary gear (12..21), AND special worn slots
+	// >= 26 (creature 26 with creature_id, artifact 27, insignia 31, talisman 33).
+	// NOTI 13 ignores Space 3 and NOTI 14 Space 3 skips empty slots 0..11 and
+	// 26..35, so NOTI 2 mode-1 must emit all worn avatars + equipment + special
+	// slots (with slot 26's native type-0x1a creature block) instead of failing
+	// to the 34-byte stub or dropping special worn slots.
 	role := storage.Character{
 		ID: 48, WireID: 10, Profession: 0,
 		State: json.RawMessage(`{
@@ -103,7 +106,19 @@ func TestEntryAdditionStatsUS100SkipsSpecialWornSlotsAbove25(t *testing.T) {
 			"attributes":{"[hp max]":945,"[mp max]":565,"[physical attack]":89.1,"[physical defense]":89.1},
 			"inventory":{
 				"version":"ordinary-bag-v1",
-				"worn_avatars":[{"slot":0,"template":101550957},{"slot":9,"template":501590378}],
+				"worn_avatars":[
+					{"slot":9,"template":501590378},
+					{"slot":0,"template":101550957},
+					{"slot":1,"template":101561096},
+					{"slot":2,"template":101570856},
+					{"slot":3,"template":101501116},
+					{"slot":4,"template":101511276},
+					{"slot":5,"template":101541032},
+					{"slot":6,"template":101520917},
+					{"slot":7,"template":101530876},
+					{"slot":8,"template":42215},
+					{"slot":10,"template":501600810}
+				],
 				"worn":[
 					{"slot":12,"template":101010938,"durability":45},
 					{"slot":13,"template":500330547,"durability":0},
@@ -118,7 +133,7 @@ func TestEntryAdditionStatsUS100SkipsSpecialWornSlotsAbove25(t *testing.T) {
 	}
 	got, err := (&Service{}).EntryAdditionStatsUS100(role)
 	if err != nil {
-		t.Fatalf("EntryAdditionStatsUS100 failed with special worn slots >= 26: %v", err)
+		t.Fatalf("EntryAdditionStatsUS100 failed with worn avatars and special slots >= 26: %v", err)
 	}
 	wantBlob := protocol.EntryStatBlobUS100{
 		HPMax:       9450,
@@ -129,10 +144,23 @@ func TestEntryAdditionStatsUS100SkipsSpecialWornSlotsAbove25(t *testing.T) {
 	}.Bytes()
 	wantWorn := []protocol.ActorWornUS224{
 		{Slot: 0, Template: 101550957, Avatar: true},
+		{Slot: 1, Template: 101561096, Avatar: true},
+		{Slot: 2, Template: 101570856, Avatar: true},
+		{Slot: 3, Template: 101501116, Avatar: true},
+		{Slot: 4, Template: 101511276, Avatar: true},
+		{Slot: 5, Template: 101541032, Avatar: true},
+		{Slot: 6, Template: 101520917, Avatar: true},
+		{Slot: 7, Template: 101530876, Avatar: true},
+		{Slot: 8, Template: 42215, Avatar: true},
 		{Slot: 9, Template: 501590378, Avatar: true},
+		{Slot: 10, Template: 501600810, Avatar: true},
 		{Slot: 12, Template: 101010938, Durability: 45, Avatar: false},
 		{Slot: 13, Template: 500330547, Durability: 0, Avatar: false},
 		{Slot: 14, Template: 400090164, Durability: 60, Avatar: false},
+		{Slot: 26, Template: 500990710, Avatar: false, CreatureID: 1},
+		{Slot: 27, Template: 501000001, Avatar: false},
+		{Slot: 31, Template: 100350001, Avatar: false},
+		{Slot: 33, Template: 100401044, Avatar: false},
 	}
 	wantFame := (*inventory.EquipmentCatalog)(nil).AdventurerFame(role.State)
 	want, err := protocol.UserInfoAdditionWithWornUS224(
