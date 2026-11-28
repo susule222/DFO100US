@@ -190,9 +190,13 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 		))
 	}
 	if pol.Extra.DailyCheckinEnabled {
+		// Leave NOTI 108 Title empty so CUIEventPopupWindow::Open (0x14365b822)
+		// preserves main.xui/calendar.xui's native UTF-16LE TitleString
+		// (<20::us100_act_tooltip_515> = "每日签到活动"), while EventCalendar
+		// uses event/eventlistwindow.evt (<23::us100_ev_title_515>).
 		entries = append(entries, makeEntry(
 			eventIDDailyCheckin, 3,
-			"Daily Check-in Event",
+			"",
 			"Attendance",
 			"Daily Check-in Attendance",
 			"Auto-granted on daily login:",

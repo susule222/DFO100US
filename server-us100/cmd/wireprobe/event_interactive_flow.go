@@ -114,6 +114,11 @@ var (
 		21: {50007821, 1}, 22: {50007815, 1}, 23: {50007822, 2}, 24: {50007816, 1},
 		25: {50007829, 2}, 26: {50007826, 2}, 27: {50007815, 1}, 28: {50007823, 1},
 	}
+	// Days marked with newbie/returnee 2x bonus in EveryDayConnectEvent.evt
+	// (displayed with red "x2" badge when NOTI 2215 byte[0] == 1).
+	ev515NewbieBonusDays = map[uint32]bool{
+		1: true, 6: true, 10: true, 16: true, 19: true, 22: true, 27: true,
+	}
 	ev515AccumRewards = map[uint32]eventRewardItem{
 		5:  {50007832, 1},
 		15: {50007833, 1},
@@ -286,10 +291,19 @@ func (w *worldSession) interactiveEventInitPackets(pol events.Policy, now time.T
 		)
 	}
 	if pol.Extra.DailyCheckinEnabled {
-		canCheck := st.Ev515LastCheckDay != day && st.Ev515Days < 28
+		// EveryDayConnect (Event 515) has no manual check-in button in main.xui;
+		// the server automatically increments attendance days once per calendar
+		// day on login so day slots 1..Ev515Days become immediately claimable.
+		justChecked := false
+		if st.Ev515LastCheckDay != day && st.Ev515Days < 28 {
+			st.Ev515Days++
+			st.Ev515LastCheckDay = day
+			justChecked = true
+			_ = w.saveEventUIState(st)
+		}
 		out = append(out, outboundPacket{
 			"event_515_attendance_status", 0, protocol.NotiEv515EverydayConnect,
-			protocol.Ev515EverydayConnectStatus(true, canCheck, st.Ev515Days, st.Ev515DailyMask, st.Ev515AccumMask),
+			protocol.Ev515EverydayConnectStatus(true, justChecked, st.Ev515Days, st.Ev515DailyMask, st.Ev515AccumMask),
 		})
 	}
 	if pol.Fatigue.BurningEnabled || pol.Fatigue.WeekendDouble || pol.Fatigue.ZeroCost || pol.Fatigue.BonusLimit > 0 {
@@ -481,42 +495,75 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 		return out, nil
 
 	case uint32(eventIDDailyCheckin): // 515: Everyday Connect Attendance
+		// Verified from DFO_unpacked.exe 0x140423110 callers:
+		//   - action=1 (0x1405427ad, r14=0): claim single daily slot targetDay (1..28)
+		//   - action=2 (0x1405427ad, r14=1): claim single milestone targetDay (5/15/25)
+		//   - action=3 (0x14054259d, targetDay=0): allRecvBtn ("全部领取") — claim all unlocked rewards
+		if st.Ev515LastCheckDay != day && st.Ev515Days < 28 {
+			st.Ev515Days++
+			st.Ev515LastCheckDay = day
+		}
+		claimDaily := func(d uint32) error {
+			if d < 1 || d > 28 || d > uint32(st.Ev515Days) || (st.Ev515DailyMask&(1<<d)) != 0 {
+				return nil
+			}
+			reward, ok := ev515DailyRewards[d]
+			if !ok {
+				return nil
+			}
+			if ev515NewbieBonusDays[d] {
+				reward.Count *= 2
+			}
+			key := fmt.Sprintf("ev515_daily:%d", d)
+			if err := grantItem(key, "us100-ev515-daily-v1", reward); err != nil {
+				return err
+			}
+			st.Ev515DailyMask |= 1 << d
+			return nil
+		}
+		claimAccum := func(m uint32) error {
+			if m > uint32(st.Ev515Days) || (st.Ev515AccumMask&(1<<m)) != 0 {
+				return nil
+			}
+			reward, ok := ev515AccumRewards[m]
+			if !ok {
+				return nil
+			}
+			key := fmt.Sprintf("ev515_accum:%d", m)
+			if err := grantItem(key, "us100-ev515-accum-v1", reward); err != nil {
+				return err
+			}
+			st.Ev515AccumMask |= 1 << m
+			return nil
+		}
+
 		action := arg(0)
 		targetDay := arg(1)
 		switch action {
-		case 3: // Daily check-in button
-			if st.Ev515LastCheckDay != day && st.Ev515Days < 28 {
-				st.Ev515Days++
-				st.Ev515LastCheckDay = day
-				_ = w.saveEventUIState(st)
-			}
 		case 1: // Claim daily reward for targetDay (1..28)
-			if targetDay >= 1 && targetDay <= 28 && targetDay <= uint32(st.Ev515Days) && (st.Ev515DailyMask&(1<<targetDay)) == 0 {
-				if reward, ok := ev515DailyRewards[targetDay]; ok {
-					key := fmt.Sprintf("ev515_daily:%d", targetDay)
-					if err := grantItem(key, "us100-ev515-daily-v1", reward); err != nil {
-						return nil, err
-					}
-					st.Ev515DailyMask |= 1 << targetDay
-					_ = w.saveEventUIState(st)
-				}
+			if err := claimDaily(targetDay); err != nil {
+				return nil, err
 			}
 		case 2: // Claim accumulated milestone reward (5, 15, 25)
-			if targetDay <= uint32(st.Ev515Days) && (st.Ev515AccumMask&(1<<targetDay)) == 0 {
-				if reward, ok := ev515AccumRewards[targetDay]; ok {
-					key := fmt.Sprintf("ev515_accum:%d", targetDay)
-					if err := grantItem(key, "us100-ev515-accum-v1", reward); err != nil {
-						return nil, err
-					}
-					st.Ev515AccumMask |= 1 << targetDay
-					_ = w.saveEventUIState(st)
+			if err := claimAccum(targetDay); err != nil {
+				return nil, err
+			}
+		case 3: // allRecvBtn: claim all unlocked unclaimed daily & milestone rewards
+			for d := uint32(1); d <= uint32(st.Ev515Days) && d <= 28; d++ {
+				if err := claimDaily(d); err != nil {
+					return nil, err
+				}
+			}
+			for _, m := range []uint32{5, 15, 25} {
+				if err := claimAccum(m); err != nil {
+					return nil, err
 				}
 			}
 		}
-		canCheck := st.Ev515LastCheckDay != day && st.Ev515Days < 28
+		_ = w.saveEventUIState(st)
 		out = append(out, outboundPacket{
 			"event_515_attendance_status", 0, protocol.NotiEv515EverydayConnect,
-			protocol.Ev515EverydayConnectStatus(true, canCheck, st.Ev515Days, st.Ev515DailyMask, st.Ev515AccumMask),
+			protocol.Ev515EverydayConnectStatus(true, false, st.Ev515Days, st.Ev515DailyMask, st.Ev515AccumMask),
 		})
 		return out, nil
 

@@ -78,10 +78,18 @@ func TestInteractiveEventInitAndRewardClaims(t *testing.T) {
 	pol := events.DefaultActive()
 
 	// 1. Initial sync emits state NOTIs for 520, 512+388, 515, 619, 614, 602
+	//    and auto-increments Event 515 daily attendance to day 1 on login.
 	initPkts := w.interactiveEventInitPackets(pol, now)
 	seenIDs := map[uint16]bool{}
+	var init515Days byte
 	for _, p := range initPkts {
 		seenIDs[p.ID] = true
+		if p.ID == protocol.NotiEv515EverydayConnect && len(p.Payload) >= 11 {
+			init515Days = p.Payload[2]
+		}
+	}
+	if init515Days != 1 {
+		t.Fatalf("expected Ev515 auto-checkin to set days=1 on login, got %d", init515Days)
 	}
 	for _, want := range []uint16{
 		protocol.NotiEv520ReverseHotTime,
@@ -168,22 +176,34 @@ func TestInteractiveEventInitAndRewardClaims(t *testing.T) {
 		t.Fatalf("Ev512 out-of-order mining did not preserve bitmask (1<<0|1<<3|1<<1)")
 	}
 
-	// 4. Event 515 check-in (action=3) + claim day 1 (action=1, day=1)
-	if _, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(515, 3, 0), now); err != nil {
-		t.Fatal(err)
-	}
+	// 4. Event 515: claim day 1 (action=1, day=1) + next day login + allRecvBtn (action=3, day=0)
 	pkts515, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(515, 1, 1), now)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got515Claim bool
 	for _, p := range pkts515 {
-		if p.ID == protocol.NotiEv515EverydayConnect && (binary.LittleEndian.Uint32(p.Payload[3:7])&(1<<1)) != 0 {
+		if p.ID == protocol.NotiEv515EverydayConnect && p.Payload[2] == 1 && (binary.LittleEndian.Uint32(p.Payload[3:7])&(1<<1)) != 0 {
 			got515Claim = true
 		}
 	}
 	if !got515Claim {
 		t.Fatalf("Ev515 day 1 claim did not set dailyClaimedMask bit 1")
+	}
+	// Advance to next calendar day -> allRecvBtn (action=3) should auto-count day 2 and claim day 2.
+	nextDay := now.Add(24 * time.Hour)
+	pkts515All, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(515, 3, 0), nextDay)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got515All bool
+	for _, p := range pkts515All {
+		if p.ID == protocol.NotiEv515EverydayConnect && p.Payload[2] == 2 && (binary.LittleEndian.Uint32(p.Payload[3:7])&((1<<1)|(1<<2))) == ((1<<1)|(1<<2)) {
+			got515All = true
+		}
+	}
+	if !got515All {
+		t.Fatalf("Ev515 action=3 (allRecvBtn) did not claim day 2 on next calendar day")
 	}
 
 	// 5. Event 602 query (CMD 681 sub=3), search (sub=1), save (sub=2,1), transfer (CMD 680 sub=1)
