@@ -5,6 +5,7 @@ import (
 	"dfolan/internal/catalog"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/storage"
+	"encoding/json"
 	"errors"
 	"path/filepath"
 	"testing"
@@ -238,5 +239,121 @@ func TestElvengardToHendonMyreAndWestCoastTransitions(t *testing.T) {
 	// 3. Elvengard 38/0 must also recover walkable rectangles after [quest condition] (e.g. [571,172,210,80]).
 	if !Walkable(cat.Areas["38/0"], 650, 180) {
 		t.Fatalf("Elvengard 38/0 missing recovered walkable rectangle around (650,180)")
+	}
+}
+
+func TestSeriaRoomWarpGateTransitions(t *testing.T) {
+	cat, err := catalog.LoadWorld("../../configs/us100/world.generated.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx := context.Background()
+	store, err := storage.Open(ctx, storage.Config{DBPath: filepath.Join(t.TempDir(), "seria_warp.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+	acctID, err := store.DevelopmentAccount(ctx, "seria-warp-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := store.CreateCharacter(ctx, storage.Character{
+		AccountID:     acctID,
+		Name:          "Warper",
+		ConfigVersion: cat.Source.Checksum,
+		State:         []byte(`{"level":19}`),
+	}, 12)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.AcceptQuest(ctx, acctID, role.ID, 3156, cat.Source.Checksum, 1, 100, nil, 0, "test-model"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CommitQuestReward(ctx, acctID, role.ID, 3156, cat.Source.Checksum, "test-model", "test-reward", func(cur storage.Character) (json.RawMessage, json.RawMessage, error) {
+		return cur.State, json.RawMessage(`{}`), nil
+	}); err != nil {
+		t.Fatal(err)
+	}
+	owner := QuestAccess{Account: acctID, Character: role.ID}
+	svc := Service{Store: store, Catalog: cat, Rules: Rules{RequirePortalProximity: true, PortalMargin: 32}}
+
+	seriaGatePos := storage.WorldPosition{
+		Town:   38,
+		Area:   1,
+		X:      950,
+		Y:      240,
+		Return: &storage.WorldReturn{Town: 38, Area: 0, X: 561, Y: 234},
+	}
+
+	// 1. All captured Seria's Room Warp Gate (Flag=5) destinations succeed and clear Return.
+	for _, tc := range []struct {
+		name string
+		town uint32
+		area uint32
+		x, y uint16
+	}{
+		{"elvenmere", 38, 7, 467, 286},
+		{"hendon_training_center", 39, 0, 1768, 263},
+		{"hendon_back_alley", 39, 2, 377, 278},
+		{"elvengard", 38, 0, 561, 234},
+	} {
+		got, err := svc.Transition(19, seriaGatePos, protocol.AreaChangeRequest{
+			Town:         tc.town,
+			Area:         tc.area,
+			X:            tc.x,
+			Y:            tc.y,
+			Flag:         protocol.AreaChangeFlagSeriaWarp,
+			PreviousTown: 38,
+			PreviousArea: 1,
+			TailFlags:    [2]byte{protocol.AreaChangeFlagSeriaWarp, 0},
+		}, owner)
+		if err != nil {
+			t.Fatalf("%s warp failed: %v", tc.name, err)
+		}
+		if got.Town != tc.town || got.Area != tc.area || got.Return != nil {
+			t.Fatalf("%s warp unexpected pos: %+v", tc.name, got)
+		}
+		if !Walkable(cat.Areas[catalog.AreaKey(tc.town, tc.area)], got.X, got.Y) {
+			t.Fatalf("%s warp landed outside walkable: %+v", tc.name, got)
+		}
+	}
+
+	// 2. Level requirement still enforced on Warp Gate (Lv.1 cannot warp to Lv.17 Elvenmere).
+	if _, err := svc.Transition(1, seriaGatePos, protocol.AreaChangeRequest{
+		Town: 38, Area: 7, X: 467, Y: 286, Flag: protocol.AreaChangeFlagSeriaWarp, PreviousTown: 38, PreviousArea: 1,
+	}, owner); !errors.Is(err, ErrLevel) {
+		t.Fatalf("expected ErrLevel for Lv.1 warp to 38/7, got %v", err)
+	}
+
+	// 3. Proximity enforced when RequirePortalProximity=true (far-left side of Seria's Room rejected).
+	farLeft := seriaGatePos
+	farLeft.X, farLeft.Y = 220, 260
+	if _, err := svc.Transition(19, farLeft, protocol.AreaChangeRequest{
+		Town: 38, Area: 7, X: 467, Y: 286, Flag: protocol.AreaChangeFlagSeriaWarp, PreviousTown: 38, PreviousArea: 1,
+	}, owner); err == nil {
+		t.Fatal("expected proximity refusal from far-left of Seria's Room")
+	}
+
+	// 4. Flag=5 outside Seria's Room (e.g. Elvengard street 38/0) must NOT bypass portal adjacency.
+	street := storage.WorldPosition{Town: 38, Area: 0, X: 561, Y: 234}
+	if _, err := svc.Transition(19, street, protocol.AreaChangeRequest{
+		Town: 39, Area: 2, X: 377, Y: 278, Flag: protocol.AreaChangeFlagSeriaWarp, PreviousTown: 38, PreviousArea: 0,
+	}, owner); err == nil {
+		t.Fatal("expected refusal for Flag=5 warp outside Seria's Room")
+	}
+
+	// 5. Even when old.Return happens to be in the same town/area (e.g. 39/0 at X=100) and
+	//    RequirePortalProximity=false, Flag=5 must land at the Warp Gate destination (1768,263),
+	//    not snap back to old.Return's coordinates.
+	noProx := Service{Store: store, Catalog: cat, Rules: Rules{RequirePortalProximity: false, PortalMargin: 32}}
+	sameTownRet := storage.WorldPosition{
+		Town: 38, Area: 1, X: 545, Y: 290,
+		Return: &storage.WorldReturn{Town: 39, Area: 0, X: 100, Y: 250},
+	}
+	gotSame, err := noProx.Transition(19, sameTownRet, protocol.AreaChangeRequest{
+		Town: 39, Area: 0, X: 1768, Y: 263, Flag: protocol.AreaChangeFlagSeriaWarp, PreviousTown: 38, PreviousArea: 1,
+	}, owner)
+	if err != nil || gotSame.X != 1768 || gotSame.Y != 263 || gotSame.Return != nil {
+		t.Fatalf("Flag=5 same-town warp snapped to Return instead of destination: %+v err=%v", gotSame, err)
 	}
 }

@@ -28,6 +28,12 @@ func DecodePositionRequest(p []byte) (PositionRequest, error) {
 
 // AreaChangeRequest is the current native 146d07599..146d07676 sequence.
 // The three flag meanings remain separate from destination authorization.
+const (
+	// AreaChangeFlagSeriaWarp is the native CMD 36 flag (0x05) emitted by
+	// Seria's Room's right-side Warp Gate ("传送阵") UI menu.
+	AreaChangeFlagSeriaWarp byte = 5
+)
+
 type AreaChangeRequest struct {
 	Town, Area   uint32
 	X, Y         uint16

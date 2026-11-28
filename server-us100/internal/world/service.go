@@ -114,7 +114,7 @@ func (s *Service) Transition(level byte, old storage.WorldPosition, r protocol.A
 	}
 	// A source Seria return warp targets the saved origin, never an arbitrary
 	// client-selected map. Its animated portal condition remains explicit.
-	if old.Return != nil && src.SeriaReturnWarp && old.Return.Town == r.Town && old.Return.Area == r.Area {
+	if old.Return != nil && src.SeriaReturnWarp && r.Flag != protocol.AreaChangeFlagSeriaWarp && old.Return.Town == r.Town && old.Return.Area == r.Area {
 		if !s.Rules.RequirePortalProximity {
 			adjacent = true
 		} else {
@@ -133,6 +133,17 @@ func (s *Service) Transition(level byte, old storage.WorldPosition, r protocol.A
 			next.Return = nil
 		}
 	}
+	// Seria's Room right-side Warp Gate ("传送阵", CMD 36 Flag == 5) teleports
+	// directly from any Seria's Room to any valid catalog destination whose
+	// level and quest requirements are satisfied.
+	seriaWarp := false
+	if !adjacent && isSeriaRoomArea(src) && r.Flag == protocol.AreaChangeFlagSeriaWarp {
+		if !s.Rules.RequirePortalProximity || nearSeriaWarpGate(src, old.X, old.Y, s.Rules.PortalMargin) {
+			adjacent = true
+			seriaWarp = true
+			next.Return = nil
+		}
+	}
 	if !adjacent {
 		return old, errors.New("no authorized source portal to destination")
 	}
@@ -141,7 +152,7 @@ func (s *Service) Transition(level byte, old storage.WorldPosition, r protocol.A
 	// (e.g. Elvengard 38/0 -> 38/3 lands inside return portal [207,134,120,40]
 	// slightly above walkable [207,165,120,30]). Clamp legitimate portal landings
 	// onto the nearest walkable point while still rejecting arbitrary far-out coordinates.
-	if !Walkable(dest, next.X, next.Y) && nearDestinationEntry(dest, next.X, next.Y) {
+	if !Walkable(dest, next.X, next.Y) && (seriaWarp || nearDestinationEntry(dest, next.X, next.Y)) {
 		if sx, sy, ok := nearestWalkable(dest, int32(next.X), int32(next.Y)); ok {
 			next.X, next.Y = sx, sy
 		}
@@ -394,6 +405,35 @@ func areaHasPortalTo(a catalog.WorldArea, town, area uint32) bool {
 func inReturnWarpBounds(a catalog.WorldArea, x, y uint16) bool {
 	for _, rw := range a.ReturnWarpBounds {
 		if Contains(rw, x, y, 0) {
+			return true
+		}
+	}
+	return false
+}
+
+// nearSeriaWarpGate reports whether (x, y) is near the right-side Warp Gate
+// ("传送阵") alcove of a Seria's Room map (in standard US100 Seria maps, the
+// rightmost walkable rectangles span x=[711..981], y=[224..349]).
+func nearSeriaWarpGate(a catalog.WorldArea, x, y, margin uint16) bool {
+	if len(a.Walkable) == 0 {
+		return false
+	}
+	var maxRight int64
+	for _, r := range a.Walkable {
+		if r[2] >= 0 && r[3] >= 0 {
+			if right := int64(r[0]) + int64(r[2]); right > maxRight {
+				maxRight = right
+			}
+		}
+	}
+	if maxRight == 0 {
+		return false
+	}
+	if int64(x) < maxRight-270-int64(margin) {
+		return false
+	}
+	for _, r := range a.Walkable {
+		if Contains(r, x, y, margin) {
 			return true
 		}
 	}
