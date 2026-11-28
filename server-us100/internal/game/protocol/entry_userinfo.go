@@ -12,18 +12,24 @@ import (
 // actor id failed with an access violation at DFO.exe+0x4F1F2A0.
 // Native row reader: 0x143807f80 (reads block, then u16 actor id).
 type EntryBasicProbe struct {
-	ActorServerID  uint16
-	Context        [2]byte
-	Fame           uint32
-	NeoPremiumKind byte // 0x143805930: active Neo Premium kind (0x75/0x76/0x78) sets [userInfo+0x35c]=1 so [Rental Service] gear is wearable
-	Character      CharacterRow
+	ActorServerID     uint16
+	Context           [2]byte
+	Fame              uint32
+	PartyFrame        uint32 // 0x1438096f8: fixed+0x30 -> [actor+0x47c] equipped Party Frame
+	PartyRequestFrame uint32 // 0x143809718: fixed+0x34 -> [actor+0x484] equipped Party Request Frame
+	WeaponSkin        uint32 // 0x1438091b0: fixed+0x62 -> [actor+0x494] -> SetWeaponSkin(0x141087fc0)
+	NeoPremiumKind    byte   // 0x143805930: active Neo Premium kind (0x75/0x76/0x78) sets [userInfo+0x35c]=1 so [Rental Service] gear is wearable
+	Character         CharacterRow
 }
 
 const (
-	fixedRowBlockV224        = 127
-	fixedRowBlockFameOffset  = 0x77 // 119: 0x149477577 -> 0x143f0b9f0(actor, fame)
-	mode0AppearanceSlotLimit = 36
-	mode0AppearanceRowBytes  = 31
+	fixedRowBlockV224                    = 127
+	fixedRowBlockPartyFrameOffset        = 0x30 // 48: 0x149477530 -> [actor+0x47c]
+	fixedRowBlockPartyRequestFrameOffset = 0x34 // 52: 0x149477534 -> [actor+0x484]
+	fixedRowBlockWeaponSkinOffset        = 0x62 // 98: 0x149477562 -> SetWeaponSkin(0x141087fc0)
+	fixedRowBlockFameOffset              = 0x77 // 119: 0x149477577 -> 0x143f0b9f0(actor, fame)
+	mode0AppearanceSlotLimit             = 36
+	mode0AppearanceRowBytes              = 31
 )
 
 // WithUserInfoContext stamps the gateway's [serverID, channelID] context bytes
@@ -94,6 +100,15 @@ func UserInfoBasicProbe(s EntryBasicProbe) ([]byte, error) {
 	// 0x143807f80 reads this 127-byte fixed block into 0x149477500 first,
 	// then the u16 actor server id. Offset 0x77 carries Adventurer Fame.
 	fixed := make([]byte, fixedRowBlockV224)
+	if s.PartyFrame != 0 {
+		binary.LittleEndian.PutUint32(fixed[fixedRowBlockPartyFrameOffset:], s.PartyFrame)
+	}
+	if s.PartyRequestFrame != 0 {
+		binary.LittleEndian.PutUint32(fixed[fixedRowBlockPartyRequestFrameOffset:], s.PartyRequestFrame)
+	}
+	if s.WeaponSkin != 0 {
+		binary.LittleEndian.PutUint32(fixed[fixedRowBlockWeaponSkinOffset:], s.WeaponSkin)
+	}
 	binary.LittleEndian.PutUint32(fixed[fixedRowBlockFameOffset:], s.Fame)
 	p = append(p, fixed...)
 	p = addName(add16(p, s.ActorServerID), r.Name)

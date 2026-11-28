@@ -155,10 +155,17 @@ func (w *worldSession) useStackableAction(p, rawFrame []byte) ([]outboundPacket,
 	if e != nil {
 		return nil, e
 	}
-	plan := []outboundPacket{
-		{"item_action_ack", 1, protocol.CmdUseStackableAction, protocol.UseStackableActionSuccess(r)},
-		{"item_action_inventory_updated", 0, 14, update},
+	var plan []outboundPacket
+	// For [add skin storage] (action=170), ACK 507 immediately triggers the
+	// client's Skin Storage UI update (0x143a03f60 -> 0x142848ec0), so NOTI
+	// 1545 (owned list) and NOTI 1547 (Recently Acquired) MUST precede ACK 507.
+	if r.ActionType == actionTypeAddSkinStorage {
+		plan = append(plan, w.unlockSkinStorageItem(usedTemplate)...)
 	}
+	plan = append(plan,
+		outboundPacket{"item_action_ack", 1, protocol.CmdUseStackableAction, protocol.UseStackableActionSuccess(r)},
+		outboundPacket{"item_action_inventory_updated", 0, 14, update},
+	)
 	if didExpand || b.ExpandedSlots > 0 && (r.ActionType == 0x28) {
 		slots := expandedSlots
 		if slots == 0 {
@@ -177,9 +184,6 @@ func (w *worldSession) useStackableAction(p, rawFrame []byte) ([]outboundPacket,
 		if cpkts, cerr := buildContractRefreshPackets(ctx, w.loot.Store, w.fatigue, w.account, w.role.ID, map[byte]bool{kind: true}); cerr == nil {
 			plan = append(plan, cpkts...)
 		}
-	}
-	if r.ActionType == actionTypeAddSkinStorage {
-		plan = append(plan, w.unlockSkinStorageItem(usedTemplate)...)
 	}
 	if vkind, vtarget, ok := vaultUpgradeTarget(usedTemplate); ok && w.vaults != nil {
 		if vpkts, verr := applyVaultUpgrade(ctx, w.vaults, w.account, w.role, vkind, vtarget, applied); verr == nil {

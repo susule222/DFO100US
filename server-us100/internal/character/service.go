@@ -225,6 +225,7 @@ func (s *Service) EntryBasicProbe(role storage.Character, channelContext [2]byte
 	appearance := mode0Appearance(bag)
 	var fame uint32
 	var neoPremiumKind byte
+	var partyFrame, partyReqFrame, weaponSkin uint32
 	if s != nil {
 		fame = s.Equipment.BagAdventurerFame(bag)
 		if s.Store != nil && role.AccountID > 0 {
@@ -238,15 +239,19 @@ func (s *Service) EntryBasicProbe(role storage.Character, channelContext [2]byte
 					neoPremiumKind = 117
 				}
 			}
+			partyFrame, partyReqFrame, weaponSkin = s.equippedTownSkins(role.AccountID, role.ID)
 		}
 	} else {
 		fame = (*inventory.EquipmentCatalog)(nil).BagAdventurerFame(bag)
 	}
 	return protocol.UserInfoBasicProbe(protocol.EntryBasicProbe{
-		ActorServerID:  role.WireID,
-		Context:        channelContext,
-		Fame:           fame,
-		NeoPremiumKind: neoPremiumKind,
+		ActorServerID:     role.WireID,
+		Context:           channelContext,
+		Fame:              fame,
+		PartyFrame:        partyFrame,
+		PartyRequestFrame: partyReqFrame,
+		WeaponSkin:        weaponSkin,
+		NeoPremiumKind:    neoPremiumKind,
 		Character: protocol.CharacterRow{
 			Name:        role.Name,
 			Profession:  role.Profession,
@@ -255,6 +260,29 @@ func (s *Service) EntryBasicProbe(role storage.Character, channelContext [2]byte
 			Equipment:   appearance,
 		},
 	})
+}
+
+func (s *Service) equippedTownSkins(accountID, charID int64) (partyFrame, partyReqFrame, weaponSkin uint32) {
+	if s == nil || s.Store == nil || s.Store.Database() == nil || charID == 0 {
+		return 0, 0, 0
+	}
+	var skin struct {
+		Equipped map[byte][]uint32 `json:"equipped,omitempty"`
+	}
+	ok, err := s.Store.Database().Get("skin_storage_v224", fmt.Sprintf("%d/%d", accountID, charID), &skin)
+	if err != nil || !ok || len(skin.Equipped) == 0 {
+		return 0, 0, 0
+	}
+	if slots := skin.Equipped[protocol.SkinCatPartyFrame]; len(slots) > 0 {
+		partyFrame = slots[0]
+	}
+	if slots := skin.Equipped[protocol.SkinCatPartyRequestFrame]; len(slots) > 0 {
+		partyReqFrame = slots[0]
+	}
+	if slots := skin.Equipped[protocol.SkinCatWeapon]; len(slots) > 0 {
+		weaponSkin = slots[0]
+	}
+	return partyFrame, partyReqFrame, weaponSkin
 }
 
 func mode0Appearance(bag inventory.Bag) []protocol.Equipment {

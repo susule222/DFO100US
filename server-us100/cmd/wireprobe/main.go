@@ -2023,6 +2023,42 @@ func main() {
 					}
 					continue
 				}
+				if worldState != nil && bootstrapped && frame.ID == protocol.CmdInstantEmoticon {
+					if !verified {
+						event(map[string]any{"kind": "instant_emoticon_rejected", "reason": "checksum failed"})
+						continue
+					}
+					plan, e := worldState.handleInstantEmoticon(plaintext)
+					if e != nil {
+						event(map[string]any{"kind": "instant_emoticon_error", "character_id": worldState.role.ID, "reason": e.Error()})
+						continue
+					}
+					for _, packet := range plan {
+						if e = sendPayload(packet.Kind, packet.ID, packet.Payload); e != nil {
+							return
+						}
+						event(map[string]any{"kind": packet.Name, "character_id": worldState.role.ID, "id": packet.ID})
+					}
+					continue
+				}
+				if worldState != nil && bootstrapped && frame.ID == protocol.CmdWeaponSkinMold {
+					if !verified {
+						event(map[string]any{"kind": "weapon_skin_mold_rejected", "reason": "checksum failed"})
+						continue
+					}
+					plan, e := worldState.handleWeaponSkinMold(plaintext, frame.Raw)
+					if e != nil {
+						event(map[string]any{"kind": "weapon_skin_mold_error", "character_id": worldState.role.ID, "reason": e.Error()})
+						continue
+					}
+					for _, packet := range plan {
+						if e = sendPayload(packet.Kind, packet.ID, packet.Payload); e != nil {
+							return
+						}
+						event(map[string]any{"kind": packet.Name, "character_id": worldState.role.ID, "id": packet.ID})
+					}
+					continue
+				}
 				if worldState != nil && bootstrapped && frame.ID == protocol.CmdSkinStorageEquip {
 					if !verified {
 						event(map[string]any{"kind": "skin_storage_equip_rejected", "reason": "checksum failed"})
@@ -2031,6 +2067,24 @@ func main() {
 					plan, e := worldState.handleSkinStorageEquip(plaintext)
 					if e != nil {
 						event(map[string]any{"kind": "skin_storage_equip_error", "character_id": worldState.role.ID, "reason": e.Error()})
+						continue
+					}
+					for _, packet := range plan {
+						if e = sendPayload(packet.Kind, packet.ID, packet.Payload); e != nil {
+							return
+						}
+						event(map[string]any{"kind": packet.Name, "character_id": worldState.role.ID, "id": packet.ID})
+					}
+					continue
+				}
+				if worldState != nil && bootstrapped && frame.ID == protocol.CmdEmoticonKeywordSave {
+					if !verified {
+						event(map[string]any{"kind": "emoticon_keyword_save_rejected", "reason": "checksum failed"})
+						continue
+					}
+					plan, e := worldState.handleEmoticonKeywordSave(plaintext)
+					if e != nil {
+						event(map[string]any{"kind": "emoticon_keyword_save_error", "character_id": worldState.role.ID, "reason": e.Error()})
 						continue
 					}
 					for _, packet := range plan {

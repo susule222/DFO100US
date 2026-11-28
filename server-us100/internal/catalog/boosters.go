@@ -31,11 +31,24 @@ type BoosterBox struct {
 }
 
 // SkinStorageItem maps a stackable item with [action type] `[add skin storage]`
-// to its Skin Storage category (0=DamageFont, 1=SkillCutscene, 2=PartyFrame,
-// 3=InstantEmoticon, 4=WeaponSkin, 6=PartyRequestFrame) and skin index in list/skin.lst.
+// to its Skin Storage category (0=DamageFont, 1=SkillCutscene, 2=PartyFrame/PartyRequestFrame,
+// 3=InstantEmoticon, 4=WeaponSkin, 6=PartyRequestFrame equip-only) and skin indices in list/skin.lst.
 type SkinStorageItem struct {
-	Category byte   `json:"c"`
-	Index    uint32 `json:"i"`
+	Category     byte     `json:"c"`
+	Index        uint32   `json:"i"`
+	Indices      []uint32 `json:"is,omitempty"`
+	AccountBound bool     `json:"a,omitempty"`
+}
+
+// SkinIndices returns all skin IDs granted by this item (always at least 1 when valid).
+func (s SkinStorageItem) SkinIndices() []uint32 {
+	if len(s.Indices) > 0 {
+		return s.Indices
+	}
+	if s.Index != 0 {
+		return []uint32{s.Index}
+	}
+	return nil
 }
 
 // BoosterCatalog holds all openable box definitions extracted from a US100 PVF.
@@ -224,18 +237,41 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 			stkTypes[id] = stType
 		}
 
-		// Record [action type] `[add skin storage]` <skinID> items (Damage Fonts, Cut-Scenes, Party Frames, Emoticons).
+		// Record [action type] `[add skin storage]` <skinID>... items (Damage Fonts, Cut-Scenes, Party Frames, Emoticons, Weapon Skins).
 		if actCells := sectionCells(s.Cells, "[action type]"); len(actCells) >= 2 {
 			for i := 0; i+1 < len(actCells); i++ {
-				if actCells[i].Type == 6 && strings.EqualFold(actCells[i].Text, "[add skin storage]") && actCells[i+1].Type == 0 && actCells[i+1].Value > 0 {
-					skinID := uint32(actCells[i+1].Value)
-					skinCat, ok := skinCatByID[skinID]
-					if !ok && hasSection(s.Cells, "[damage font info]") {
-						skinCat = 0
-						ok = true
+				if actCells[i].Type == 6 && strings.EqualFold(actCells[i].Text, "[add skin storage]") {
+					var skinIDs []uint32
+					for j := i + 1; j < len(actCells); j++ {
+						if actCells[j].Type != 0 {
+							break
+						}
+						if actCells[j].Value > 0 {
+							skinIDs = append(skinIDs, uint32(actCells[j].Value))
+						}
 					}
-					if ok {
-						cat.SkinItems[id] = SkinStorageItem{Category: skinCat, Index: skinID}
+					if len(skinIDs) > 0 {
+						firstID := skinIDs[0]
+						skinCat, ok := skinCatByID[firstID]
+						if !ok && hasSection(s.Cells, "[damage font info]") {
+							skinCat = 0
+							ok = true
+						}
+						if ok {
+							acctBound := false
+							if tgtCells := sectionCells(s.Cells, "[action target]"); len(tgtCells) > 0 && tgtCells[0].Type == 6 && strings.EqualFold(tgtCells[0].Text, "[account]") {
+								acctBound = true
+							}
+							item := SkinStorageItem{
+								Category:     skinCat,
+								Index:        firstID,
+								AccountBound: acctBound,
+							}
+							if len(skinIDs) > 1 {
+								item.Indices = skinIDs
+							}
+							cat.SkinItems[id] = item
+						}
 					}
 					break
 				}
