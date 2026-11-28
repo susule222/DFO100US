@@ -1138,8 +1138,9 @@ func main() {
 				generalPreference := frame.Type == 1 && frame.ID == 197
 				openDanji := frame.Type == 1 && frame.ID == 2052
 				sortItems := frame.Type == 1 && frame.ID == 20
+				deleteItems := frame.Type == 1 && frame.ID == protocol.CmdDeleteItem
 				expandInven := frame.Type == 1 && frame.ID == protocol.CmdExpandInventory
-				shouldRetain := openChild || openPackage || shopBuy || adventureInfo || targetPreference || characterPreference || generalPreference || openDanji || sortItems || expandInven || retainRequestBody(frame.ID, bodySamples)
+				shouldRetain := openChild || openPackage || shopBuy || adventureInfo || targetPreference || characterPreference || generalPreference || openDanji || sortItems || deleteItems || expandInven || retainRequestBody(frame.ID, bodySamples)
 				wantPluginDecrypt := pluginHost != nil && pluginHost.HasClientPacketHooks()
 				if len(frame.Raw) >= wire.ClientHeaderSize && (shouldRetain || wantPluginDecrypt) {
 					if shouldRetain {
@@ -1152,7 +1153,7 @@ func main() {
 						if shouldRetain {
 							entry["plain_hex"] = hex.EncodeToString(p)
 							entry["checksum_ok"] = verified
-							if !openChild && !openPackage && !shopBuy && !adventureInfo && !targetPreference && !characterPreference && !generalPreference && !openDanji && !sortItems && !expandInven && !observedGameRequest(frame.ID) {
+							if !openChild && !openPackage && !shopBuy && !adventureInfo && !targetPreference && !characterPreference && !generalPreference && !openDanji && !sortItems && !deleteItems && !expandInven && !observedGameRequest(frame.ID) {
 								entry["unimplemented_sample"] = true
 							}
 						}
@@ -1318,6 +1319,29 @@ func main() {
 						}
 						continue
 					}
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
+				if deleteItems {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					saved, plan, space, code, err := deleteInventoryItems(ctx, characters.Store, developmentAccount, worldState.role, frame.Raw, plaintext)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "delete_items_refused", "character_id": selectedCharacterID, "space": space, "code": code, "reason": err.Error()})
+						if sendPayload(1, protocol.CmdDeleteItem, protocol.DeleteItemsRefused(space, code)) != nil {
+							return
+						}
+						continue
+					}
+					worldState.role = saved
 					for _, p := range plan {
 						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
 							return
