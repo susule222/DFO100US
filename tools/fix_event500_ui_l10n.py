@@ -45,6 +45,7 @@ import core  # noqa: E402
 import live_resources as lr  # noqa: E402
 from mod_workshop import _ensure_merger_binary, rewrap_inner_to_client_pvf  # noqa: E402
 import us100_dstr_ui as dstr_ui  # noqa: E402
+from us100_localize_events_ui import verify_npk_header_sha256  # noqa: E402
 
 NPK_NAME = 'sprite_live_event_kor_2022_0707_elfamplify.NPK'
 NPK_KEY = (b'puchikon@neople dungeon and fighter ' + b'DNF' * 73)[:255] + b'\x00'
@@ -511,11 +512,11 @@ def _frame_to_pil(f: dict) -> Image.Image:
     raise ValueError(f'expected ARGB8888 (0x10) frame, got {fmt:#x}')
 
 
-def _pil_to_frame(f: dict, im: Image.Image) -> dict:
+def _pil_to_frame(f: dict, im: Image.Image, level: int = 9) -> dict:
     rgba = im.convert('RGBA')
     w, h = rgba.size
     bgra = rgba.tobytes('raw', 'BGRA')
-    comp_data = zlib.compress(bgra, level=6)
+    comp_data = zlib.compress(bgra, level=level)
     nf = dict(f)
     nf['fmt'] = 0x10
     nf['comp'] = 6
@@ -576,55 +577,147 @@ def build_npk(entries: list[tuple[str, bytes]]) -> bytes:
     return bytes(table) + digest + bytes(blobs)
 
 
-def patch_elfamplify_npk_bytes(raw: bytes, preview_dir: Path | None = None) -> bytes:
-    entries = parse_npk(raw)
+def _elfamplify_img_specs() -> dict[str, dict[int, object]]:
+    return {
+        'sprite/live/event/kor/2022/0707_elfamplify/0618_elfampify.img': {
+            0: _patch_elfampify_main_bg,
+        },
+        'sprite/live/event/kor/2022/0707_elfamplify/0618_elfampify_cal.img': {
+            0: _patch_elfampify_cal_0,
+            1: _patch_elfampify_cal_1,
+            2: lambda im: _patch_complete_badge(im, '已完成', 15),
+            3: lambda im: _patch_complete_badge(im, '已全部完成！', 18),
+            4: lambda im: _patch_goto_button(im, disabled=False),
+            5: lambda im: _patch_goto_button(im, disabled=False),
+            6: lambda im: _patch_goto_button(im, disabled=False),
+            7: lambda im: _patch_goto_button(im, disabled=True),
+        },
+        'sprite/live/event/kor/2022/0707_elfamplify/0618_elfampify_ui_ani.img': {
+            10: lambda im: _patch_result_banner(im, '强化成功！', (255, 246, 178), (118, 240, 255)),
+            11: lambda im: _patch_result_banner(im, '强化失败！', (255, 224, 178), (255, 118, 56)),
+        },
+    }
+
+
+def _fit_img_member_exact_size(
+    kz: int,
+    ver: int,
+    frames: list[dict],
+    target_size: int,
+    patched_images: dict[int, Image.Image] | None = None,
+) -> bytes:
+    """Encode IMG v2 into exact `target_size` bytes so NPK member offsets/sizes stay identical for NpkIndex.etc.
+
+    First tries lossless zlib level-9 on already-patched frames; if still slightly above
+    `target_size`, losslessly recompresses untouched zlib frames at level 9 (descending size),
+    then applies gentle bit-rounding (step 2/4/8) strictly to patched frames if needed,
+    before finally zero-padding any remaining slack after the last frame.
+    """
+    blob = _encode_img_v2(kz, ver, frames)
+    if len(blob) > target_size:
+        # Losslessly recompress existing comp==6 frames at level 9 (largest first) to reclaim space.
+        order = sorted(
+            (i for i, f in enumerate(frames) if f.get('fmt') != 0x11 and f.get('comp') == 6),
+            key=lambda i: len(frames[i]['data']),
+            reverse=True,
+        )
+        for i in order:
+            raw = zlib.decompress(frames[i]['data'])
+            recomp = zlib.compress(raw, level=9)
+            if len(recomp) < len(frames[i]['data']):
+                frames[i] = dict(frames[i], data=recomp, sz=len(recomp))
+                blob = _encode_img_v2(kz, ver, frames)
+                if len(blob) <= target_size:
+                    break
+    if len(blob) > target_size and patched_images:
+        for step in (2, 4, 8, 16):
+            for idx, im in sorted(patched_images.items(), key=lambda kv: kv[1].width * kv[1].height, reverse=True):
+                q = im.convert('RGBA')
+                px = q.load()
+                w, h = q.size
+                half = step // 2
+                for y in range(h):
+                    for x in range(w):
+                        r, g, b, a = px[x, y]
+                        if a == 0:
+                            px[x, y] = (0, 0, 0, 0)
+                        else:
+                            px[x, y] = (
+                                min(255, ((r + half) // step) * step),
+                                min(255, ((g + half) // step) * step),
+                                min(255, ((b + half) // step) * step),
+                                a,
+                            )
+                cand = _pil_to_frame(frames[idx], q, level=9)
+                if cand['sz'] < frames[idx]['sz']:
+                    frames[idx] = cand
+                    blob = _encode_img_v2(kz, ver, frames)
+                    if len(blob) <= target_size:
+                        break
+            if len(blob) <= target_size:
+                break
+    if len(blob) > target_size:
+        raise RuntimeError(f'IMG member still exceeds original byte span: {len(blob)} > {target_size}')
+    if len(blob) < target_size:
+        blob += b'\x00' * (target_size - len(blob))
+    return blob
+
+
+def patch_elfamplify_npk_in_place(src_path: Path, preview_dir: Path | None = None) -> bytes:
+    """Patch all 11 localized Event 500 frames while keeping EVERY NPK member offset/size byte-identical.
+
+    Preserves 100% of NPK file size, directory table, 32-byte SHA-256, and NpkIndex.etc
+    member offsets/lengths so DFO.exe loads 0618_ElfAmpify_UI_Ani.img and sibling animation
+    IMGs cleanly without missing-sprite red X artifacts.
+    """
+    orig_bytes = src_path.read_bytes()
+    if not orig_bytes.startswith(b'NeoplePack_Bill\x00'):
+        raise ValueError('invalid NPK header')
+    count = struct.unpack_from('<I', orig_bytes, 16)[0]
+    buf = bytearray(orig_bytes)
     if preview_dir is not None:
         preview_dir.mkdir(parents=True, exist_ok=True)
 
-    new_entries: list[tuple[str, bytes]] = []
+    specs = _elfamplify_img_specs()
+    pos = 20
     patched_count = 0
-    for name, img_raw in entries:
+    for _ in range(count):
+        off, sz = struct.unpack_from('<II', orig_bytes, pos)
+        enc = orig_bytes[pos + 8:pos + 264]
+        name = bytes(enc[j] ^ NPK_KEY[j] for j in range(256)).split(b'\x00', 1)[0].decode('cp949')
+        pos += 264
         low = name.lower()
-        if low.endswith('/0618_elfampify.img'):
-            kz, ver, frames = _decode_img_v2_frames(img_raw)
-            im0 = _patch_elfampify_main_bg(_frame_to_pil(frames[0]))
-            frames[0] = _pil_to_frame(frames[0], im0)
+        frame_patchers = specs.get(low)
+        if not frame_patchers:
+            continue
+        img_raw = orig_bytes[off:off + sz]
+        kz, ver, frames = _decode_img_v2_frames(img_raw)
+        patched_imgs: dict[int, Image.Image] = {}
+        for idx, fn in frame_patchers.items():
+            im = fn(_frame_to_pil(frames[idx]))
+            patched_imgs[idx] = im
+            frames[idx] = _pil_to_frame(frames[idx], im, level=9)
             if preview_dir is not None:
-                im0.save(preview_dir / '0618_elfampify_00.png')
-            new_entries.append((name, _encode_img_v2(kz, ver, frames)))
+                im.save(preview_dir / f'{Path(low).stem}_{idx:02d}.png')
             patched_count += 1
-        elif low.endswith('/0618_elfampify_cal.img'):
-            kz, ver, frames = _decode_img_v2_frames(img_raw)
-            im0 = _patch_elfampify_cal_0(_frame_to_pil(frames[0]))
-            im1 = _patch_elfampify_cal_1(_frame_to_pil(frames[1]))
-            im2 = _patch_complete_badge(_frame_to_pil(frames[2]), '已完成', 15)
-            im3 = _patch_complete_badge(_frame_to_pil(frames[3]), '已全部完成！', 18)
-            im4 = _patch_goto_button(_frame_to_pil(frames[4]), disabled=False)
-            im5 = _patch_goto_button(_frame_to_pil(frames[5]), disabled=False)
-            im6 = _patch_goto_button(_frame_to_pil(frames[6]), disabled=False)
-            im7 = _patch_goto_button(_frame_to_pil(frames[7]), disabled=True)
-            for idx, im in ((0, im0), (1, im1), (2, im2), (3, im3), (4, im4), (5, im5), (6, im6), (7, im7)):
-                frames[idx] = _pil_to_frame(frames[idx], im)
-                if preview_dir is not None:
-                    im.save(preview_dir / f'0618_elfampify_cal_{idx:02d}.png')
-            new_entries.append((name, _encode_img_v2(kz, ver, frames)))
-            patched_count += 8
-        elif low.endswith('/0618_elfampify_ui_ani.img'):
-            kz, ver, frames = _decode_img_v2_frames(img_raw)
-            im10 = _patch_result_banner(_frame_to_pil(frames[10]), '强化成功！', (255, 246, 178), (118, 240, 255))
-            im11 = _patch_result_banner(_frame_to_pil(frames[11]), '强化失败！', (255, 224, 178), (255, 118, 56))
-            frames[10] = _pil_to_frame(frames[10], im10)
-            frames[11] = _pil_to_frame(frames[11], im11)
-            if preview_dir is not None:
-                im10.save(preview_dir / '0618_elfampify_ui_ani_10.png')
-                im11.save(preview_dir / '0618_elfampify_ui_ani_11.png')
-            new_entries.append((name, _encode_img_v2(kz, ver, frames)))
-            patched_count += 2
-        else:
-            new_entries.append((name, img_raw))
+        fitted = _fit_img_member_exact_size(kz, ver, frames, sz, patched_images=patched_imgs)
+        buf[off:off + sz] = fitted
+
+    patched = bytes(buf)
     if patched_count != 11:
         raise RuntimeError(f'expected 11 patched frames in {NPK_NAME}, got {patched_count}')
-    return build_npk(new_entries)
+    if len(patched) != len(orig_bytes):
+        raise RuntimeError(f'in-place NPK size drift: {len(patched)} != {len(orig_bytes)}')
+    if not verify_npk_header_sha256(patched):
+        raise RuntimeError('patched NPK failed 32-byte header SHA-256 verification')
+    return patched
+
+
+def patch_elfamplify_npk_bytes(raw: bytes, preview_dir: Path | None = None) -> bytes:
+    with tempfile.TemporaryDirectory(prefix='ev500-npk-') as td:
+        tmp_src = Path(td) / NPK_NAME
+        tmp_src.write_bytes(raw)
+        return patch_elfamplify_npk_in_place(tmp_src, preview_dir=preview_dir)
 
 
 def patch_upgrade_and_spec_xui(text: str) -> tuple[str, bool]:
@@ -691,25 +784,43 @@ def _extract_pvf_targets(inner_pvf: Path, out_dir: Path) -> dict[str, bytes]:
     return out
 
 
-def apply_all(preview_only: bool = False) -> dict:
+def apply_all(preview_only: bool = False, npk_only: bool = False) -> dict:
     client_dir = core.pre.client_exe().parent
     npk_path = client_dir / 'ImagePacks2' / NPK_NAME
     pvf_path = client_dir / 'Script.pvf'
     dstr_path = client_dir / 'dstr.dat'
     exe_path = client_dir / 'DFO.exe'
 
-    # 1. Patch NPK sprites (and save previews)
-    orig_npk = npk_path.read_bytes()
-    new_npk = patch_elfamplify_npk_bytes(orig_npk, preview_dir=PREVIEW_DIR)
-    # Round-trip sanity check on patched NPK
+    # Always derive the in-place NPK from the clean backup when present so
+    # NpkIndex.etc member offsets/lengths are restored even after a prior non-in-place patch.
+    clean_npk_src = (BACKUP_DIR / NPK_NAME) if (BACKUP_DIR / NPK_NAME).exists() else npk_path
+    orig_npk = clean_npk_src.read_bytes()
+    new_npk = patch_elfamplify_npk_in_place(clean_npk_src, preview_dir=PREVIEW_DIR)
     rt_entries = parse_npk(new_npk)
     if len(rt_entries) != len(parse_npk(orig_npk)):
-        raise RuntimeError('NPK entry count mismatch after rebuild')
+        raise RuntimeError('NPK entry count mismatch after in-place patch')
 
     if preview_only:
         return {
             'preview_only': True,
             'preview_dir': str(PREVIEW_DIR),
+            'npk_before_sha': _sha256(orig_npk),
+            'npk_after_sha': _sha256(new_npk),
+            'npk_size': len(new_npk),
+        }
+
+    if npk_only:
+        BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+        b_npk = BACKUP_DIR / NPK_NAME
+        if not b_npk.exists():
+            shutil.copy2(npk_path, b_npk)
+        tmp_out = npk_path.with_suffix(npk_path.suffix + '.tmp')
+        tmp_out.write_bytes(new_npk)
+        os.replace(tmp_out, npk_path)
+        return {
+            'npk_only': True,
+            'npk_path': str(npk_path),
+            'npk_size': len(new_npk),
             'npk_before_sha': _sha256(orig_npk),
             'npk_after_sha': _sha256(new_npk),
         }
@@ -825,8 +936,9 @@ def apply_all(preview_only: bool = False) -> dict:
 def main() -> int:
     ap = argparse.ArgumentParser(description='Localize Event 500 (灵魂之铁砧 / ElfAmplify) UI assets')
     ap.add_argument('--preview-only', action='store_true', help='Only render NPK sprite previews without touching live client files')
+    ap.add_argument('--npk-only', action='store_true', help='Rebuild and install only the in-place Event 500 NPK')
     args = ap.parse_args()
-    result = apply_all(preview_only=args.preview_only)
+    result = apply_all(preview_only=args.preview_only, npk_only=args.npk_only)
     print(json.dumps(result, indent=2, ensure_ascii=False))
     return 0
 

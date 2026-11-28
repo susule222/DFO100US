@@ -46,6 +46,24 @@ class TestEvent500UIL10n(unittest.TestCase):
         self.assertNotIn('分支增幅', patched)
         self.assertNotIn('树枝', patched)
 
+    def test_in_place_npk_preserves_exact_offsets_and_size(self):
+        backup = mod.BACKUP_DIR / mod.NPK_NAME
+        if not backup.exists():
+            self.skipTest(f'{backup} not present in workspace')
+        orig = backup.read_bytes()
+        patched = mod.patch_elfamplify_npk_in_place(backup)
+        self.assertEqual(len(patched), len(orig))
+        self.assertTrue(mod.verify_npk_header_sha256(patched))
+        orig_entries = mod.parse_npk(orig)
+        new_entries = mod.parse_npk(patched)
+        self.assertEqual(len(new_entries), len(orig_entries))
+        for (oname, ob), (nname, nb) in zip(orig_entries, new_entries):
+            self.assertEqual(oname, nname)
+            self.assertEqual(len(ob), len(nb))
+        # Directory header + 32-byte SHA-256 must be byte-for-byte identical for NpkIndex.etc
+        header_end = 20 + len(orig_entries) * 264 + 32
+        self.assertEqual(patched[:header_end], orig[:header_end])
+
 
 if __name__ == '__main__':
     unittest.main()
