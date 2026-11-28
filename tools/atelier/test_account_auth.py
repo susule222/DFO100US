@@ -248,6 +248,91 @@ class AccountAuthAndDbGateTests(unittest.TestCase):
         self.assertEqual(doc['tables']['cashshop_receipts']['42/buy64/48/abc']['Account'], 42)
         self.assertEqual(doc['tables']['admin_grants']['g1']['account_id'], 42)
 
+    def test_delete_database_cleans_db_stops_gateway_and_allows_fresh_account(self):
+        with self.assertRaisesRegex(ValueError, '不存在'):
+            core.delete_database()
+
+        core.create_account('ForgotMe', 'OldPass123', 'OldPass123')
+        pending_dir = self.data / 'pending'
+        pending_dir.mkdir(parents=True, exist_ok=True)
+        stale_job = pending_dir / 'stale-job.json'
+        stale_job.write_text('{"action":"currency"}', encoding='utf-8')
+        sidecar = self.db_file.with_name(self.db_file.name + '-wal')
+        sidecar.write_bytes(b'wal')
+
+        # Blocked while game client is running
+        with patch.object(core, 'client_up', return_value=True):
+            with self.assertRaisesRegex(ValueError, '游戏客户端正在运行'):
+                core.delete_database()
+        self.assertTrue(self.db_file.is_file())
+
+        # Automatically stops running gateway, deletes db/sidecar/pending, logs out
+        fake_gw = {'address': '127.0.0.2:40001', 'account': 'ForgotMe'}
+        with patch.object(core, 'gateway', return_value=fake_gw), \
+             patch.object(core, 'stop_server', return_value='stopped') as stop_mock:
+            res = core.delete_database()
+            self.assertTrue(stop_mock.called)
+        self.assertTrue(res['deleted'])
+        self.assertTrue(res['server_stopped'])
+        self.assertEqual(res['account_count'], 1)
+        self.assertEqual(res['pending_cleared'], 1)
+        self.assertFalse(self.db_file.exists())
+        self.assertFalse(sidecar.exists())
+        self.assertFalse(stale_job.exists())
+        self.assertIsNone(core.active_account())
+
+        # Can immediately create a brand-new account & database cleanly
+        fresh = core.create_account('BrandNew01', 'NewPass999', 'NewPass999')
+        self.assertTrue(fresh['db_created'])
+        self.assertEqual(fresh['id'], 1)
+        self.assertEqual(core.active_account(), 'BrandNew01')
+        self.assertEqual([a['username'] for a in core.list_accounts()], ['BrandNew01'])
+
+    def test_delete_database_handles_corrupted_file(self):
+        self.db_file.write_text('{broken json!!!', encoding='utf-8')
+        info = core.database_summary()
+        self.assertTrue(info['exists'])
+        self.assertTrue(info['corrupted'])
+        res = core.delete_database()
+        self.assertTrue(res['deleted'])
+        self.assertTrue(res['corrupted'])
+        self.assertFalse(self.db_file.exists())
+
+    def test_homepage_ui_delete_database_cancel_and_confirm(self):
+        w = epic.EpicWindow()
+        self.addCleanup(w.close)
+        # Disabled before DB exists
+        self.assertFalse(w.delete_db_btn.isEnabled())
+
+        # Create an account -> DB exists -> delete button enabled even after logout
+        w.acc_input.setText('ForgetUser')
+        w.pwd_input.setText('Secret1234')
+        w.pwd_confirm_input.setText('Secret1234')
+        with patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
+            w.create_acc_btn.click()
+        self.assertTrue(w.delete_db_btn.isEnabled())
+
+        w.logout_acc_btn.click()
+        self.assertIsNone(core.active_account())
+        self.assertTrue(w.delete_db_btn.isEnabled())
+
+        # Cancel in confirmation dialog keeps DB intact
+        with patch.object(QMessageBox, 'warning', return_value=QMessageBox.No):
+            w.delete_db_btn.click()
+        self.assertTrue(self.db_file.is_file())
+        self.assertTrue(w.delete_db_btn.isEnabled())
+
+        # Confirm in confirmation dialog deletes DB and resets UI cleanly
+        with patch.object(QMessageBox, 'warning', return_value=QMessageBox.Yes), \
+             patch.object(QMessageBox, 'information', return_value=QMessageBox.Ok):
+            w.delete_db_btn.click()
+        self.assertFalse(self.db_file.exists())
+        self.assertFalse(w.delete_db_btn.isEnabled())
+        self.assertIsNone(core.active_account())
+        self.assertIn('数据库尚未生成', w.acc_status_lbl.text())
+        self.assertEqual(w.acc_input.text(), '')
+        self.assertEqual(w.pwd_input.text(), '')
+
 
 if __name__ == '__main__':
     unittest.main()

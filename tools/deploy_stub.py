@@ -52,6 +52,8 @@ def _ensure_ini(client_dir: pathlib.Path) -> str:
         'locale_hooks': '0',
         'fast_channel_select': '1',
         'skip_server_select': '0',
+        'plugins_enabled': '1',
+        'plugins_dir': 'plugins',
     }
     if not ini.is_file():
         if BUILT_INI.is_file():
@@ -75,7 +77,7 @@ def _ensure_ini(client_dir: pathlib.Path) -> str:
         if '5' not in order:
             order.append('5')
         changed = True
-    for key in ('dismiss', 'locale_hooks', 'fast_channel_select', 'skip_server_select'):
+    for key in ('dismiss', 'locale_hooks', 'fast_channel_select', 'skip_server_select', 'plugins_enabled', 'plugins_dir'):
         if key not in settings:
             settings[key] = defaults[key]
             order.append(key)

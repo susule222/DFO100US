@@ -679,7 +679,7 @@ class LauncherMainWindow(QMainWindow):
 
         # 账号创建与登录通行证面板（放在半透明暗金条中，右侧留白展示 100 级角色立绘）
         conn_box = QFrame()
-        conn_box.setMaximumWidth(710)
+        conn_box.setMaximumWidth(750)
         conn_box.setStyleSheet(
             "QFrame{background:rgba(12,10,20,0.78);border:1px solid rgba(235,192,86,0.40);border-radius:10px;}"
         )
@@ -739,11 +739,23 @@ class LauncherMainWindow(QMainWindow):
         self.logout_acc_btn.setCursor(Qt.PointingHandCursor)
         self.logout_acc_btn.setEnabled(False)
 
+        self.delete_db_btn = QPushButton("删除数据库")
+        self.delete_db_btn.setCursor(Qt.PointingHandCursor)
+        self.delete_db_btn.setEnabled(False)
+        self.delete_db_btn.setToolTip("忘记账号密码时可删除本地数据库 (us100.db)，清空后重新创建新账号")
+        self.delete_db_btn.setStyleSheet(
+            "QPushButton{background:rgba(76,20,30,0.82);color:#fecaca;"
+            "border:1px solid rgba(248,113,113,0.52);border-radius:8px;padding:7px 12px;font-size:12px;font-weight:bold;}"
+            "QPushButton:hover{background:rgba(153,27,27,0.92);border-color:#fca5a5;color:#ffffff;}"
+            "QPushButton:disabled{background:rgba(28,22,34,0.45);color:#756b7d;border-color:rgba(160,145,170,0.22);}"
+        )
+
         auth_row.addWidget(lbl_pwd2)
         auth_row.addWidget(self.pwd_confirm_input, 2)
         auth_row.addWidget(self.create_acc_btn)
         auth_row.addWidget(self.login_acc_btn)
         auth_row.addWidget(self.logout_acc_btn)
+        auth_row.addWidget(self.delete_db_btn)
         c_lay.addLayout(auth_row)
 
         # 第 3 行：数据库与账号状态提示

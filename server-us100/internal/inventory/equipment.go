@@ -162,13 +162,51 @@ func LoadEquipmentCatalog(path, source string) (*EquipmentCatalog, error) {
 }
 
 type BagEquipment struct {
-	RentalUntil int64  `json:"neo_rental_until,omitempty"`
-	Slot        uint16 `json:"slot"`
-	Template    uint32 `json:"template"`
-	Durability  uint16 `json:"durability"`
-	SortLocked  bool   `json:"sort_locked,omitempty"`
-	ItemLock    byte   `json:"item_lock,omitempty"`
-	UnlockAt    int64  `json:"unlock_at,omitempty"`
+	RentalUntil  int64  `json:"neo_rental_until,omitempty"`
+	Slot         uint16 `json:"slot"`
+	Template     uint32 `json:"template"`
+	Durability   uint16 `json:"durability"`
+	Upgrade      byte   `json:"upgrade,omitempty"`
+	AmplifyType  byte   `json:"amplify_type,omitempty"`
+	AmplifyValue uint16 `json:"amplify_value,omitempty"`
+	SortLocked   bool   `json:"sort_locked,omitempty"`
+	ItemLock     byte   `json:"item_lock,omitempty"`
+	UnlockAt     int64  `json:"unlock_at,omitempty"`
+}
+
+// EffectiveUpgrade returns the displayed reinforcement/amplification level.
+// PC rental equipment defaults to +7 when no explicit upgrade level is saved.
+func (i BagEquipment) EffectiveUpgrade() byte {
+	if i.Upgrade > 0 {
+		return i.Upgrade
+	}
+	if i.RentalUntil > 0 {
+		return 7
+	}
+	return 0
+}
+
+// Meta returns (minLevel, rarity, ok) for an equipment template from the catalog.
+func (c *EquipmentCatalog) Meta(id uint32) (minLevel, rarity int32, ok bool) {
+	if c == nil {
+		return 0, 0, false
+	}
+	r, found := c.index[id]
+	if !found {
+		return 0, 0, false
+	}
+	if m := r.Fields["[minimum level]"]; len(m) == 1 && m[0].Type == 0 && m[0].Value > 0 {
+		minLevel = m[0].Value
+	}
+	if minLevel == 0 {
+		if g := r.Fields["[grade]"]; len(g) == 1 && g[0].Type == 0 && g[0].Value > 0 {
+			minLevel = g[0].Value
+		}
+	}
+	if rr := r.Fields["[rarity]"]; len(rr) == 1 && rr[0].Type == 0 && rr[0].Value >= 0 {
+		rarity = rr[0].Value
+	}
+	return minLevel, rarity, true
 }
 
 // Reward accepts the gear a quest or an operator hands out. It keeps every
@@ -218,13 +256,17 @@ func (c *EquipmentCatalog) Basic(id uint32) (uint16, error) {
 	return d, nil
 }
 func EquipmentRow(i BagEquipment) [protocol.CurrentItemRecordSize]byte {
-	// Current NOTI13 logs name slot+0, template+2, Data+6, ext_data1+10,
-	// Durability+11, isSealed+13. Fresh free basic gear has zero extensions.
+	// Current NOTI13 logs (0x1434fc780..0x1434fc966) verify exact US224 row offsets:
+	//   +0x00 u16 slot, +0x02 u32 template, +0x06 u32 data, +0x0a u8 upgrade,
+	//   +0x0b u16 durability, +0x0d u8 isSealed, +0x0e u32 enchantCard,
+	//   +0x12 u8 enchantUpgrade, +0x13 u8 amplify_type, +0x14 u16 amplify_value.
 	r := protocol.OrdinaryItem(i.Slot, i.Template, 0)
-	if i.RentalUntil > 0 {
-		r[10] = 7
-	} // US224 equipment upgrade byte; PC rental selection is +7.
+	r[10] = i.EffectiveUpgrade()
 	binary.LittleEndian.PutUint16(r[11:], i.Durability)
+	if i.AmplifyType != 0 {
+		r[19] = i.AmplifyType
+		binary.LittleEndian.PutUint16(r[20:], i.AmplifyValue)
+	}
 	if i.SortLocked {
 		r[protocol.ItemSortLockOffset] = 1
 	}

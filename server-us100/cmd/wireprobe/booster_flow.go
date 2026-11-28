@@ -340,13 +340,30 @@ func openBoosterBox(
 	var category uint32
 	var chosen uint32
 	var chosenList []uint32
+	// US100 CMD 160 wire layout (verified at 0x144003db2 / 0x14198abe5):
+	//   [0..1] u16 slot, [2..5] u32 openCount (1..100), [6] u8 catDim0, [7] u8 catDim1,
+	//   [8..]  optional N*u32 chosen template IDs + 2 trailing zero bytes.
+	decodeCat := func(p []byte) uint32 {
+		if len(p) < 8 {
+			return 0
+		}
+		// Real client packs (catDim0, catDim1) in bytes [6..7] as LE uint16.
+		if p[6] != 0 || p[7] != 0 {
+			return uint32(binary.LittleEndian.Uint16(p[6:8]))
+		}
+		// Fallback for legacy test payloads that place u16/u32 category at [4..7].
+		if legacy := binary.LittleEndian.Uint16(p[4:6]); legacy != 0 {
+			return uint32(legacy)
+		}
+		return 0
+	}
 	switch {
 	case len(plaintext) == 8:
 		openCount = binary.LittleEndian.Uint16(plaintext[2:4])
-		category = binary.LittleEndian.Uint32(plaintext[4:8])
-	case len(plaintext) >= 12 && len(plaintext)%4 == 0 && len(plaintext) <= 128:
+		category = decodeCat(plaintext)
+	case len(plaintext) >= 12 && len(plaintext) <= 128:
 		openCount = binary.LittleEndian.Uint16(plaintext[2:4])
-		category = binary.LittleEndian.Uint32(plaintext[4:8])
+		category = decodeCat(plaintext)
 		for off := 8; off+4 <= len(plaintext); off += 4 {
 			v := binary.LittleEndian.Uint32(plaintext[off : off+4])
 			if v != 0 {
@@ -910,7 +927,7 @@ func finalizeBoosterPackets(
 	if err != nil {
 		return saved, nil, box, 0, 0, applied, err
 	}
-	inv, err := protocol.US224InventoryRestore(bag.Rows())
+	inv, err := protocol.US224InventoryRestoreWithExpansion(bag.ExpandedSlots, bag.Rows())
 	if err != nil {
 		return saved, nil, box, 0, 0, applied, err
 	}

@@ -150,14 +150,14 @@ class SourceLibrary:
         if key not in ('cat','rar'):raise ValueError(key)
         if key=='rar':
             return self.rarities()
-        return [r[0] for r in self.db.execute('select distinct '+key+' from item order by 1')]
+        return [r[0] for r in self.db.execute("select distinct "+key+" from item where g!='composed_set' order by 1")]
     def rarities(self):
-        present={r[0] for r in self.db.execute('select distinct rar from item')}
+        present={r[0] for r in self.db.execute("select distinct rar from item where g!='composed_set'")}
         return [r for r in RARITY_ORDER if r in present]
     def item_groups(self):
         return [name for name,_ in ITEM_GROUPS]
     def categories_for_group(self,group='全部分类'):
-        present={r[0] for r in self.db.execute('select distinct cat from item')}
+        present={r[0] for r in self.db.execute("select distinct cat from item where g!='composed_set'")}
         if group=='全部分类' or group not in _GROUP_CAT_MAP:
             ordered=[]
             for _g,cats in ITEM_GROUPS:
@@ -179,7 +179,7 @@ class SourceLibrary:
                           desc=r['alias']+' / '+r['path'],search_key=f"{r['id']} {r['alias']} {r['path']}".casefold(),
                           grantmode=r['grantmode'])
     def match(self,kw,cat,rar,job,group='全部分类',only_grantable=False):
-        pred=['1'];args=[]
+        pred=["g!='composed_set'"];args=[]
         if only_grantable:
             pred.append('grantmode>0')
         if group and group!='全部分类' and group in _GROUP_CAT_MAP:
@@ -212,35 +212,54 @@ class SourceLibrary:
     def __contains__(self,ident):return self.grantmode(ident)>0
     def visual(self,g,i):
         return self.db.execute('select * from item where g=? and id=?',(g,i)).fetchone()
-    def slot_counts(self,job):
+    def wardrobe_rarities(self):
+        present={r[0] for r in self.db.execute('select distinct i.rar from wardrobe w join item i on i.g=w.g and i.id=w.id')}
+        return [r for r in RARITY_ORDER if r in present]
+    def slot_counts(self,job,rarity='全部稀有度'):
         out={}
-        for mode,slot,cnt in self.db.execute(
-            "select mode, slot, count(*) from wardrobe where job in (?, '[all]') group by mode, slot",
-            (job,),
-        ):
+        if rarity and rarity!='全部稀有度':
+            sql=("select w.mode, w.slot, count(*) from wardrobe w join item i on i.g=w.g and i.id=w.id "
+                 "where w.job in (?, '[all]') and i.rar=? group by w.mode, w.slot")
+            rows=self.db.execute(sql,(job,rarity))
+        else:
+            rows=self.db.execute(
+                "select mode, slot, count(*) from wardrobe where job in (?, '[all]') group by mode, slot",
+                (job,),
+            )
+        for mode,slot,cnt in rows:
             out['set' if mode=='set' else slot]=cnt
         return out
-    def _costume_query(self,job,mode,slot,words,only_visual=False):
+    def _costume_query(self,job,mode,slot,words,only_visual=False,rarity='全部稀有度'):
         pred="w.job in (?, '[all]') and w.mode=?";args=[job,mode]
         if slot:pred+=' and w.slot=?';args.append(slot)
+        if rarity and rarity!='全部稀有度':
+            pred+=' and i.rar=?';args.append(rarity)
         if only_visual and mode=='single':
             pred+=" and i.visual is not null and i.visual not in ('','[[],[]]','[[],[],[]]')"
         if words:
             pred+=" and (instr(lower(i.name),?) or instr(lower(i.alias),?) or instr(i.path,?) or instr(cast(i.id as text),?))"
             args.extend([words.strip().casefold()]*4)
         src=' from wardrobe w join item i on i.g=w.g and i.id=w.id where '+pred
-        order=(" order by case when i.visual is not null and i.visual not in ('','[[],[]]','[[],[],[]]') "
-               "then 0 else 1 end, w.id")
+        if mode=='set':
+            order=(" order by case when i.visual is not null and i.visual not in ('','[[],[]]','[[],[],[]]') then 0 else 1 end, "
+                   "case when lower(trim(i.name)) in ('测试','test','') then 2 "
+                   "when i.name like '组合套装 #%' or i.name like '稀有装扮套装 #%' then 1 else 0 end, "
+                   "case i.rar when '神话' then 0 when '史诗' then 1 when '传说' then 2 when '神器' then 3 "
+                   "when '稀有' then 4 when '高级' then 5 when '普通' then 6 else 7 end, "
+                   "case when w.g='composed_set' then 0 else 1 end, w.id")
+        else:
+            order=(" order by case when i.visual is not null and i.visual not in ('','[[],[]]','[[],[],[]]') then 0 else 1 end, "
+                   "case when lower(trim(i.name)) in ('测试','test','') then 1 else 0 end, w.id")
         return src,args,order
-    def costumes(self,job,mode,slot,words,page,page_size=60,only_visual=False):
-        src,args,order=self._costume_query(job,mode,slot,words,only_visual)
+    def costumes(self,job,mode,slot,words,page,page_size=60,only_visual=False,rarity='全部稀有度'):
+        src,args,order=self._costume_query(job,mode,slot,words,only_visual,rarity)
         total=self.db.execute('select count(*)'+src,args).fetchone()[0]
         page=max(0,min(page,(max(1,total)-1)//page_size))
         rows=self.db.execute('select i.id,i.name,w.slot'+src+order+' limit ? offset ?',
                              args+[page_size,page*page_size]).fetchall()
         return rows,page,total
-    def costume_cards(self,job,mode,slot,words,page,page_size=24,only_visual=False):
-        src,args,order=self._costume_query(job,mode,slot,words,only_visual)
+    def costume_cards(self,job,mode,slot,words,page,page_size=24,only_visual=False,rarity='全部稀有度'):
+        src,args,order=self._costume_query(job,mode,slot,words,only_visual,rarity)
         total=self.db.execute('select count(*)'+src,args).fetchone()[0]
         page=max(0,min(page,(max(1,total)-1)//page_size))
         rows=self.db.execute(

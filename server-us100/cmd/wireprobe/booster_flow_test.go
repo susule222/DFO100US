@@ -260,3 +260,54 @@ func TestUniversalBoosterCatalogAllClasses(t *testing.T) {
 		t.Fatalf("package box %d failed: %v", pkgBox, err)
 	}
 }
+
+func cmd160ClientChoice(slot uint16, count uint32, dim0, dim1 byte, chosen ...uint32) []byte {
+	p := make([]byte, 8+len(chosen)*4+4)
+	binary.LittleEndian.PutUint16(p[0:2], slot)
+	binary.LittleEndian.PutUint32(p[2:6], count)
+	p[6] = dim0
+	p[7] = dim1
+	for i, c := range chosen {
+		binary.LittleEndian.PutUint32(p[8+i*4:12+i*4], c)
+	}
+	return p
+}
+
+func TestOpenLv100EpicSelectionBox10333090MultiDim(t *testing.T) {
+	// Box 10333090 has [booster category num] 2 16 5 (16 classes x 5 subclasses) with
+	// 2-tuple [equipment] blocks. Previously 2D category blocks overwrote each other
+	// keeping only subclass 4, causing choice 100401044 (dim0=0, dim1=0) to be refused.
+	s, svc, role := setupBoosterTestStore(t, []inventory.BagItem{
+		{Slot: 76, Template: 10333090, Amount: 2},
+	})
+	// 1. Choose 100401044 from (dim0=0, dim1=0) — exact live capture failure case
+	role, _, box, award, qty, applied, err := openBoosterBox(
+		context.Background(), s, nil, svc, 42, role, []byte("raw-10333090-0-0"),
+		cmd160ClientChoice(76, 1, 0, 0, 100401044), nil,
+	)
+	if err != nil || !applied || box != 10333090 || award != 100401044 || qty != 1 {
+		t.Fatalf("10333090 (0,0)->100401044 failed: err=%v applied=%v box=%d award=%d qty=%d", err, applied, box, award, qty)
+	}
+	// 2. Choose 100401093 from (dim0=1, dim1=2) — verifies non-zero 2D category bytes [6..7]
+	role, _, _, award2, _, applied2, err := openBoosterBox(
+		context.Background(), s, nil, svc, 42, role, []byte("raw-10333090-1-2"),
+		cmd160ClientChoice(76, 1, 1, 2, 100401093), nil,
+	)
+	if err != nil || !applied2 || award2 != 100401093 {
+		t.Fatalf("10333090 (1,2)->100401093 failed: err=%v applied=%v award=%d", err, applied2, award2)
+	}
+	bag, err := inventory.ReadBag(role.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bag.Items) != 0 {
+		t.Fatalf("expected both boxes consumed, remaining items: %+v", bag.Items)
+	}
+	got := map[uint32]bool{}
+	for _, eq := range bag.Equipment {
+		got[eq.Template] = true
+	}
+	if !got[100401044] || !got[100401093] {
+		t.Fatalf("expected 100401044 and 100401093 in equipment bag, got %+v", bag.Equipment)
+	}
+}

@@ -10,6 +10,7 @@
 // 不含任何韩服 exe 专用 RVA 内存补丁（US100 的补丁点待定位后另行加入）。
 #include <windows.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <intrin.h>
 #include <stdarg.h>
@@ -18,6 +19,15 @@ static FILE *g_log = NULL;
 static CRITICAL_SECTION g_cs;
 static ULONG64 g_ret[8];
 static volatile LONG g_inited = 0;
+
+static void plugin_host_init_cs(void);
+static void plugin_host_ensure_loaded(void);
+static void plugin_host_shutdown(void);
+static int plugin_host_dispatch_wndproc(HWND hwnd, UINT msg, WPARAM w, LPARAM l, LRESULT *out_res);
+static void plugin_host_dispatch_tick(void);
+static int plugin_host_dispatch_stat_int(void *src, int idx, int *out_val);
+static int plugin_host_dispatch_stat_f2(void *src, int idx, void *r8, float *out_val);
+static int plugin_host_dispatch_stat_f3(void *src, int idx, unsigned a, unsigned b, float c, int d, float *out_val);
 
 // All legacy logging sites share a bounded sink. Never close/reopen g_log while
 // another callback could be using it. The launcher supplies a per-run log path.
@@ -44,6 +54,7 @@ static void ensure_init(void)
         return;
     }
     InitializeCriticalSection(&g_cs);
+    plugin_host_init_cs();
     for (int i = 0; i < 8; i++) {
         g_ret[i] = 0;
     }
@@ -57,7 +68,9 @@ static void ensure_init(void)
         return;
     }
     strcpy(p + 1, "ngs_stub.ini");
-    FILE *f = fopen(path, "r");
+    wchar_t ini_override[1024];
+    DWORD ini_len = GetEnvironmentVariableW(L"US100_STUB_INI_PATH", ini_override, 1024);
+    FILE *f = (ini_len > 0 && ini_len < 1024) ? _wfopen(ini_override, L"r") : fopen(path, "r");
     if (f != NULL) {
         char line[128];
         while (fgets(line, sizeof(line), f) != NULL) {
@@ -135,7 +148,9 @@ static void load_dismiss_list(void)
         return;
     }
     strcpy(p + 1, "ngs_stub.ini");
-    FILE *f = fopen(path, "r");
+    wchar_t ini_override[1024];
+    DWORD ini_len = GetEnvironmentVariableW(L"US100_STUB_INI_PATH", ini_override, 1024);
+    FILE *f = (ini_len > 0 && ini_len < 1024) ? _wfopen(ini_override, L"r") : fopen(path, "r");
     if (f == NULL) {
         return;
     }
@@ -262,6 +277,10 @@ static void start_dismiss_watcher(void)
         ULONG64 a1, ULONG64 a2, ULONG64 a3, ULONG64 a4)                  \
     {                                                                    \
         start_dismiss_watcher();                                         \
+        plugin_host_ensure_loaded();                                     \
+        if ((n) == 6) {                                                  \
+            plugin_host_dispatch_tick();                                 \
+        }                                                                \
         log_call(n, _ReturnAddress(), a1, a2, a3, a4);                   \
         return g_ret[n];                                                 \
     }
@@ -691,7 +710,36 @@ static LRESULT WINAPI hook_game_wndproc(HWND hwnd, UINT msg, WPARAM w, LPARAM l)
         }
         return 0;
     }
-    return g_wp_original != NULL ? g_wp_original(hwnd, msg, w, l) : 0;
+    LRESULT plugin_res = 0;
+    if (plugin_host_dispatch_wndproc(hwnd, msg, w, l, &plugin_res)) {
+        return plugin_res;
+    }
+    LRESULT res = g_wp_original != NULL ? g_wp_original(hwnd, msg, w, l) : 0;
+    if (msg == WM_NCDESTROY) {
+        // Gracefully shut down client plugins outside the OS loader lock before DllMain detach.
+        plugin_host_shutdown();
+    }
+    return res;
+}
+
+static int is_rva_in_exe_image(HMODULE exe, DWORD rva, size_t len)
+{
+    if (exe == NULL || len == 0) {
+        return 0;
+    }
+    const IMAGE_DOS_HEADER *dos = (const IMAGE_DOS_HEADER *)exe;
+    if (dos->e_magic != IMAGE_DOS_SIGNATURE) {
+        return 0;
+    }
+    const IMAGE_NT_HEADERS *nt = (const IMAGE_NT_HEADERS *)((const BYTE *)exe + dos->e_lfanew);
+    if (nt->Signature != IMAGE_NT_SIGNATURE) {
+        return 0;
+    }
+    DWORD image_size = nt->OptionalHeader.SizeOfImage;
+    if (rva >= image_size || len > (size_t)(image_size - rva)) {
+        return 0;
+    }
+    return 1;
 }
 
 static void install_window_guard(void)
@@ -700,11 +748,14 @@ static void install_window_guard(void)
     if (exe == NULL) {
         return;
     }
+    static const BYTE expected[] = {0x40,0x53,0x55,0x56,0x57,0x41,0x56,0x41,0x57,0x48,0x83,0xEC,0x68};
+    if (!is_rva_in_exe_image(exe, GAME_WNDPROC_RVA, sizeof(expected))) {
+        return;
+    }
     BYTE *p = (BYTE *)exe + GAME_WNDPROC_RVA;
     // Exact 13-byte prologue consists only of pushes and sub rsp, 0x68.
     // Copy complete instructions into a trampoline, then use a RIP-indirect
     // jump back. No restore/call/repatch races and no lost reentrant messages.
-    static const BYTE expected[] = {0x40,0x53,0x55,0x56,0x57,0x41,0x56,0x41,0x57,0x48,0x83,0xEC,0x68};
     if (memcmp(p, expected, sizeof(expected)) != 0) {
         if (g_log) fprintf(g_log, "window-guard: prologue mismatch, not installed\n");
         return;
@@ -761,7 +812,7 @@ static void install_locale_hooks(void)
 static void patch_game_bytes(DWORD rva, const BYTE *expected, const BYTE *replacement, int len)
 {
     HMODULE exe = GetModuleHandleA(NULL);
-    if (exe == NULL) {
+    if (exe == NULL || len <= 0 || !is_rva_in_exe_image(exe, rva, (size_t)len)) {
         return;
     }
     BYTE *p = (BYTE *)exe + rva;
@@ -872,6 +923,10 @@ static void pf_log_hit(const char *which, int idx, void *ret)
 
 static int __fastcall hook_pf_int(void *src, int idx)
 {
+    int plugin_val = 0;
+    if (plugin_host_dispatch_stat_int(src, idx, &plugin_val)) {
+        return plugin_val;
+    }
     if (g_pf_on) {
         pf_log_hit("int", idx, _ReturnAddress());
         return 2000 + idx;
@@ -881,6 +936,10 @@ static int __fastcall hook_pf_int(void *src, int idx)
 
 static float __fastcall hook_pf_f3(void *src, int idx, unsigned a, unsigned b, float c, int d)
 {
+    float plugin_val = 0.0f;
+    if (plugin_host_dispatch_stat_f3(src, idx, a, b, c, d, &plugin_val)) {
+        return plugin_val;
+    }
     if (g_pf_on) {
         pf_log_hit("f3", idx, _ReturnAddress());
         return (float)(2000 + idx);
@@ -890,6 +949,10 @@ static float __fastcall hook_pf_f3(void *src, int idx, unsigned a, unsigned b, f
 
 static float __fastcall hook_pf_f2(void *src, int idx, void *r8)
 {
+    float plugin_val = 0.0f;
+    if (plugin_host_dispatch_stat_f2(src, idx, r8, &plugin_val)) {
+        return plugin_val;
+    }
     if (g_pf_on) {
         pf_log_hit("f2", idx, _ReturnAddress());
         return (float)(2000 + idx);
@@ -939,15 +1002,23 @@ static int pf_patch_jmp(BYTE *p, void *hook, int nbytes)
     return 1;
 }
 
-static void install_panel_fill(void)
+static volatile LONG g_pf_installed = 0;
+
+static int ensure_panel_getters_installed(void)
 {
+    if (InterlockedCompareExchange(&g_pf_installed, 1, 0) != 0) {
+        return g_pf_orig_int != NULL && g_pf_orig_f3 != NULL && g_pf_orig_f2 != NULL;
+    }
     HMODULE exe = GetModuleHandleA(NULL);
     BYTE *pi, *p3, *p2;
     static const BYTE exp_int[] = {0x48,0x8B,0xC4,0x55,0x41,0x54,0x41,0x55,0x41,0x56,0x41,0x57};
     static const BYTE exp_f3[]  = {0x44,0x89,0x44,0x24,0x18,0x55,0x53,0x56,0x41,0x54,0x41,0x56,0x41,0x57};
     static const BYTE exp_f2[]  = {0x48,0x89,0x5C,0x24,0x08,0x48,0x89,0x74,0x24,0x10,0x57,0x48,0x83,0xEC,0x50};
-    if (exe == NULL) {
-        return;
+    if (exe == NULL ||
+        !is_rva_in_exe_image(exe, PF_INT_GETTER_RVA, sizeof(exp_int)) ||
+        !is_rva_in_exe_image(exe, PF_F3_GETTER_RVA, sizeof(exp_f3)) ||
+        !is_rva_in_exe_image(exe, PF_F2_GETTER_RVA, sizeof(exp_f2))) {
+        return 0;
     }
     g_pf_exe2 = (BYTE *)exe;
     pi = (BYTE *)exe + PF_INT_GETTER_RVA;
@@ -957,30 +1028,40 @@ static void install_panel_fill(void)
         memcmp(p3, exp_f3, sizeof(exp_f3)) != 0 ||
         memcmp(p2, exp_f2, sizeof(exp_f2)) != 0) {
         fprintf(g_log, "panelfill: getter prologue mismatch, not installed\n");
-        return;
+        return 0;
     }
     g_pf_orig_int = (pf_int_fn)pf_trampoline(pi, (int)sizeof(exp_int));
     g_pf_orig_f3 = (pf_f3_fn)pf_trampoline(p3, (int)sizeof(exp_f3));
     g_pf_orig_f2 = (pf_f2_fn)pf_trampoline(p2, (int)sizeof(exp_f2));
     if (g_pf_orig_int == NULL || g_pf_orig_f3 == NULL || g_pf_orig_f2 == NULL) {
         fprintf(g_log, "panelfill: trampoline alloc failed\n");
-        return;
+        return 0;
     }
     if (!pf_patch_jmp(pi, (void *)hook_pf_int, (int)sizeof(exp_int)) ||
         !pf_patch_jmp(p3, (void *)hook_pf_f3, (int)sizeof(exp_f3)) ||
         !pf_patch_jmp(p2, (void *)hook_pf_f2, (int)sizeof(exp_f2))) {
         fprintf(g_log, "panelfill: jmp patch failed\n");
+        return 0;
+    }
+    return 1;
+}
+
+static void install_panel_fill(void)
+{
+    if (!ensure_panel_getters_installed()) {
         return;
     }
     InterlockedExchange(&g_pf_on, 1);
     fprintf(g_log, "panelfill: getter overrides installed (idx 0..%d -> 2000+idx)\n", PF_IDX_MAX);
 }
 
+#include "ngs_plugin_host.inc"
+
 BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
 {
-    (void)inst;
     (void)reserved;
     if (reason == DLL_PROCESS_ATTACH) {
+        g_stub_module = (HMODULE)inst;
         ensure_init();
         // 可通过 ngs_stub.ini 的 hooks=0 禁用全部 API 钩子（用于二分排障）
         int hooks_on = 1;
@@ -989,36 +1070,43 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         int skip_server_select = 0;
         int panelfill_on = 0;
         {
-            char path[MAX_PATH];
-            DWORD n = GetModuleFileNameA(NULL, path, MAX_PATH);
-            if (n != 0 && n < MAX_PATH) {
-                char *p = strrchr(path, '\\');
-                if (p != NULL) {
-                    strcpy(p + 1, "ngs_stub.ini");
-                    FILE *f = fopen(path, "r");
-                    if (f != NULL) {
-                        char line[128];
-                        while (fgets(line, sizeof(line), f) != NULL) {
-                            int v = 0;
-                            if (sscanf(line, "hooks=%d", &v) == 1) {
-                                hooks_on = v;
-                            }
-                            if (sscanf(line, "locale_hooks=%d", &v) == 1) {
-                                locale_hooks_on = v;
-                            }
-                            if (sscanf(line, "fast_channel_select=%d", &v) == 1) {
-                                fast_channel_select = v;
-                            }
-                            if (sscanf(line, "skip_server_select=%d", &v) == 1) {
-                                skip_server_select = v;
-                            }
-                            if (sscanf(line, "panelfill=%d", &v) == 1) {
-                                panelfill_on = v;
-                            }
+            FILE *f = plugin_open_ini_file();
+            if (f != NULL) {
+                char line[256];
+                while (fgets(line, sizeof(line), f) != NULL) {
+                    int v = 0;
+                    if (sscanf(line, "hooks=%d", &v) == 1) {
+                        hooks_on = v;
+                    }
+                    if (sscanf(line, "locale_hooks=%d", &v) == 1) {
+                        locale_hooks_on = v;
+                    }
+                    if (sscanf(line, "fast_channel_select=%d", &v) == 1) {
+                        fast_channel_select = v;
+                    }
+                    if (sscanf(line, "skip_server_select=%d", &v) == 1) {
+                        skip_server_select = v;
+                    }
+                    if (sscanf(line, "panelfill=%d", &v) == 1) {
+                        panelfill_on = v;
+                    }
+                    if (sscanf(line, "plugins_enabled=%d", &v) == 1) {
+                        g_plugins_enabled = v;
+                    }
+                    if (strncmp(line, "plugins_dir=", 12) == 0) {
+                        char *val = line + 12;
+                        while (*val == ' ' || *val == '\t') val++;
+                        size_t len = strlen(val);
+                        while (len > 0 && (val[len - 1] == '\r' || val[len - 1] == '\n' ||
+                                           val[len - 1] == ' ' || val[len - 1] == '\t')) {
+                            val[--len] = 0;
                         }
-                        fclose(f);
+                        if (len > 0 && len < sizeof(g_plugins_dir_cfg)) {
+                            memcpy(g_plugins_dir_cfg, val, len + 1);
+                        }
                     }
                 }
+                fclose(f);
             }
         }
         if (hooks_on) {
@@ -1038,13 +1126,14 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         }
         if (g_log != NULL) {
             EnterCriticalSection(&g_cs);
-            fprintf(g_log, "=== ngs_stub attached pid=%lu GetACP=%lu hooks=%d locale=%d fast_ch=%d skip_srv=%d ===\n",
-                    GetCurrentProcessId(), GetACP(), hooks_on, locale_hooks_on, fast_channel_select, skip_server_select);
+            fprintf(g_log, "=== ngs_stub attached pid=%lu GetACP=%lu hooks=%d locale=%d fast_ch=%d skip_srv=%d plugins=%d(%s) ===\n",
+                    GetCurrentProcessId(), GetACP(), hooks_on, locale_hooks_on, fast_channel_select, skip_server_select, g_plugins_enabled, g_plugins_dir_cfg);
             fflush(g_log);
             LeaveCriticalSection(&g_cs);
         }
         DisableThreadLibraryCalls(inst);
     } else if (reason == DLL_PROCESS_DETACH) {
+        plugin_host_shutdown();
         if (g_log != NULL) {
             EnterCriticalSection(&g_cs);
             fprintf(g_log, "=== ngs_stub detached pid=%lu ===\n", GetCurrentProcessId());

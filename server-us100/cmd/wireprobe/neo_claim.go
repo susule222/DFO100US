@@ -49,7 +49,7 @@ func neoBoxGrant(lootService *loot.Service, slot uint16, box, award, quantity ui
 		if e != nil {
 			return nil, nil, e
 		}
-		if _, e = protocol.US224InventoryRestore(b.Rows()); e != nil {
+		if _, e = protocol.US224InventoryRestoreWithExpansion(b.ExpandedSlots, b.Rows()); e != nil {
 			return nil, nil, e
 		}
 		state, e := inventory.SaveBag(cur.State, b)

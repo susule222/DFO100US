@@ -43,7 +43,8 @@ type timedPose struct {
 type row struct {
 	ID                                        uint32
 	Group, Path, Name, DisplayName, Kind, Img string
-	Rarity, Frame                             int32
+	Rarity, Frame, Grade, EffectSet, Color    int32
+	SetName                                   string            `json:",omitempty"`
 	Jobs                                      []string          `json:",omitempty"`
 	SuitableJobs                              []string          `json:",omitempty"`
 	Layers                                    []layer           `json:",omitempty"`
@@ -271,10 +272,28 @@ func main() {
 			}
 		})
 	}
-	write(map[string]any{"source": a.Snapshot().Checksum, "poses": poses, "version": 1})
+	eqStrTable := loadStringTable(a, "string/equipment.uv.str")
+	partSets := map[string]string{}
+	if psTokens, err := a.Tokens("etc/equipmentpartset.etc"); err == nil {
+		for i := 0; i+3 < len(psTokens); i++ {
+			if psTokens[i].Type == 3 && psTokens[i].Text == "[equipment part set]" && psTokens[i+1].Type == 0 && psTokens[i+1].Value > 0 {
+				sid := strconv.Itoa(int(psTokens[i+1].Value))
+				nameRef := psTokens[i+3].Reference
+				if nameRef != "" {
+					if disp := strings.TrimSpace(eqStrTable[extractRefKey(nameRef)]); disp != "" {
+						partSets[sid] = disp
+					}
+				}
+			}
+		}
+	}
+	write(map[string]any{"source": a.Snapshot().Checksum, "poses": poses, "partsets": partSets, "version": 2})
 	auraCache := map[string][]timedPose{}
 	for _, group := range []string{"equipment", "stackable"} {
-		strTable := loadStringTable(a, "string/"+group+".uv.str")
+		strTable := eqStrTable
+		if group != "equipment" {
+			strTable = loadStringTable(a, "string/"+group+".uv.str")
+		}
 		idx, e := a.Tokens("list/" + group + ".lst")
 		if e != nil {
 			log.Fatal(e)
@@ -300,7 +319,7 @@ func main() {
 		sort.Slice(rs, func(i, j int) bool { return rs[i].i < rs[j].i })
 		bad := 0
 		for _, r := range rs {
-			rr := row{ID: r.id, Group: group, Path: r.p, Rarity: -1}
+			rr := row{ID: r.id, Group: group, Path: r.p, Rarity: -1, Grade: -1, Color: -1}
 			ts, err := a.Tokens(r.p)
 			if err != nil {
 				rr.Error = "source unreadable"
@@ -332,6 +351,26 @@ func main() {
 					if rr.Rarity < 0 {
 						rr.Rarity = v[0].Value
 					}
+				case "[grade]":
+					if rr.Grade < 0 && v[0].Type == 0 {
+						rr.Grade = v[0].Value
+					}
+				case "[effect part set index]":
+					if isEquip && rr.EffectSet == 0 && v[0].Type == 0 && v[0].Value > 0 {
+						rr.EffectSet = v[0].Value
+					}
+				case "[set name]":
+					if isEquip && rr.SetName == "" {
+						ref := v[0].Reference
+						if ref == "" {
+							ref = v[0].Text
+						}
+						if disp, ok := strTable[extractRefKey(ref)]; ok && disp != "" {
+							rr.SetName = disp
+						} else if v[0].Text != "" {
+							rr.SetName = v[0].Text
+						}
+					}
 				case "[icon]":
 					if rr.Img == "" && len(v) >= 2 {
 						rr.Img = v[0].Text
@@ -357,6 +396,9 @@ func main() {
 				case "[variation]":
 					if len(v) >= 2 {
 						l.V, l.C = v[0].Value, v[1].Value
+						if rr.Color < 0 {
+							rr.Color = v[1].Value
+						}
 						variants = append(variants, l)
 					}
 				case "[layer variation]":
@@ -432,9 +474,25 @@ func main() {
 				}
 			}
 			avatar := isEquip && (strings.Contains(r.p, "avatar/") || avatarKinds[rr.Kind])
+			if avatar && rr.Rarity < 0 && rr.Grade >= 0 {
+				// DNF avatars store rarity in [grade] when [rarity] is omitted:
+				// grade 0/1 -> Normal(0), 2 -> Advanced(1), 3 -> Rare(2), 4+ -> Unique(3)
+				switch {
+				case rr.Grade >= 4:
+					rr.Rarity = 3
+				case rr.Grade == 3:
+					rr.Rarity = 2
+				case rr.Grade == 2:
+					rr.Rarity = 1
+				default:
+					rr.Rarity = 0
+				}
+			}
 			if !avatar {
 				rr.Layers = nil
 				rr.Set = nil
+				rr.EffectSet = 0
+				rr.SetName = ""
 			}
 			if rr.Kind == "[skin avatar]" {
 				for _, v := range variants {

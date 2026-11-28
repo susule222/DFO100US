@@ -62,6 +62,25 @@ func cartAck(id uint32, reason uint16, index, total int) []byte {
 	binary.LittleEndian.PutUint32(p[offset+4:], uint32(total))
 	return p
 }
+// inventoryExpandTarget maps inventory expansion ticket templates to the
+// target expanded slot count (8 = Stage 1/+1 row, 16 = Stage 2/+2 rows,
+// 0 = next-stage +8 slots up to 16).
+// Verified from DFO_unpacked.exe 0x142a526f2..0x142a52746 and PVF .stk files.
+func inventoryExpandTarget(template uint32) (uint16, bool) {
+	switch template {
+	case 2660296: // 物品栏扩展券 (1阶段) - stackable/cash/inven_upgradekit1.stk
+		return 8, true
+	case 2660297: // 物品栏扩展券 (2阶段) - stackable/cash/inven_upgradekit2.stk
+		return 16, true
+	case 2660298, // 物品栏扩展券 - stackable/cash/inven_next_upgradekit.stk
+		50005238, 50009075, 50010169, 50010396, 50020607,
+		50007130, 50007177,
+		10164965, 10313712, 10320798, 10323256, 10323880, 10333025:
+		return 0, true
+	}
+	return 0, false
+}
+
 func premiumDelivery(src catalog.LootCatalog, r inventory.BagRules) storage.CartDeliver {
 	return func(c storage.Character, lines []storage.CartLine) (json.RawMessage, json.RawMessage, error) {
 		if c.ConfigVersion != "53ed298dbd69f43e28cbe4b3fa09a4c77d02eaf31d579e27e9477663c924fe69" || c.ConfigVersion != src.Source.Checksum || r.Source != c.ConfigVersion {
@@ -79,6 +98,9 @@ func premiumDelivery(src catalog.LootCatalog, r inventory.BagRules) storage.Cart
 			}
 			total += uint64(l.Gold)
 			if l.Kind == "avatar" {
+				continue
+			}
+			if _, ok := inventoryExpandTarget(l.Template); ok {
 				continue
 			}
 			qty := l.Quantity
@@ -106,6 +128,14 @@ func premiumDelivery(src catalog.LootCatalog, r inventory.BagRules) storage.Cart
 		for _, l := range lines {
 			if term, ok := l.Contract(); ok {
 				del = append(del, map[string]any{"product": l.Product, "template": l.Template, "contract_kind": term.Kind, "days": term.Days})
+				continue
+			}
+			if target, ok := inventoryExpandTarget(l.Template); ok {
+				nextSlots, expErr := b.ExpandInventory(target)
+				if expErr != nil {
+					return nil, nil, expErr
+				}
+				del = append(del, map[string]any{"product": l.Product, "template": l.Template, "expanded_slots": nextSlots})
 				continue
 			}
 			if l.Kind == "avatar" {

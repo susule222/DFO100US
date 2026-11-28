@@ -102,11 +102,7 @@ func (s *Service) EntryAdditionStatsUS100(role storage.Character) ([]byte, error
 		avatar bool
 	}{{bag.WornAvatars, true}, {bag.Worn, false}} {
 		for _, item := range group.items {
-			var upgrade byte
-			if item.RentalUntil > 0 {
-				upgrade = 7
-			}
-			worn = append(worn, protocol.ActorWornUS224{Slot: item.Slot, Template: item.Template, Durability: item.Durability, Upgrade: upgrade, Avatar: group.avatar})
+			worn = append(worn, protocol.ActorWornUS224{Slot: item.Slot, Template: item.Template, Durability: item.Durability, Upgrade: item.EffectiveUpgrade(), Avatar: group.avatar})
 		}
 	}
 	return protocol.UserInfoAdditionWithWornUS224(role.WireID, block, blob.Bytes(), trees, worn)

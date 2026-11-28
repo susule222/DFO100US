@@ -268,7 +268,8 @@ def main():
     cmd = [str(SERVER_BIN), '-fixture', str(fixture), '-output', str(OUT),
            '-game-listen', '%s:0' % LISTEN_HOST, '-responses', str(OUT / 'responses.json'),
            '-account', ACCOUNT, '-roster-v224',
-           '-launcher-gm', str(ROOT / 'runtime' / 'launcher-gm')]
+           '-launcher-gm', str(ROOT / 'runtime' / 'launcher-gm'),
+           '-plugins-dir', str(ROOT / 'plugins' / 'server')]
     if ADVERTISE_HOST:
         cmd += ['-advertise-host', ADVERTISE_HOST]
     if REQUIRE_ACCOUNT:

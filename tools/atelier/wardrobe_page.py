@@ -204,7 +204,13 @@ class CostumeCardWidget(QFrame):
         rar = row['rar'] or ''
         color = RARITY_COLORS.get(rar, '#d4af37')
         slot_key = row['slot'] or ''
-        slot_zh = SLOT_ZH.get(slot_key, '成套礼包')
+        grp = row['g'] or ''
+        if slot_key:
+            slot_zh = SLOT_ZH.get(slot_key, slot_key)
+        elif grp == 'composed_set':
+            slot_zh = '组合套装'
+        else:
+            slot_zh = '成套礼包'
         has_vis = bool(row['visual'] and row['visual'] not in ('', '[[],[]]', '[[],[],[]]'))
 
         border = '#ffd700' if worn else color
@@ -244,7 +250,15 @@ class CostumeCardWidget(QFrame):
         name_lbl.setStyleSheet(f'color:{color};font-weight:bold;font-size:12px;border:none;background:transparent;')
         name_lbl.setWordWrap(True)
 
-        badge_txt = f"{slot_zh} · {row['id']}"
+        rar_tag = f'{rar} · ' if (rar and rar != '未标注') else ''
+        if grp == 'composed_set':
+            try:
+                cnt_parts = len(json.loads(row['visual'] or '[]'))
+            except Exception:
+                cnt_parts = 0
+            badge_txt = f"{rar_tag}组合套装 · {cnt_parts}件"
+        else:
+            badge_txt = f"{rar_tag}{slot_zh} · {row['id']}"
         if worn:
             badge_txt = '✓ 已穿戴 · ' + slot_zh
         elif not has_vis:
@@ -336,12 +350,14 @@ class FittingRoom(QWidget):
                 self.job.addItem(zh, token)
         self.mode = QComboBox()
         self.mode.addItem('单件装扮', 'single')
-        self.mode.addItem('成套礼包', 'set')
+        self.mode.addItem('全部套装', 'set')
         self.slot = QComboBox()
         self.slot.addItem('全部部位', '')
         for s in ALL_SLOTS_ORDER:
             self.slot.addItem(SLOT_ZH[s], s)
-        for w in [self.job, self.mode, self.slot]:
+        self.rarity = QComboBox()
+        self.rarity.addItems(['全部稀有度'] + self.source.wardrobe_rarities())
+        for w in [self.job, self.mode, self.slot, self.rarity]:
             bar.addWidget(w)
         self.search = QLineEdit()
         self.search.setClearButtonEnabled(True)
@@ -452,7 +468,7 @@ class FittingRoom(QWidget):
         pill_box.setSpacing(4)
         row1_specs = [
             ('single:', '全部'),
-            ('set:', '礼包'),
+            ('set:', '套装'),
             ('single:weapon', '武器'),
             ('single:aura', '光环'),
             ('single:cap', '帽子'),
@@ -579,6 +595,7 @@ class FittingRoom(QWidget):
         # Signals
         self.search.textChanged.connect(self.new_search)
         self.slot.currentIndexChanged.connect(self._slot_combo_changed)
+        self.rarity.currentIndexChanged.connect(self._rarity_changed)
         self.mode.currentIndexChanged.connect(self.mode_change)
         self.job.currentIndexChanged.connect(self.job_change)
         self.only_visual_chk.stateChanged.connect(self.new_search)
@@ -601,6 +618,12 @@ class FittingRoom(QWidget):
             idx = self.job.findData(cur_job)
             if idx >= 0:
                 self.job.setCurrentIndex(idx)
+        cur_rar = self.rarity.currentText()
+        with QSignalBlocker(self.rarity):
+            self.rarity.clear()
+            self.rarity.addItems(['全部稀有度'] + self.source.wardrobe_rarities())
+            ridx = self.rarity.findText(cur_rar)
+            self.rarity.setCurrentIndex(ridx if ridx >= 0 else 0)
         # Re-resolve worn rows against new source
         refreshed = {}
         for sk, r in self.choice.items():
@@ -709,14 +732,16 @@ class FittingRoom(QWidget):
     def grant_selected_item(self):
         selected = self.rows.currentItem()
         if selected is None:
-            raise ValueError('请先在右侧选择一件时装或成套礼包。')
-        ident, _slot = selected.data(Qt.UserRole)
+            raise ValueError('请先在右侧选择一件时装或套装。')
+        ud = selected.data(Qt.UserRole)
+        ident = ud[0]
+        grp = ud[2] if len(ud) > 2 else ('stackable' if self.mode.currentData() == 'set' else 'equipment')
         if self.mode.currentData() == 'set':
-            pack = self.source.visual('stackable', ident)
+            pack = self.source.visual(grp, ident)
             if not pack or not pack['visual']:
-                raise ValueError('该礼包未解析出可发送的时装列表。')
+                raise ValueError('该套装未解析出可发送的时装列表。')
             ids = [int(x) for x in json.loads(pack['visual']) if int(x) > 0]
-            self._submit_avatar_grant(ids, pack['name'] or f'礼包 {ident}')
+            self._submit_avatar_grant(ids, pack['name'] or f'套装 {ident}')
         else:
             row = self.source.visual('equipment', ident)
             name = row['name'] if row else f'时装 {ident}'
@@ -813,7 +838,8 @@ class FittingRoom(QWidget):
         job = self.job.currentData()
         if not job:
             return
-        counts = self.source.slot_counts(job)
+        rar = self.rarity.currentText() if hasattr(self, 'rarity') else '全部稀有度'
+        counts = self.source.slot_counts(job, rarity=rar)
         total_single = sum(v for k, v in counts.items() if k != 'set')
         for pkey, (pb, base_label) in self.pills.items():
             if pkey == 'single:':
@@ -823,6 +849,11 @@ class FittingRoom(QWidget):
             else:
                 cnt = counts.get(pkey.split(':', 1)[1], 0)
             pb.setText(f'{base_label} ({cnt})' if cnt else base_label)
+
+    def _rarity_changed(self, *_):
+        self._update_pill_counts()
+        self.page = 0
+        self.reload()
 
     def _on_pill_clicked(self, pkey):
         mode, slot = pkey.split(':', 1)
@@ -880,10 +911,11 @@ class FittingRoom(QWidget):
             return
         mode = self.mode.currentData()
         slot_filter = self.slot.currentData() if mode == 'single' else ''
+        rar_filter = self.rarity.currentText() if hasattr(self, 'rarity') else '全部稀有度'
         only_vis = self.only_visual_chk.isChecked()
         rows, self.page, total = self.source.costume_cards(
             job, mode, slot_filter, self.search.text(), self.page,
-            page_size=self.page_size, only_visual=only_vis,
+            page_size=self.page_size, only_visual=only_vis, rarity=rar_filter,
         )
         worn_ids = self._worn_ids()
         self.rows.clear()
@@ -892,8 +924,9 @@ class FittingRoom(QWidget):
         for idx, r in enumerate(rows):
             ident = r['id']
             s = r['slot'] or ''
+            grp = r['g'] or ('stackable' if mode == 'set' else 'equipment')
             item = QListWidgetItem()
-            item.setData(Qt.UserRole, (ident, s))
+            item.setData(Qt.UserRole, (ident, s, grp))
             item.setSizeHint(card_size)
             self.rows.addItem(item)
             is_worn = (ident in worn_ids) if mode == 'single' else False
@@ -924,9 +957,11 @@ class FittingRoom(QWidget):
         selected = self.rows.currentItem()
         if selected is None:
             return
-        ident, slot = selected.data(Qt.UserRole)
+        ud = selected.data(Qt.UserRole)
+        ident, slot = ud[0], ud[1]
+        grp = ud[2] if len(ud) > 2 else ('stackable' if self.mode.currentData() == 'set' else 'equipment')
         if self.mode.currentData() == 'set':
-            pack = self.source.visual('stackable', ident)
+            pack = self.source.visual(grp, ident)
             parts = [self.source.visual('equipment', i) for i in json.loads(pack['visual'])]
             self.choice = {s: r for s, r in self.choice.items() if s in ('weapon', 'aura', 'skin')}
             for r in parts:
@@ -944,7 +979,7 @@ class FittingRoom(QWidget):
         worn_ids = self._worn_ids()
         for idx in range(self.rows.count()):
             item = self.rows.item(idx)
-            ident, _ = item.data(Qt.UserRole)
+            ident = item.data(Qt.UserRole)[0]
             w = self.rows.itemWidget(item)
             if w and hasattr(w, 'row'):
                 is_worn = (ident in worn_ids) and self.mode.currentData() == 'single'

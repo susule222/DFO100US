@@ -127,6 +127,7 @@ class EpicWindow(LauncherMainWindow):
         self.create_acc_btn.clicked.connect(self._on_create_account_clicked)
         self.login_acc_btn.clicked.connect(self._on_login_account_clicked)
         self.logout_acc_btn.clicked.connect(self._on_logout_account_clicked)
+        self.delete_db_btn.clicked.connect(self._on_delete_db_clicked)
         self.acc_pick_combo.currentIndexChanged.connect(self._on_account_picked)
         self.pwd_input.returnPressed.connect(self._on_login_account_clicked)
         self.pwd_confirm_input.returnPressed.connect(self._on_create_account_clicked)
@@ -440,6 +441,8 @@ class EpicWindow(LauncherMainWindow):
             else:
                 self.acc_pick_combo.addItem('暂无已建账号','')
         self.logout_acc_btn.setEnabled(bool(active))
+        if hasattr(self,'delete_db_btn'):
+            self.delete_db_btn.setEnabled(bool(db_ok))
         if active:
             role_cnt=len(core.roles(active))
             self.acc_status_lbl.setText(
@@ -523,6 +526,55 @@ class EpicWindow(LauncherMainWindow):
         self.refresh_status()
         if old:
             self.statusBar().showMessage(f'已退出账号「{old}」，请重新登录或创建账号。')
+
+    def _on_delete_db_clicked(self):
+        if self.busy:
+            self.statusBar().showMessage('上一项操作尚未完成，请稍后再删除数据库。')
+            return
+        if not core.db_exists():
+            self._refresh_account_ui()
+            QMessageBox.information(self,'暂无数据库','当前本地数据库尚未生成，无需删除。')
+            return
+        if core.client_up():
+            QMessageBox.warning(self,'无法删除数据库','游戏客户端正在运行，请先退出游戏后再删除数据库。')
+            return
+        info=core.database_summary()
+        gw_hint='\n检测到本地服务端正在运行，确认后将自动停止服务端再删除。' if core.gateway() is not None else ''
+        if info['corrupted']:
+            detail='当前数据库文件内容异常或已损坏，删除后可重新创建全新数据库。'
+        else:
+            size_kb=info['size_bytes']/1024.0
+            detail=f'当前包含：{info["account_count"]} 个账号、{info["character_count"]} 个角色（约 {size_kb:.1f} KB）。'
+        prompt=(
+            f'即将永久删除本地数据库文件：\n{info["db_path"]}\n\n'
+            f'{detail}\n'
+            '删除后所有账号、密码、角色、装备与存档数据将无法恢复，'
+            '忘记账号密码时可借此重置，随后输入新账号密码即可重新生成数据库。'
+            f'{gw_hint}\n\n确定要删除本地数据库吗？'
+        )
+        ans=QMessageBox.warning(
+            self,'确认删除本地数据库',prompt,
+            QMessageBox.Yes | QMessageBox.No,QMessageBox.No,
+        )
+        if ans != QMessageBox.Yes:
+            return
+        try:
+            res=core.delete_database()
+        except Exception as exc:
+            QMessageBox.warning(self,'删除数据库失败',str(exc))
+            return
+        self.acc_input.clear()
+        self.pwd_input.clear()
+        self.pwd_confirm_input.clear()
+        if res.get('pending_cleared'):
+            self.last_grant=''
+        self._refresh_account_ui()
+        self.refresh_roles()
+        self.refresh_status()
+        stop_note='（已自动停止运行中的本地服务端）' if res.get('server_stopped') else ''
+        msg=f'已删除本地数据库 ({res["db_path"]}){stop_note}。现在可直接输入新账号及密码点击「创建账号」重新生成数据库。'
+        self.statusBar().showMessage(msg)
+        QMessageBox.information(self,'数据库已删除',msg)
 
     def finished(self,ok,message):
         self.busy=False;self.statusBar().showMessage(message)

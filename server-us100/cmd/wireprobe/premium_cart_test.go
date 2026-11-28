@@ -126,3 +126,56 @@ func TestCeraShopDanjiPotCartGoldAndAvatarPurchase(t *testing.T) {
 		t.Fatalf("avatar payload failed: %v", err)
 	}
 }
+
+func TestCeraShopInventoryExpansionStages(t *testing.T) {
+	const sum = "53ed298dbd69f43e28cbe4b3fa09a4c77d02eaf31d579e27e9477663c924fe69"
+	rules, err := inventory.LoadBagRules("../../configs/us100/rules.bag.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	apply := premiumDelivery(catalog.LootCatalog{Source: pvf.ArchiveSnapshot{Checksum: sum}}, rules)
+	makeOrder := func(product uint32) []storage.CartLine {
+		b := make([]byte, 24)
+		b[2], b[4], b[5] = 1, 255, 255
+		binary.LittleEndian.PutUint32(b[6:], product)
+		lines, err := premiumOrder(b)
+		if err != nil {
+			t.Fatalf("order %d failed: %v", product, err)
+		}
+		return lines
+	}
+	st0, err := inventory.SaveBag(json.RawMessage("{}"), inventory.Bag{Version: "ordinary-bag-v1"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Stage 2 before Stage 1 must be refused.
+	if _, _, err := apply(storage.Character{State: st0, ConfigVersion: sum}, makeOrder(3000148)); err == nil {
+		t.Fatal("expected Stage 2 purchase before Stage 1 to fail")
+	}
+	// Stage 1 (3000147 / 2660296, 40 CERA) expands 0 -> 8 without dropping a dummy item in bag.
+	st1, del1, err := apply(storage.Character{State: st0, ConfigVersion: sum}, makeOrder(3000147))
+	if err != nil {
+		t.Fatalf("Stage 1 purchase failed: %v", err)
+	}
+	bag1, err := inventory.ReadBag(st1)
+	if err != nil || bag1.ExpandedSlots != 8 || len(bag1.Items) != 0 {
+		t.Fatalf("unexpected Stage 1 bag: expanded=%d items=%+v del=%s err=%v", bag1.ExpandedSlots, bag1.Items, string(del1), err)
+	}
+	// Re-buying Stage 1 must be refused.
+	if _, _, err := apply(storage.Character{State: st1, ConfigVersion: sum}, makeOrder(3000147)); err == nil {
+		t.Fatal("expected duplicate Stage 1 purchase to fail")
+	}
+	// Stage 2 (3000148 / 2660297, 90 CERA) expands 8 -> 16.
+	st2, _, err := apply(storage.Character{State: st1, ConfigVersion: sum}, makeOrder(3000148))
+	if err != nil {
+		t.Fatalf("Stage 2 purchase failed: %v", err)
+	}
+	bag2, err := inventory.ReadBag(st2)
+	if err != nil || bag2.ExpandedSlots != 16 || len(bag2.Items) != 0 {
+		t.Fatalf("unexpected Stage 2 bag: expanded=%d items=%+v err=%v", bag2.ExpandedSlots, bag2.Items, err)
+	}
+	// Further expansion beyond max (16) must be refused.
+	if _, _, err := apply(storage.Character{State: st2, ConfigVersion: sum}, makeOrder(3000148)); err == nil {
+		t.Fatal("expected purchase past max stage to fail")
+	}
+}

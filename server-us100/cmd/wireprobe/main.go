@@ -16,6 +16,7 @@ import (
 	"dfolan/internal/game/wire"
 	"dfolan/internal/inventory"
 	"dfolan/internal/loot"
+	"dfolan/internal/pluginhost"
 	"dfolan/internal/progression"
 	"dfolan/internal/quest"
 	"dfolan/internal/storage"
@@ -309,6 +310,7 @@ func main() {
 	accountName := flag.String("account", "probe", "account the gateway serves")
 	requireAccount := flag.Bool("require-account", false, "require an existing database and pre-created account instead of auto-creating")
 	gmDir := flag.String("launcher-gm", "", "optional local desktop GM inbox and room drop policy")
+	pluginsDir := flag.String("plugins-dir", "", "optional directory of external server DLL plugins (*.dll)")
 	rosterV224 := flag.Bool("roster-v224", false, "encode the roster list with the US100 (2.24) row layout")
 	rosterPad := flag.Int("roster-pad", 0, "extra bytes to insert after each roster row name (layout experiment)")
 	rosterCounter := flag.Int("roster-counter-first", 0, "first u32 of the 848 counter response (development knob)")
@@ -437,6 +439,7 @@ func main() {
 	var dungeonCatalog *catalog.DungeonCatalog
 	var progressionService *character.ProgressionService
 	var lootService *loot.Service
+	var ticketCatalog *catalog.TicketCatalog
 	if *characterStorage != "" {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
@@ -701,6 +704,10 @@ func main() {
 			lootService.Boosters = bc
 			log.Printf("booster catalog: loaded %d boxes from %s", len(bc.Boxes), boosterPath)
 		}
+		if tc, tp := loadTicketCatalog(*lootCatalogFile, boosterPath); tc != nil {
+			ticketCatalog = tc
+			log.Printf("ticket catalog: loaded %d entries from %s", len(tc.Tickets), tp)
+		}
 		cards, e := loot.LoadCardRules(*cardRulesFile)
 		if e != nil {
 			log.Fatal(e)
@@ -806,17 +813,20 @@ func main() {
 	}
 	defer l.Close()
 	var gm gmSessions
-	eventsPath := ""
-	if *gmDir != "" {
-		if questService == nil || questService.Inventory == nil || lootService == nil {
-			log.Fatal("launcher GM requires source inventory")
-		}
-		svc := &admin.Service{
+	var adminSvc *admin.Service
+	if characters != nil && questService != nil && questService.Inventory != nil && lootService != nil {
+		adminSvc = &admin.Service{
 			Store:       characters.Store,
 			Awarder:     questService.Inventory,
 			Characters:  characters,
 			Progression: progressionService,
 			Quests:      questService,
+		}
+	}
+	eventsPath := ""
+	if *gmDir != "" {
+		if adminSvc == nil {
+			log.Fatal("launcher GM requires source inventory")
 		}
 		eventsPath = filepath.Join(*gmDir, "events.json")
 		lootService.AbyssPath = filepath.Join(*gmDir, "abyss.json")
@@ -830,7 +840,7 @@ func main() {
 			progressionService.Fatigue = fatigueService
 		}
 		drain := func() {
-			if err := admin.DrainAndNotify(*gmDir, svc, developmentAccount, gm.committed); err != nil {
+			if err := admin.DrainAndNotify(*gmDir, adminSvc, developmentAccount, gm.committed); err != nil {
 				log.Print("launcher GM: ", err)
 			}
 		}
@@ -854,6 +864,36 @@ func main() {
 		if err := json.NewEncoder(f).Encode(v); err != nil {
 			log.Print(err)
 		}
+	}
+	var pluginBackend *wirePluginBackend
+	var pluginHost *pluginhost.Host
+	var loadedPlugins []pluginhost.PluginMeta
+	if *pluginsDir != "" {
+		var storeRef *storage.Store
+		if characters != nil {
+			storeRef = characters.Store
+		}
+		pluginBackend = newWirePluginBackend(storeRef, adminSvc, developmentAccount, &gm, event)
+		var perr error
+		pluginHost, perr = pluginhost.New(*pluginsDir, *dir, pluginBackend)
+		if perr != nil {
+			log.Fatalf("pluginhost init failed: %v", perr)
+		}
+		defer pluginHost.Close()
+		var loadErrs []error
+		loadedPlugins, loadErrs = pluginHost.LoadDir()
+		for _, le := range loadErrs {
+			log.Printf("plugin load error: %v", le)
+		}
+		if len(loadedPlugins) > 0 {
+			pluginHost.StartTickLoop(time.Second)
+		}
+		event(map[string]any{
+			"kind":        "plugins_initialized",
+			"plugins_dir": *pluginsDir,
+			"loaded":      len(loadedPlugins),
+			"errors":      len(loadErrs),
+		})
 	}
 	type channelListener struct {
 		listener net.Listener
@@ -928,6 +968,9 @@ func main() {
 	if *advertiseHost != "" {
 		readyInfo["advertise_host"] = *advertiseHost
 	}
+	if len(loadedPlugins) > 0 {
+		readyInfo["server_plugins"] = loadedPlugins
+	}
 	ready, _ := json.Marshal(readyInfo)
 	if err = os.WriteFile(filepath.Join(*dir, "ready.json"), ready, 0600); err != nil {
 		log.Fatal(err)
@@ -956,18 +999,68 @@ func main() {
 		if worldService != nil {
 			worldState = &worldSession{service: worldService, account: developmentAccount, flags: townPolicy.Flags, dungeons: dungeonCatalog, tutorials: tutorialRoutes, tutorialDungeons: tutorialDungeons, professions: characters.Catalog, fatigue: fatigueService, characters: characters, quests: questService, progression: progressionService, loot: lootService, soloPartyBootstrap: *soloPartyBootstrap, channelCtx: channelCtx, gateSet: gateSet, eventsPath: eventsPath}
 		}
-		sendPayload := func(kind byte, id uint16, payload []byte) error {
+		var writeMu sync.Mutex
+		sendPayloadRaw := func(kind byte, id uint16, payload []byte) error {
 			prepared, e := preparePackets(keys, []outboundPacket{{"response", kind, id, payload}})
 			if e != nil {
 				event(map[string]any{"kind": "response_encode_error", "peer": peer, "error": e.Error()})
 				return e
 			}
+			writeMu.Lock()
+			defer writeMu.Unlock()
 			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
 			e = writePackets(c, prepared, nil)
 			if e != nil {
 				event(map[string]any{"kind": "response_write_error", "peer": peer, "error": e.Error()})
 			}
 			return e
+		}
+		var pluginSessionID uint64
+		sessionSnap := func() pluginhost.SessionSnapshot {
+			snap := pluginhost.SessionSnapshot{
+				SessionID:    pluginSessionID,
+				ServerID:     serverID,
+				ChannelID:    chID,
+				AccountID:    developmentAccount,
+				CharacterID:  selectedCharacterID,
+				Bootstrapped: bootstrapped,
+				PeerAddr:     peer,
+				ChannelName:  chName,
+			}
+			if worldState != nil && selectedCharacterID != 0 && worldState.role.ID == selectedCharacterID {
+				snap.WireID = worldState.role.WireID
+				snap.Level = worldState.level
+				snap.TownID = uint16(worldState.state.Position.Town)
+				snap.AreaID = uint16(worldState.state.Position.Area)
+				snap.PosX = worldState.state.Position.X
+				snap.PosY = worldState.state.Position.Y
+				snap.InDungeon = worldState.activeDungeon != nil
+				snap.CharName = worldState.role.Name
+			}
+			return snap
+		}
+		sendPayload := func(kind byte, id uint16, payload []byte) error {
+			if pluginHost != nil && pluginHost.HasServerPacketHooks() {
+				verdict := pluginHost.OnServerPacket(sessionSnap(), pluginhost.PacketView{
+					PacketID: id,
+					Kind:     kind,
+					Verified: true,
+					Payload:  payload,
+				})
+				if verdict == pluginhost.ActionBlock {
+					event(map[string]any{"kind": "plugin_blocked_server_packet", "peer": peer, "type": kind, "id": id, "bytes": len(payload)})
+					return nil
+				}
+			}
+			return sendPayloadRaw(kind, id, payload)
+		}
+		if pluginBackend != nil && pluginHost != nil {
+			pluginSessionID = pluginBackend.register(sendPayloadRaw, sessionSnap)
+			defer func() {
+				pluginHost.OnSessionClose(sessionSnap())
+				pluginBackend.unregister(pluginSessionID)
+			}()
+			pluginHost.OnSessionOpen(sessionSnap())
 		}
 		event(map[string]any{"kind": "accept", "peer": peer, "server_id": serverID, "channel_id": chID, "channel_name": chName, "local": c.LocalAddr().String()})
 		if *injectWatch != "" {
@@ -1045,18 +1138,25 @@ func main() {
 				generalPreference := frame.Type == 1 && frame.ID == 197
 				openDanji := frame.Type == 1 && frame.ID == 2052
 				sortItems := frame.Type == 1 && frame.ID == 20
-				if len(frame.Raw) >= wire.ClientHeaderSize && (openChild || openPackage || shopBuy || adventureInfo || targetPreference || characterPreference || generalPreference || openDanji || sortItems || retainRequestBody(frame.ID, bodySamples)) {
-					retained = true
-					entry["hex"] = hex.EncodeToString(frame.Raw)
+				expandInven := frame.Type == 1 && frame.ID == protocol.CmdExpandInventory
+				shouldRetain := openChild || openPackage || shopBuy || adventureInfo || targetPreference || characterPreference || generalPreference || openDanji || sortItems || expandInven || retainRequestBody(frame.ID, bodySamples)
+				wantPluginDecrypt := pluginHost != nil && pluginHost.HasClientPacketHooks()
+				if len(frame.Raw) >= wire.ClientHeaderSize && (shouldRetain || wantPluginDecrypt) {
+					if shouldRetain {
+						retained = true
+						entry["hex"] = hex.EncodeToString(frame.Raw)
+					}
 					if p, e := wire.DecryptPayload(keys, frame.ID, frame.Raw[13:]); e == nil {
 						plaintext = p
-						entry["plain_hex"] = hex.EncodeToString(p)
 						verified = wire.Checksum(append(append([]byte{}, frame.Raw[11:13]...), p...)) == frame.Raw[7]
-						entry["checksum_ok"] = verified
-						if !openChild && !openPackage && !shopBuy && !adventureInfo && !targetPreference && !characterPreference && !generalPreference && !openDanji && !sortItems && !observedGameRequest(frame.ID) {
-							entry["unimplemented_sample"] = true
+						if shouldRetain {
+							entry["plain_hex"] = hex.EncodeToString(p)
+							entry["checksum_ok"] = verified
+							if !openChild && !openPackage && !shopBuy && !adventureInfo && !targetPreference && !characterPreference && !generalPreference && !openDanji && !sortItems && !expandInven && !observedGameRequest(frame.ID) {
+								entry["unimplemented_sample"] = true
+							}
 						}
-					} else {
+					} else if shouldRetain {
 						entry["decode_error"] = e.Error()
 					}
 				}
@@ -1068,6 +1168,19 @@ func main() {
 					throttledCalls[frame.ID]++
 					if throttledCalls[frame.ID]%5000 == 0 {
 						event(map[string]any{"kind": "throttled_client_frames", "peer": peer, "id": frame.ID, "total": throttledCalls[frame.ID]})
+					}
+				}
+				if pluginHost != nil && pluginHost.HasClientPacketHooks() {
+					verdict := pluginHost.OnClientPacket(sessionSnap(), pluginhost.PacketView{
+						PacketID: frame.ID,
+						Kind:     frame.Type,
+						Verified: verified,
+						Payload:  plaintext,
+						RawLen:   uint32(len(frame.Raw)),
+					})
+					if verdict == pluginhost.ActionHandled || verdict == pluginhost.ActionBlock {
+						event(map[string]any{"kind": "plugin_intercepted_client_packet", "peer": peer, "type": frame.Type, "id": frame.ID, "action": verdict})
+						continue
 					}
 				}
 				if frame.Type == 1 && (frame.ID == 1200 || frame.ID == 1201) && characters != nil && bootstrapped && verified {
@@ -1102,6 +1215,23 @@ func main() {
 						continue
 					}
 					worldState.role = saved
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
+				if expandInven {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					plan, err := worldState.expandInventory(plaintext, frame.Raw)
+					if err != nil {
+						event(map[string]any{"kind": "expand_inventory_refused", "character_id": selectedCharacterID, "reason": err.Error()})
+						continue
+					}
 					for _, p := range plan {
 						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
 							return
@@ -1254,6 +1384,66 @@ func main() {
 					}
 					continue
 				}
+				if frame.Type == 1 && frame.ID == protocol.CmdUpgradeItem && bootstrapped && verified && characters != nil && worldState != nil && worldState.role.ID == selectedCharacterID {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					saved, plan, res, err := handleUpgradeItem(ctx, characters.Store, wearService, ticketCatalog, developmentAccount, worldState.role, frame.Raw, plaintext, nil)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "upgrade_item_refused", "character_id": selectedCharacterID, "reason": err.Error()})
+						if sendPayload(1, protocol.CmdUpgradeItem, protocol.Refusal(4)) != nil {
+							return
+						}
+						continue
+					}
+					worldState.role = saved
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID, "mode": res.Mode, "old": res.OldLevel, "new": res.NewLevel, "outcome": res.Outcome})
+					}
+					continue
+				}
+				if frame.Type == 1 && frame.ID == protocol.CmdPurifyItem && bootstrapped && verified && characters != nil && worldState != nil && worldState.role.ID == selectedCharacterID {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					saved, plan, err := handlePurifyItem(ctx, characters.Store, wearService, ticketCatalog, developmentAccount, worldState.role, frame.Raw, plaintext, nil)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "purify_item_refused", "character_id": selectedCharacterID, "reason": err.Error()})
+						if sendPayload(1, protocol.CmdPurifyItem, protocol.Refusal(4)) != nil {
+							return
+						}
+						continue
+					}
+					worldState.role = saved
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
+				if frame.Type == 1 && frame.ID == protocol.CmdInvestAmplifyOption && bootstrapped && verified && characters != nil && worldState != nil && worldState.role.ID == selectedCharacterID {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					saved, plan, err := handleInvestAmplifyOption(ctx, characters.Store, wearService, ticketCatalog, developmentAccount, worldState.role, frame.Raw, plaintext, nil)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "invest_amplify_refused", "character_id": selectedCharacterID, "reason": err.Error()})
+						if sendPayload(1, protocol.CmdInvestAmplifyOption, protocol.Refusal(4)) != nil {
+							return
+						}
+						continue
+					}
+					worldState.role = saved
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
 				if frame.Type != 1 {
 					event(map[string]any{"kind": "unsupported_client_type", "type": frame.Type})
 					continue
@@ -1334,7 +1524,7 @@ func main() {
 								return nil, nil, e
 							}
 						}
-						if _, e = protocol.US224InventoryRestore(b.Rows()); e != nil {
+						if _, e = protocol.US224InventoryRestoreWithExpansion(b.ExpandedSlots, b.Rows()); e != nil {
 							return nil, nil, e
 						}
 						state, e := inventory.SaveBag(current.State, b)
@@ -1361,7 +1551,7 @@ func main() {
 					if e != nil {
 						return
 					}
-					body, e := protocol.US224InventoryRestore(b.Rows())
+					body, e := protocol.US224InventoryRestoreWithExpansion(b.ExpandedSlots, b.Rows())
 					if e != nil {
 						return
 					}
@@ -1488,6 +1678,19 @@ func main() {
 								return
 							}
 						}
+					}
+					hasExpand := false
+					for _, l := range lines {
+						if _, ok := inventoryExpandTarget(l.Template); ok {
+							hasExpand = true
+							break
+						}
+					}
+					if hasExpand && bag.ExpandedSlots > 0 {
+						if sendPayload(0, 66, protocol.InventoryExpandNoti(bag.ExpandedSlots)) != nil {
+							return
+						}
+						event(map[string]any{"kind": "inventory_expanded", "id": 66, "character_id": selectedCharacterID, "expanded_slots": bag.ExpandedSlots})
 					}
 					changed := map[byte]bool{}
 					for _, l := range lines {
@@ -1705,6 +1908,24 @@ func main() {
 						if e = sendPayload(1, protocol.CmdUseStackableAction, protocol.UseStackableActionRefused(4)); e != nil {
 							return
 						}
+						continue
+					}
+					for _, packet := range plan {
+						if e = sendPayload(packet.Kind, packet.ID, packet.Payload); e != nil {
+							return
+						}
+						event(map[string]any{"kind": packet.Name, "character_id": worldState.role.ID, "id": packet.ID})
+					}
+					continue
+				}
+				if worldState != nil && bootstrapped && frame.ID == protocol.CmdSkinStorageEquip {
+					if !verified {
+						event(map[string]any{"kind": "skin_storage_equip_rejected", "reason": "checksum failed"})
+						continue
+					}
+					plan, e := worldState.handleSkinStorageEquip(plaintext)
+					if e != nil {
+						event(map[string]any{"kind": "skin_storage_equip_error", "character_id": worldState.role.ID, "reason": e.Error()})
 						continue
 					}
 					for _, packet := range plan {
@@ -2472,6 +2693,11 @@ func main() {
 						plan.ItemLocks = locksBody
 					}
 					packets := plan.packets()
+					var entryBoosters *catalog.BoosterCatalog
+					if lootService != nil {
+						entryBoosters = lootService.Boosters
+					}
+					packets = append(packets, skinStoragePacketsOnEntry(characters.Store, entryBoosters, developmentAccount, role.ID)...)
 					if body, ke := basicKeysOnEntry(characters.Store, developmentAccount); ke != nil {
 						event(map[string]any{"kind": "basic_keys_read_error", "error": ke.Error()})
 					} else if body != nil {
@@ -2549,6 +2775,9 @@ func main() {
 						gm.bind(notice, role.ID, beforeSelect)
 					}
 					selectedBasic, selectedAddition = basic, addition
+					if pluginHost != nil {
+						pluginHost.OnCharacterEnter(sessionSnap())
+					}
 					continue
 				}
 				if characters != nil && bootstrapped && selectedCharacterID == 0 && selectAck[frame.ID] > 0 {

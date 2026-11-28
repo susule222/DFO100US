@@ -88,6 +88,11 @@ func LoadBagRules(p string) (BagRules, error) {
 
 const AvatarBagCapacity uint16 = 280
 
+// MaxExpandedInventorySlots is the US224 client's maximum ordinary inventory
+// expansion (+2 rows = +16 slots per tab, verified at DFO_unpacked.exe
+// 0x1439af840 / 0x1439b0e55: stage 1=base 0, stage 2=+8, stage 3=+16).
+const MaxExpandedInventorySlots uint16 = 16
+
 type BagItem struct {
 	Slot       uint16 `json:"slot"`
 	Template   uint32
@@ -97,13 +102,39 @@ type BagItem struct {
 	UnlockAt   int64 `json:"unlock_at,omitempty"`
 }
 type Bag struct {
-	Version     string         `json:"version"`
-	Gold        uint32         `json:"gold"`
-	Items       []BagItem      `json:"items"`
-	Equipment   []BagEquipment `json:"equipment,omitempty"`
-	Worn        []BagEquipment `json:"worn,omitempty"`
-	Avatars     []BagEquipment `json:"avatars,omitempty"`
-	WornAvatars []BagEquipment `json:"worn_avatars,omitempty"`
+	Version       string         `json:"version"`
+	Gold          uint32         `json:"gold"`
+	ExpandedSlots uint16         `json:"expanded_slots,omitempty"`
+	Items         []BagItem      `json:"items"`
+	Equipment     []BagEquipment `json:"equipment,omitempty"`
+	Worn          []BagEquipment `json:"worn,omitempty"`
+	Avatars       []BagEquipment `json:"avatars,omitempty"`
+	WornAvatars   []BagEquipment `json:"worn_avatars,omitempty"`
+}
+
+// ExpandInventory upgrades the character's ordinary inventory expansion slots
+// in 8-slot (1-row) steps up to MaxExpandedInventorySlots (16).
+// target == 0 means "expand by one stage (+8 slots)"; target == 8 or 16
+// enforces the matching sequential stage (1阶段 = 0->8, 2阶段 = 8->16).
+func (b *Bag) ExpandInventory(target uint16) (uint16, error) {
+	if b.ExpandedSlots >= MaxExpandedInventorySlots {
+		return b.ExpandedSlots, fmt.Errorf("inventory is already at maximum capacity")
+	}
+	next := b.ExpandedSlots + 8
+	if target != 0 {
+		if target%8 != 0 || target > MaxExpandedInventorySlots {
+			return b.ExpandedSlots, fmt.Errorf("invalid inventory expansion target %d", target)
+		}
+		if target <= b.ExpandedSlots {
+			return b.ExpandedSlots, fmt.Errorf("inventory expansion stage already reached")
+		}
+		if target != next {
+			return b.ExpandedSlots, fmt.Errorf("previous inventory expansion stage required")
+		}
+		next = target
+	}
+	b.ExpandedSlots = next
+	return b.ExpandedSlots, nil
 }
 
 func ReadBag(state json.RawMessage) (Bag, error) {
@@ -124,6 +155,9 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		}
 	} else {
 		b.Version = "ordinary-bag-v1"
+	}
+	if b.ExpandedSlots > MaxExpandedInventorySlots || b.ExpandedSlots%8 != 0 {
+		return b, fmt.Errorf("invalid saved inventory expansion %d", b.ExpandedSlots)
 	}
 	now := time.Now().Unix()
 	b.Equipment = activeLoans(b.Equipment, now)

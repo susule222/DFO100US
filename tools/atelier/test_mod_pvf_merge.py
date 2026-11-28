@@ -16,8 +16,13 @@ os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
 
 import core
 import live_resources as lr
-from mod_workshop import ModWorkshop
+from mod_workshop import ModWorkshop, inspect_plugin_dll_bytes
 from sprites import KEY
+
+PLUGIN_BUILD_DIR = HERE.parents[1] / 'sdk' / 'plugin' / 'examples' / 'build'
+CLIENT_HELLO_DLL = PLUGIN_BUILD_DIR / 'client_hello_plugin.dll'
+SERVER_HELLO_DLL = PLUGIN_BUILD_DIR / 'server_hello_plugin.dll'
+STUB_DLL = HERE.parents[1] / 'ngs_stub' / 'NGClient64.aes'
 
 
 def _dummy_npk_bytes(body: bytes) -> bytes:
@@ -194,6 +199,151 @@ class ModPvfMergeChecks(unittest.TestCase):
             self.assertEqual(live_pvf.read_bytes(), orig_pvf_bytes)
             self.assertEqual(existing_npk.read_bytes(), orig_npk_bytes)
             self.assertFalse((packs_dir / 'demo_custom.NPK').exists())
+
+    def test_dll_pe64_validation_rejects_invalid_and_detects_targets(self):
+        self.assertTrue(CLIENT_HELLO_DLL.is_file(), f'missing {CLIENT_HELLO_DLL}')
+        self.assertTrue(SERVER_HELLO_DLL.is_file(), f'missing {SERVER_HELLO_DLL}')
+        self.assertTrue(STUB_DLL.is_file(), f'missing {STUB_DLL}')
+
+        cinfo = inspect_plugin_dll_bytes(CLIENT_HELLO_DLL.read_bytes())
+        self.assertEqual(cinfo['target'], 'client')
+        self.assertIn('us100_client_plugin_init', cinfo['exports'])
+
+        sinfo = inspect_plugin_dll_bytes(SERVER_HELLO_DLL.read_bytes())
+        self.assertEqual(sinfo['target'], 'server')
+        self.assertIn('us100_server_plugin_init', sinfo['exports'])
+
+        # Valid x64 DLL without ABI v1 init export must be rejected
+        with self.assertRaises(ValueError) as ctx:
+            inspect_plugin_dll_bytes(STUB_DLL.read_bytes())
+        self.assertIn('缺少 100US ABI v1', str(ctx.exception))
+
+        # Corrupt / non-PE bytes must be rejected
+        with self.assertRaises(ValueError):
+            inspect_plugin_dll_bytes(b'not a dll')
+
+        # Synthetic 32-bit x86 DLL header must be rejected
+        x86_pe = bytearray(0x100)
+        x86_pe[0:2] = b'MZ'
+        struct.pack_into('<I', x86_pe, 0x3C, 0x40)
+        x86_pe[0x40:0x44] = b'PE\x00\x00'
+        struct.pack_into('<HHIIIHH', x86_pe, 0x44, 0x014C, 0, 0, 0, 0, 0xE0, 0x2002)
+        with self.assertRaises(ValueError) as ctx32:
+            inspect_plugin_dll_bytes(bytes(x86_pe))
+        self.assertIn('非 64 位', str(ctx32.exception))
+
+    def test_dll_mod_workshop_priority_server_gate_and_rollback(self):
+        self.assertTrue(CLIENT_HELLO_DLL.is_file())
+        self.assertTrue(SERVER_HELLO_DLL.is_file())
+
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(core, 'client_up', return_value=False), \
+             patch.object(core, 'gateway', return_value=None):
+            base = Path(tmp)
+            client_dir = base / 'client'
+            server_pdir = base / 'server_plugins'
+            client_dir.mkdir(parents=True)
+            server_pdir.mkdir(parents=True)
+            (client_dir / 'plugins').mkdir()
+
+            # Pre-existing manual plugins must never be deleted by workshop
+            manual_c = client_dir / 'plugins' / 'manual_keep.dll'
+            manual_s = server_pdir / 'manual_srv.dll'
+            manual_c.write_bytes(b'manual-client-dll')
+            manual_s.write_bytes(b'manual-server-dll')
+
+            ws = ModWorkshop(
+                client_dir=client_dir,
+                mod_dir=client_dir / 'MOD',
+                cache_root=base / 'cache',
+                server_plugins_dir=server_pdir,
+            )
+
+            # 1) Import standalone client DLL
+            c_src = base / 'solo_client.dll'
+            c_src.write_bytes(CLIENT_HELLO_DLL.read_bytes())
+            ws.import_mod_file(c_src)
+
+            # 2) Import 90JP collection ZIP with both client DLL (+ini) and server DLL
+            col_zip = base / '02-dll-pack.zip'
+            with zipfile.ZipFile(col_zip, 'w', compression=zipfile.ZIP_DEFLATED) as zf:
+                zf.writestr('version.json', json.dumps({
+                    'schemaVersion': 1, 'kind': 'collection', 'id': 'dll.pack',
+                    'name': '外接插件合集', 'version': '1.0', 'moduleOrder': ['dll.pack.dual'],
+                }, ensure_ascii=False))
+                zf.writestr('dual/version.json', json.dumps({
+                    'schemaVersion': 1, 'kind': 'mod', 'id': 'dll.pack.dual',
+                    'name': '双端扩展', 'version': '1.0', 'dependencies': [],
+                }, ensure_ascii=False))
+                zf.writestr('dual/DLL/client/client_hello_plugin.dll', CLIENT_HELLO_DLL.read_bytes())
+                zf.writestr('dual/DLL/client/client_hello_plugin.ini', 'scoped_greeting=from_mod\n')
+                zf.writestr('dual/DLL/server/server_hello_plugin.dll', SERVER_HELLO_DLL.read_bytes())
+            ws.import_mod_file(col_zip)
+
+            # 3) ZIP with mismatched directory vs export must surface error on scan
+            bad_zip = base / '03-mismatch.zip'
+            with zipfile.ZipFile(bad_zip, 'w') as zf:
+                zf.writestr('DLL/client/wrong_side.dll', SERVER_HELLO_DLL.read_bytes())
+            ws.import_mod_file(bad_zip)
+
+            mods = ws.scan()
+            by_id = {m['id']: m for m in mods}
+            self.assertIn('dll.client.solo_client', by_id)
+            self.assertIn('dll.pack.dual', by_id)
+            self.assertEqual(len(by_id['dll.pack.dual']['client_dll_entries']), 2)  # dll + ini
+            self.assertEqual(len(by_id['dll.pack.dual']['server_dll_entries']), 1)
+            self.assertIn('目录与导出符号不匹配', by_id['zip.03-mismatch']['error'])
+
+            # Enable both valid mods in priority order: dual first, solo_client second
+            ws.save_selection(
+                ['dll.pack.dual', 'dll.client.solo_client'],
+                ['dll.pack.dual', 'dll.client.solo_client'],
+            )
+
+            # Server running without auto_stop_server must block server DLL deployment
+            with patch.object(core, 'gateway', return_value={'pid': 1234}):
+                self.assertTrue(ws.needs_server_stop_for_apply())
+                with self.assertRaises(ValueError) as srv_err:
+                    ws.apply_merge(auto_stop_server=False)
+                self.assertIn('wireprobe-us100.exe', str(srv_err.exception))
+
+            # Apply cleanly when server stopped
+            res = ws.apply_merge()
+            self.assertEqual(res['client_dll_count'], 2)
+            self.assertEqual(res['server_dll_count'], 1)
+            c_deployed = sorted(p.name for p in (client_dir / 'plugins').glob('*.dll'))
+            s_deployed = sorted(p.name for p in server_pdir.glob('*.dll'))
+            self.assertEqual(c_deployed, [
+                '001_dll_pack_dual__client_hello_plugin.dll',
+                '002_dll_client_solo_client__solo_client.dll',
+                'manual_keep.dll',
+            ])
+            self.assertEqual(s_deployed, [
+                '001_dll_pack_dual__server_hello_plugin.dll',
+                'manual_srv.dll',
+            ])
+            self.assertTrue((client_dir / 'plugins' / 'client_hello_plugin.ini').is_file())
+            self.assertIn('plugins_enabled=1', (client_dir / 'ngs_stub.ini').read_text(encoding='utf-8'))
+
+            # Flip priority order -> prefix numbers swap cleanly and old prefixed names are removed
+            ws.save_selection(
+                ['dll.client.solo_client', 'dll.pack.dual'],
+                ['dll.client.solo_client', 'dll.pack.dual'],
+            )
+            ws.apply_merge()
+            c_deployed_2 = sorted(p.name for p in (client_dir / 'plugins').glob('*.dll'))
+            self.assertEqual(c_deployed_2, [
+                '001_dll_client_solo_client__solo_client.dll',
+                '002_dll_pack_dual__client_hello_plugin.dll',
+                'manual_keep.dll',
+            ])
+
+            # Restore removes only managed DLLs & INI, preserving manual DLLs
+            msg = ws.restore_original()
+            self.assertIn('外接 DLL', msg)
+            self.assertEqual([p.name for p in (client_dir / 'plugins').glob('*.dll')], ['manual_keep.dll'])
+            self.assertEqual([p.name for p in server_pdir.glob('*.dll')], ['manual_srv.dll'])
+            self.assertFalse((client_dir / 'plugins' / 'client_hello_plugin.ini').exists())
 
 
 if __name__ == '__main__':

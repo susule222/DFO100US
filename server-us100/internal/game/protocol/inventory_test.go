@@ -127,3 +127,25 @@ func TestUS224InventoryOrdinaryCursor(t *testing.T) {
 		}
 	}
 }
+
+func TestUS224InventoryExpansionProtocol(t *testing.T) {
+	rows := [][CurrentItemRecordSize]byte{OrdinaryItem(0, 0, 500)}
+	p, err := US224InventoryRestoreWithExpansion(8, rows)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p) != 5+177 || p[0] != 0 || p[1] != 8 || p[2] != 0 || p[3] != 1 || p[4] != 0 {
+		t.Fatalf("unexpected NOTI13 expanded header: %x", p[:5])
+	}
+	noti := InventoryExpandNoti(16)
+	if !bytes.Equal(noti, []byte{12, 0, 16, 0}) {
+		t.Fatalf("unexpected NOTI66 subType=12 payload: %x", noti)
+	}
+	slot, err := DecodeExpandInventory([]byte{70, 0, 0, 0, 0, 0, 0, 0})
+	if err != nil || slot != 70 {
+		t.Fatalf("DecodeExpandInventory failed: slot=%d err=%v", slot, err)
+	}
+	if _, err := DecodeExpandInventory([]byte{70, 0, 1, 0, 0, 0, 0, 0}); err == nil {
+		t.Fatal("accepted nonzero CMD 422 padding")
+	}
+}

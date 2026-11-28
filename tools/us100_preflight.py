@@ -138,12 +138,20 @@ def _findings() -> list[tuple[str, str]]:
         ours = ROOT / 'ngs_stub' / 'NGClient64.aes'
         if not stub.is_file():
             out.append((FAIL, 'patched NGClient64.aes missing from the client: %s' % stub))
-        elif ours.is_file() and stub.stat().st_size != ours.stat().st_size:
-            out.append((WARN, 'client NGClient64.aes (%d bytes) differs from this project\'s stub (%d bytes)'
-                        % (stub.stat().st_size, ours.stat().st_size)))
+        elif ours.is_file():
+            import hashlib
+            stub_sha = hashlib.sha256(stub.read_bytes()).hexdigest()
+            ours_sha = hashlib.sha256(ours.read_bytes()).hexdigest()
+            if stub_sha != ours_sha:
+                out.append((WARN, 'client NGClient64.aes (sha256 %s) differs from this project\'s stub (sha256 %s) — run tools/deploy_stub.py --apply'
+                            % (stub_sha[:12], ours_sha[:12])))
+            else:
+                out.append((OK, 'NGClient64.aes matches project build (%d bytes, sha256 %s)' % (stub.stat().st_size, stub_sha[:12])))
         else:
             out.append((OK, 'NGClient64.aes present (%d bytes)' % stub.stat().st_size))
         ini = directory / 'ngs_stub.ini'
+        plugins_enabled = '1'
+        plugins_dir_cfg = 'plugins'
         if ini.is_file():
             text = ini.read_text(encoding='utf-8', errors='replace')
             setting = [ln for ln in text.splitlines() if ln.strip().startswith('5=')]
@@ -151,6 +159,19 @@ def _findings() -> list[tuple[str, str]]:
                 # ord5=1 makes the client allocate an image every frame: the
                 # memory went to 22.7 GB before this was found.
                 out.append((FAIL, 'ngs_stub.ini has %s — ord5 must be 0 or the client leaks memory' % setting[0].strip()))
+            for ln in text.splitlines():
+                s = ln.strip()
+                if s.startswith('plugins_enabled='):
+                    plugins_enabled = s.split('=', 1)[1].strip()
+                elif s.startswith('plugins_dir='):
+                    plugins_dir_cfg = s.split('=', 1)[1].strip() or 'plugins'
+        c_pdir = pathlib.Path(plugins_dir_cfg)
+        if not c_pdir.is_absolute():
+            c_pdir = directory / c_pdir
+        c_dlls = [p.name for p in c_pdir.glob('*.dll') if not p.name.startswith('_')] if c_pdir.is_dir() else []
+        s_pdir = ROOT / 'plugins' / 'server'
+        s_dlls = [p.name for p in s_pdir.glob('*.dll') if not p.name.startswith('_')] if s_pdir.is_dir() else []
+        out.append((OK, 'external DLL plugins: client=%d (enabled=%s), server=%d' % (len(c_dlls), plugins_enabled, len(s_dlls))))
 
     # --- server binary and freshness ------------------------------------
     if not SERVER_BIN.is_file():

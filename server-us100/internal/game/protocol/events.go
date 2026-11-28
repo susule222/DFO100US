@@ -234,19 +234,22 @@ func Ev515EverydayConnectStatus(active, todayCanCheck bool, days byte, dailyMask
 	return p
 }
 
-// Ev619DailyCheckStatus encodes NOTI 2161 (0x871, 20 bytes, handler 0x14048c000):
-//   - [0..3]:  u32 state (0)
-//   - [4..7]:  u32 online seconds (0..3600; multiplied by 1000ms at 0x14048c0d9)
-//   - [8..11]: u32 picked gift bitmask (bits 0..6)
-//   - [12..15]: u32 daily claimed today (0=available, 1=claimed)
-//   - [16]:    u8  total daily claims count (unlocks 5/10 milestones)
-//   - [17]:    u8  milestone bonus claimed bitmask (bit 0 = 5x, bit 1 = 10x)
+// Ev619DailyCheckStatus encodes NOTI 2161 (0x871, 20 bytes, handler 0x14048c000 -> [obj+0xf0..+0x103]):
+//   - [0..3]:  u32 state (0) ([obj+0xf0])
+//   - [4..7]:  u32 online seconds (0..3600; multiplied by 1000ms at 0x14048c0d9) ([obj+0xf4])
+//   - [8]:     u8  daily claimed today (0=available, 1=claimed; checked at 0x14048c290 & 0x14048c649) ([obj+0xf8])
+//   - [9..11]: padding (0)
+//   - [12..15]: u32 picked gift bitmask (bits 0..6; checked at 0x14048c2ea, 0x14048c300, 0x14048c342) ([obj+0xfc])
+//   - [16]:    u8  total daily claims count (unlocks 5/10 milestones at 0x14048c217) ([obj+0x100])
+//   - [17]:    u8  milestone bonus claimed bitmask (bit 0 = 5x, bit 1 = 10x at 0x14048c240) ([obj+0x101])
 //   - [18..19]: u16 reserved (0)
 func Ev619DailyCheckStatus(onlineSec, pickedMask, claimedToday uint32, totalDays, bonusMask byte) []byte {
 	p := make([]byte, 20)
 	binary.LittleEndian.PutUint32(p[4:8], onlineSec)
-	binary.LittleEndian.PutUint32(p[8:12], pickedMask)
-	binary.LittleEndian.PutUint32(p[12:16], claimedToday)
+	if claimedToday != 0 {
+		p[8] = 1
+	}
+	binary.LittleEndian.PutUint32(p[12:16], pickedMask)
 	p[16] = totalDays
 	p[17] = bonusMask
 	return p
@@ -267,30 +270,50 @@ func Ev614MelodyStatus(progress [4]byte, claimed [4]byte, totalCompleted, lineMa
 }
 
 // Ev602CubeLabState represents the 52-byte (0x34) wire state read by NOTI 1949
-// (0x79d, handler 0x140bdeb80 -> [obj+0x130..+0x163]).
+// (0x79d, handler 0x140bdeb80 -> [obj+0x130..+0x163], interpreted at 0x140bdf410).
 type Ev602CubeLabState struct {
-	HasPendingItem  bool   // +0x01 ([obj+0x131])
-	DailySearches   byte   // +0x20 ([obj+0x150], used count 0..3)
-	MilestoneMask   uint32 // +0x24 ([obj+0x154], claimed milestone bitmask)
-	TimerSeconds    uint32 // +0x28 ([obj+0x158])
-	EnergyPoints    uint32 // +0x2c ([obj+0x15c], 0..100)
-	CurrentItemIdx  int32  // +0x30 ([obj+0x160], -1 if none)
-	TransferredWeek bool   // +0x18 (flag)
-	SavedItemID     uint32 // saved item template
-	Contributions   uint32 // total weekly transfers
+	DayIndex        byte   // +0x00: day offset (weekIndex = DayIndex / 7 at 0x140bdf6fe)
+	HasPendingItem  bool   // +0x01: ([obj+0x131])
+	SavedItemIdx    int32  // +0x02: saved cube pool index (-1 -> 0xff if none; must appear in PickedIndices)
+	PickedIndices   []byte // +0x03 count + +0x04..+0x17 up to 20 discovered/excluded cube pool indices
+	TransferredMask uint32 // +0x1c: weekly transfer bitmask (bit w = week w transferred; derives contributions & transferred flag)
+	DailySearches   byte   // +0x20: ([obj+0x150], used count 0..3)
+	MilestoneMask   uint32 // +0x24: ([obj+0x154], claimed milestone bitmask)
+	TimerSeconds    uint32 // +0x28: ([obj+0x158])
+	EnergyPoints    uint32 // +0x2c: ([obj+0x15c], 0..100)
+	CurrentItemIdx  int32  // +0x30: ([obj+0x160], -1 if none)
 }
 
 // Ev602RiaCubeLabStatus encodes NOTI 1949 (0x79d, 52 bytes, handler 0x140bdeb80).
 func Ev602RiaCubeLabStatus(st Ev602CubeLabState) []byte {
 	p := make([]byte, 0x34)
+	p[0] = st.DayIndex
 	if st.HasPendingItem {
 		p[1] = 1
 	}
-	binary.LittleEndian.PutUint32(p[0x04:0x08], st.SavedItemID)
-	binary.LittleEndian.PutUint32(p[0x08:0x0c], st.Contributions)
-	if st.TransferredWeek {
-		p[0x18] = 1
+	if st.SavedItemIdx >= 0 && st.SavedItemIdx < 255 {
+		p[2] = byte(st.SavedItemIdx)
+	} else {
+		p[2] = 0xff
 	}
+	picked := make([]byte, 0, len(st.PickedIndices)+1)
+	seen := make(map[byte]bool, len(st.PickedIndices)+1)
+	for _, idx := range st.PickedIndices {
+		if !seen[idx] && len(picked) < 20 {
+			seen[idx] = true
+			picked = append(picked, idx)
+		}
+	}
+	// 0x140bdf63e only marks savedItemIdx ([rdi+0x40]) when savedItemIdx is in pickedIndices.
+	if st.SavedItemIdx >= 0 && st.SavedItemIdx < 255 {
+		sIdx := byte(st.SavedItemIdx)
+		if !seen[sIdx] && len(picked) < 20 {
+			picked = append(picked, sIdx)
+		}
+	}
+	p[3] = byte(len(picked))
+	copy(p[0x04:0x18], picked)
+	binary.LittleEndian.PutUint32(p[0x1c:0x20], st.TransferredMask)
 	p[0x20] = st.DailySearches
 	binary.LittleEndian.PutUint32(p[0x24:0x28], st.MilestoneMask)
 	binary.LittleEndian.PutUint32(p[0x28:0x2c], st.TimerSeconds)

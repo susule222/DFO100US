@@ -89,6 +89,8 @@ func (w *worldSession) useStackableAction(p, rawFrame []byte) ([]outboundPacket,
 
 	var usedTemplate uint32
 	var remaining uint32
+	var expandedSlots uint16
+	var didExpand bool
 	saved, applied, e := w.characters.Store.CommitCharacterEvent(ctx, w.account, w.role.ID, w.role.ConfigVersion, key, "us100-consume-507-v1", func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
 		b, err := inventory.ReadBag(current.State)
 		if err != nil {
@@ -105,6 +107,14 @@ func (w *worldSession) useStackableAction(p, rawFrame []byte) ([]outboundPacket,
 			return nil, nil, fmt.Errorf("no stackable at slot %d", r.Slot)
 		}
 		usedTemplate = b.Items[idx].Template
+		if target, ok := inventoryExpandTarget(usedTemplate); ok || r.ActionType == 0x28 {
+			nextSlots, expErr := b.ExpandInventory(target)
+			if expErr != nil {
+				return nil, nil, expErr
+			}
+			expandedSlots = nextSlots
+			didExpand = true
+		}
 		if b.Items[idx].Amount > 1 {
 			b.Items[idx].Amount--
 			remaining = b.Items[idx].Amount
@@ -116,7 +126,7 @@ func (w *worldSession) useStackableAction(p, rawFrame []byte) ([]outboundPacket,
 		if err != nil {
 			return nil, nil, err
 		}
-		receipt, err := json.Marshal(map[string]any{"slot": r.Slot, "template": usedTemplate, "action": r.ActionType, "remaining": remaining})
+		receipt, err := json.Marshal(map[string]any{"slot": r.Slot, "template": usedTemplate, "action": r.ActionType, "remaining": remaining, "expanded_slots": expandedSlots})
 		return updated, receipt, err
 	})
 	if e != nil {
@@ -144,6 +154,15 @@ func (w *worldSession) useStackableAction(p, rawFrame []byte) ([]outboundPacket,
 		{"item_action_ack", 1, protocol.CmdUseStackableAction, protocol.UseStackableActionSuccess(r)},
 		{"item_action_inventory_updated", 0, 14, update},
 	}
+	if didExpand || b.ExpandedSlots > 0 && (r.ActionType == 0x28) {
+		slots := expandedSlots
+		if slots == 0 {
+			slots = b.ExpandedSlots
+		}
+		if slots > 0 {
+			plan = append(plan, outboundPacket{"inventory_expanded", 0, 66, protocol.InventoryExpandNoti(slots)})
+		}
+	}
 	if kind, days, ok := directContractItem(usedTemplate); ok {
 		if applied {
 			if err := w.loot.Store.ExtendPremiumContracts(ctx, w.account, map[byte]int64{kind: days}); err != nil {
@@ -154,5 +173,89 @@ func (w *worldSession) useStackableAction(p, rawFrame []byte) ([]outboundPacket,
 			plan = append(plan, cpkts...)
 		}
 	}
+	if r.ActionType == actionTypeAddSkinStorage {
+		plan = append(plan, w.unlockSkinStorageItem(usedTemplate)...)
+	}
 	return plan, nil
+}
+
+// expandInventory answers CMD 422 (0x1a6), sent by DFO_unpacked.exe (0x1439b1136)
+// when right-clicking an inventory expansion ticket in the bag.
+func (w *worldSession) expandInventory(p, rawFrame []byte) ([]outboundPacket, error) {
+	if w == nil || w.role.ID == 0 || w.characters == nil {
+		return nil, fmt.Errorf("expand inventory before character selection")
+	}
+	slot, e := protocol.DecodeExpandInventory(p)
+	if e != nil {
+		return nil, e
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	key := fmt.Sprintf("expand422/%d/%d/%x", w.role.ID, slot, sha256.Sum256(rawFrame))
+
+	var usedTemplate uint32
+	var remaining uint32
+	saved, _, e := w.characters.Store.CommitCharacterEvent(ctx, w.account, w.role.ID, w.role.ConfigVersion, key, "us100-expand-inventory-422-v1", func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
+		b, err := inventory.ReadBag(current.State)
+		if err != nil {
+			return nil, nil, err
+		}
+		idx := -1
+		for i, it := range b.Items {
+			if it.Slot == slot && it.Amount > 0 {
+				idx = i
+				break
+			}
+		}
+		if idx < 0 {
+			return nil, nil, fmt.Errorf("no expansion ticket at slot %d", slot)
+		}
+		usedTemplate = b.Items[idx].Template
+		target, ok := inventoryExpandTarget(usedTemplate)
+		if !ok {
+			return nil, nil, fmt.Errorf("template %d is not an inventory expansion ticket", usedTemplate)
+		}
+		nextSlots, err := b.ExpandInventory(target)
+		if err != nil {
+			return nil, nil, err
+		}
+		if b.Items[idx].Amount > 1 {
+			b.Items[idx].Amount--
+			remaining = b.Items[idx].Amount
+		} else {
+			b.Items = append(b.Items[:idx], b.Items[idx+1:]...)
+			remaining = 0
+		}
+		updated, err := inventory.SaveBag(current.State, b)
+		if err != nil {
+			return nil, nil, err
+		}
+		receipt, err := json.Marshal(map[string]any{"slot": slot, "template": usedTemplate, "remaining": remaining, "expanded_slots": nextSlots})
+		return updated, receipt, err
+	})
+	if e != nil {
+		return nil, e
+	}
+	saved.WireID = w.role.WireID
+	w.role = saved
+
+	b, e := inventory.ReadBag(saved.State)
+	if e != nil {
+		return nil, e
+	}
+	rows := b.Rows()
+	if remaining == 0 {
+		rows = append(rows, protocol.EmptySlotItem(slot))
+		sort.Slice(rows, func(i, j int) bool {
+			return binary.LittleEndian.Uint16(rows[i][:]) < binary.LittleEndian.Uint16(rows[j][:])
+		})
+	}
+	update, e := protocol.US224InventoryUpdate(rows)
+	if e != nil {
+		return nil, e
+	}
+	return []outboundPacket{
+		{"expand_inventory_bag_updated", 0, 14, update},
+		{"inventory_expanded", 0, 66, protocol.InventoryExpandNoti(b.ExpandedSlots)},
+	}, nil
 }

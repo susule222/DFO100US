@@ -105,7 +105,7 @@ func sortInventory(
 	// system chat notices for every item that lands in a new slot.
 	var invRestore []byte
 	if req.Space == 0 {
-		invRestore, err = protocol.US224InventoryRestore(bag.Rows())
+		invRestore, err = protocol.US224InventoryRestoreWithExpansion(bag.ExpandedSlots, bag.Rows())
 	} else {
 		invRestore, err = protocol.US224AvatarRestore(inventory.AvatarBagCapacity, bag.AvatarRows())
 	}

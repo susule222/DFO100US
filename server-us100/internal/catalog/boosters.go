@@ -30,12 +30,21 @@ type BoosterBox struct {
 	Groups     [][]BoosterAward          `json:"g,omitempty"` // for "bst"/"pkg": one weighted pick per group (len=1 => guaranteed)
 }
 
+// SkinStorageItem maps a stackable item with [action type] `[add skin storage]`
+// to its Skin Storage category (0=DamageFont, 1=SkillCutscene, 2=PartyFrame,
+// 3=InstantEmoticon, 4=WeaponSkin, 6=PartyRequestFrame) and skin index in list/skin.lst.
+type SkinStorageItem struct {
+	Category byte   `json:"c"`
+	Index    uint32 `json:"i"`
+}
+
 // BoosterCatalog holds all openable box definitions extracted from a US100 PVF.
 type BoosterCatalog struct {
-	Source      pvf.ArchiveSnapshot   `json:"source"`
-	Boxes       map[uint32]BoosterBox `json:"boxes"`
-	TypeCounts  map[string]int        `json:"type_counts,omitempty"`
-	BoxTagStats map[string]int        `json:"box_tag_stats,omitempty"`
+	Source      pvf.ArchiveSnapshot        `json:"source"`
+	Boxes       map[uint32]BoosterBox      `json:"boxes"`
+	SkinItems   map[uint32]SkinStorageItem `json:"skin_items,omitempty"`
+	TypeCounts  map[string]int             `json:"type_counts,omitempty"`
+	BoxTagStats map[string]int             `json:"box_tag_stats,omitempty"`
 }
 
 func LoadBoosters(filePath string) (*BoosterCatalog, error) {
@@ -59,6 +68,9 @@ func LoadBoosters(filePath string) (*BoosterCatalog, error) {
 	}
 	if c.Boxes == nil {
 		c.Boxes = map[uint32]BoosterBox{}
+	}
+	if c.SkinItems == nil {
+		c.SkinItems = map[uint32]SkinStorageItem{}
 	}
 	return &c, nil
 }
@@ -90,8 +102,32 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 	cat := &BoosterCatalog{
 		Source:      a.Snapshot(),
 		Boxes:       map[uint32]BoosterBox{},
+		SkinItems:   map[uint32]SkinStorageItem{},
 		TypeCounts:  map[string]int{},
 		BoxTagStats: map[string]int{},
+	}
+
+	skinCatByID := map[uint32]byte{}
+	if skinIdx, err := ResolveScript(a, "list/skin.lst"); err == nil {
+		if skinRows, err := ParseIndex(skinIdx.Cells); err == nil {
+			for _, r := range skinRows {
+				low := strings.ToLower(r.Path)
+				switch {
+				case strings.Contains(low, "damagefont"):
+					skinCatByID[r.ID] = 0
+				case strings.Contains(low, "skillcutscene"):
+					skinCatByID[r.ID] = 1
+				case strings.Contains(low, "partyrequestframe"):
+					skinCatByID[r.ID] = 6
+				case strings.Contains(low, "partyframe"):
+					skinCatByID[r.ID] = 2
+				case strings.Contains(low, "instantemoticon"):
+					skinCatByID[r.ID] = 3
+				case strings.Contains(low, "weaponskin"):
+					skinCatByID[r.ID] = 4
+				}
+			}
+		}
 	}
 
 	stkIdx, err := ResolveScript(a, "list/stackable.lst")
@@ -182,6 +218,24 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 		}
 		if stType != "" {
 			stkTypes[id] = stType
+		}
+
+		// Record [action type] `[add skin storage]` <skinID> items (Damage Fonts, Cut-Scenes, Party Frames, Emoticons).
+		if actCells := sectionCells(s.Cells, "[action type]"); len(actCells) >= 2 {
+			for i := 0; i+1 < len(actCells); i++ {
+				if actCells[i].Type == 6 && strings.EqualFold(actCells[i].Text, "[add skin storage]") && actCells[i+1].Type == 0 && actCells[i+1].Value > 0 {
+					skinID := uint32(actCells[i+1].Value)
+					skinCat, ok := skinCatByID[skinID]
+					if !ok && hasSection(s.Cells, "[damage font info]") {
+						skinCat = 0
+						ok = true
+					}
+					if ok {
+						cat.SkinItems[id] = SkinStorageItem{Category: skinCat, Index: skinID}
+					}
+					break
+				}
+			}
 		}
 
 		// Detect box sections regardless of [stackable type] spelling.
@@ -297,22 +351,31 @@ func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) booster
 	if sn := sectionCells(cells, "[booster selection num]"); len(sn) > 0 && sn[0].Type == 0 {
 		selNum = int(sn[0].Value)
 	}
-	// Detect 2-level category layouts: [booster category num] 2 <mainCount> <subCount>
-	// where each [booster select category] begins with <mainIdx> <subIdx>.
-	catDepth := 0
-	subCount := int32(0)
-	if cn := intValues(sectionCells(cells, "[booster category num]")); len(cn) >= 3 && cn[0] == 2 && cn[2] > 0 {
-		catDepth = 2
-		subCount = cn[2]
-	}
 	cats := map[uint32][]BoosterAward{}
 	for _, blk := range extractSubBlocks(cells, "[booster select category]") {
 		if len(blk) < 2 || blk[0].Type != 0 {
 			continue
 		}
-		cid := uint32(blk[0].Value)
-		if catDepth == 2 && len(blk) >= 2 && blk[1].Type == 0 && blk[1].Value >= 0 {
-			cid = uint32(blk[0].Value*subCount + blk[1].Value)
+		// Collect all leading category coordinate ints before the first section tag.
+		// 1D boxes: [dim0] -> cid = dim0
+		// 2D boxes (e.g. [booster category num] 2 16 5): [dim0, dim1] -> cid = dim0 | (dim1<<8)
+		// Directly matches US100 CMD 160 wire bytes [6]=dim0, [7]=dim1 (LittleEndian uint16).
+		var dims []uint32
+		for _, tok := range blk {
+			if tok.Type != 0 {
+				break
+			}
+			dims = append(dims, uint32(tok.Value))
+		}
+		if len(dims) == 0 {
+			continue
+		}
+		cid := dims[0]
+		if len(dims) >= 2 {
+			cid = (dims[0] & 0xff) | ((dims[1] & 0xff) << 8)
+		}
+		if len(dims) >= 3 {
+			cid |= (dims[2] & 0xff) << 16
 		}
 		var items []BoosterAward
 		// [avatar]: 4-tuples (template, qty, flag, param)

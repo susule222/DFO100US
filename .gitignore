@@ -16,6 +16,11 @@
 /server-us100/configs/server.local.json
 /server-us100/configs/launcher.local.json
 
+# C/C++ compiler intermediates
+*.obj
+*.lib
+*.exp
+
 # OS / editor / temp files
 *.log
 *.tmp

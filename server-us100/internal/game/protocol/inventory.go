@@ -47,12 +47,44 @@ func itemRows(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 // US224 uses 0xb1 bytes per ordinary (space 0) row in both client
 // readers: NOTI13 at 1434fc638 and NOTI14 at 1435109b0. Keep the
 // reference row builders unchanged for other record types and fixtures.
+//
+// In NOTI13 space 0 (0x1434fc195..0x1434fc2a5), the client reads u8 space=0,
+// then u16 expandedSlots (shifted right by 3 to compute expanded rows: 0, 8, 16),
+// then u16 rowCount followed by 0xb1-byte rows.
 func US224InventoryRestore(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
-	return us224OrdinaryList([]byte{0, 0, 0}, rows)
+	return US224InventoryRestoreWithExpansion(0, rows)
+}
+
+func US224InventoryRestoreWithExpansion(expandedSlots uint16, rows [][CurrentItemRecordSize]byte) ([]byte, error) {
+	return us224OrdinaryList(add16([]byte{0}, expandedSlots), rows)
 }
 
 func US224InventoryUpdate(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 	return us224OrdinaryList([]byte{0}, rows)
+}
+
+// CmdExpandInventory is CMD 422 (0x1a6), sent by DFO_unpacked.exe (0x1439b1136)
+// when using an inventory expansion ticket from the bag: u16 slot.
+const CmdExpandInventory uint16 = 422
+
+// DecodeExpandInventory decodes CMD 422 (u16 slot + Blowfish 8-byte zero padding).
+func DecodeExpandInventory(p []byte) (uint16, error) {
+	if len(p) != 2 && len(p) != 8 {
+		return 0, fmt.Errorf("expand inventory requires 2 or 8 bytes, got %d", len(p))
+	}
+	for _, b := range p[2:] {
+		if b != 0 {
+			return 0, fmt.Errorf("unexpected expand inventory padding")
+		}
+	}
+	return binary.LittleEndian.Uint16(p[:2]), nil
+}
+
+// InventoryExpandNoti encodes NOTI 66 (0x42) subType 12 (0x000c), verified at
+// DFO_unpacked.exe 0x1434ef2b0 -> 0x1434ef96b:
+//   u16 subType=12, u16 expandedSlots (8 = stage 1/+1 row, 16 = stage 2/+2 rows).
+func InventoryExpandNoti(expandedSlots uint16) []byte {
+	return add16(add16(nil, 12), expandedSlots)
 }
 
 // us224AvatarList encodes US224 space 1 (Avatar Inventory) rows.

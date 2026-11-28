@@ -50,11 +50,7 @@ func (c *EquipmentCatalog) BagAdventurerFame(b Bag) uint32 {
 		if item.Template == 0 {
 			continue
 		}
-		var upgrade byte
-		if item.RentalUntil > 0 {
-			upgrade = 7
-		}
-		total += c.wornEquipmentFame(item.Slot, item.Template, upgrade)
+		total += c.wornEquipmentFame(item.Slot, item.Template, item.EffectiveUpgrade())
 	}
 	for _, item := range b.WornAvatars {
 		if item.Template == 0 {

@@ -47,13 +47,16 @@ func TestEventProtocolWireLayouts(t *testing.T) {
 	if n := Ev515EverydayConnectStatus(true, true, 5, 0x1e, 0x20); len(n) != 11 || n[0] != 1 || n[1] != 1 || n[2] != 5 {
 		t.Fatalf("unexpected NOTI 2215: len=%d hex=%x", len(n), n)
 	}
-	if n := Ev619DailyCheckStatus(3600, 0x3, 0, 5, 0x1); len(n) != 20 || binary.LittleEndian.Uint32(n[4:8]) != 3600 || n[16] != 5 || n[17] != 1 {
-		t.Fatalf("unexpected NOTI 2161: len=%d hex=%x", len(n), n)
+	if n := Ev619DailyCheckStatus(3600, 0x3, 0, 5, 0x1); len(n) != 20 || binary.LittleEndian.Uint32(n[4:8]) != 3600 || n[8] != 0 || binary.LittleEndian.Uint32(n[12:16]) != 0x3 || n[16] != 5 || n[17] != 1 {
+		t.Fatalf("unexpected NOTI 2161 (unclaimed): len=%d hex=%x", len(n), n)
+	}
+	if n := Ev619DailyCheckStatus(3600, 0x7, 1, 3, 0x0); len(n) != 20 || n[8] != 1 || binary.LittleEndian.Uint32(n[12:16]) != 0x7 {
+		t.Fatalf("unexpected NOTI 2161 (claimed): len=%d hex=%x", len(n), n)
 	}
 	if n := Ev614MelodyStatus([4]byte{3, 1, 200, 20}, [4]byte{1, 0, 0, 0}, 4, 0x1); len(n) != 10 || n[8] != 4 || n[9] != 1 {
 		t.Fatalf("unexpected NOTI 2134: len=%d hex=%x", len(n), n)
 	}
-	if n := Ev602RiaCubeLabStatus(Ev602CubeLabState{EnergyPoints: 100, CurrentItemIdx: -1}); len(n) != 52 || binary.LittleEndian.Uint32(n[0x2c:0x30]) != 100 {
-		t.Fatalf("unexpected NOTI 1949: len=%d", len(n))
+	if n := Ev602RiaCubeLabStatus(Ev602CubeLabState{SavedItemIdx: 2, PickedIndices: []byte{0, 2}, TransferredMask: 1, EnergyPoints: 100, CurrentItemIdx: -1}); len(n) != 52 || n[2] != 2 || n[3] != 2 || n[4] != 0 || n[5] != 2 || binary.LittleEndian.Uint32(n[0x1c:0x20]) != 1 || binary.LittleEndian.Uint32(n[0x2c:0x30]) != 100 {
+		t.Fatalf("unexpected NOTI 1949: len=%d hex=%x", len(n), n)
 	}
 }
