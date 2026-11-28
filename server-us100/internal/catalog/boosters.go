@@ -297,12 +297,23 @@ func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) booster
 	if sn := sectionCells(cells, "[booster selection num]"); len(sn) > 0 && sn[0].Type == 0 {
 		selNum = int(sn[0].Value)
 	}
+	// Detect 2-level category layouts: [booster category num] 2 <mainCount> <subCount>
+	// where each [booster select category] begins with <mainIdx> <subIdx>.
+	catDepth := 0
+	subCount := int32(0)
+	if cn := intValues(sectionCells(cells, "[booster category num]")); len(cn) >= 3 && cn[0] == 2 && cn[2] > 0 {
+		catDepth = 2
+		subCount = cn[2]
+	}
 	cats := map[uint32][]BoosterAward{}
 	for _, blk := range extractSubBlocks(cells, "[booster select category]") {
 		if len(blk) < 2 || blk[0].Type != 0 {
 			continue
 		}
 		cid := uint32(blk[0].Value)
+		if catDepth == 2 && len(blk) >= 2 && blk[1].Type == 0 && blk[1].Value >= 0 {
+			cid = uint32(blk[0].Value*subCount + blk[1].Value)
+		}
 		var items []BoosterAward
 		// [avatar]: 4-tuples (template, qty, flag, param)
 		for _, sub := range extractSubBlocks(blk, "[avatar]") {
@@ -317,11 +328,13 @@ func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) booster
 				}
 			}
 		}
-		// [equipment]: 4-tuples (template, qty, upgrade/flag, param) or 2-tuples (template, qty)
+		// [equipment]: 4-tuples (template, qty, upgrade/flag, param) or 2-tuples (template, qty).
+		// Note: even-item 2-tuple lists have len(nums)%4 == 0, so also inspect nums[2]:
+		// a template ID (>= 1000) at index 2 proves 2-tuple layout.
 		for _, sub := range extractSubBlocks(blk, "[equipment]") {
 			nums := intValues(sub)
 			stride := 4
-			if len(nums)%4 != 0 && len(nums)%2 == 0 {
+			if len(nums)%2 == 0 && (len(nums)%4 != 0 || (len(nums) >= 4 && nums[2] >= 1000)) {
 				stride = 2
 			}
 			for i := 0; i+stride-1 < len(nums); i += stride {
@@ -359,7 +372,7 @@ func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) booster
 		for _, sub := range extractSubBlocks(blk, "[creature]") {
 			nums := intValues(sub)
 			stride := 4
-			if len(nums)%4 != 0 && len(nums)%2 == 0 {
+			if len(nums)%2 == 0 && (len(nums)%4 != 0 || (len(nums) >= 4 && nums[2] >= 1000)) {
 				stride = 2
 			}
 			for i := 0; i+stride-1 < len(nums); i += stride {
@@ -373,7 +386,7 @@ func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) booster
 			}
 		}
 		if len(items) > 0 {
-			cats[cid] = items
+			cats[cid] = append(cats[cid], items...)
 		}
 	}
 	return BoosterBox{Mode: "sel", SelectNum: selNum, Categories: cats}

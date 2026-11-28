@@ -52,14 +52,18 @@ type persistedEventUIState struct {
 	Ev614LineMask     byte    `json:"ev614_line_mask"`
 
 	// Event 602: Ria's Special Cube Lab II
-	Ev602WeekKey       string `json:"ev602_week_key"`
-	Ev602Energy        uint32 `json:"ev602_energy"`
-	Ev602SearchesUsed  byte   `json:"ev602_searches_used"`
-	Ev602PendingIdx    int32  `json:"ev602_pending_idx"`
-	Ev602SavedItem     uint32 `json:"ev602_saved_item"`
-	Ev602Transferred   bool   `json:"ev602_transferred"`
-	Ev602Contributions uint32 `json:"ev602_contributions"`
-	Ev602MilestoneMask uint32 `json:"ev602_milestone_mask"`
+	Ev602WeekKey         string `json:"ev602_week_key"`
+	Ev602LastDay         string `json:"ev602_last_day,omitempty"`
+	Ev602Energy          uint32 `json:"ev602_energy"`
+	Ev602SearchesUsed    byte   `json:"ev602_searches_used"`
+	Ev602PendingIdx      int32  `json:"ev602_pending_idx"`
+	Ev602SavedIdx        int32  `json:"ev602_saved_idx"`
+	Ev602SavedItem       uint32 `json:"ev602_saved_item"`
+	Ev602PickedIndices   []byte `json:"ev602_picked_indices,omitempty"`
+	Ev602Transferred     bool   `json:"ev602_transferred"`
+	Ev602TransferredMask uint32 `json:"ev602_transferred_mask,omitempty"`
+	Ev602Contributions   uint32 `json:"ev602_contributions"`
+	Ev602MilestoneMask   uint32 `json:"ev602_milestone_mask"`
 
 	// Event 367: Time Attendance
 	Ev367LastClaimDay string `json:"ev367_last_claim_day"`
@@ -72,11 +76,11 @@ type eventRewardItem struct {
 
 // Exact PVF reward tables extracted from US100 Script.pvf .evt files.
 var (
-	// Event 520 (ReverseHotTime / foolsdayhottimewindow.xui)
+	// Event 520 (ReverseHotTime / foolsdayhottimewindow.xui): 0-indexed slots
+	// verified at 0x1404d4e71..0x1404d4f12 -> 0x1404216b0 (0 = 5M, 1 = 10M).
 	ev520Rewards = map[uint32]eventRewardItem{
 		0: {Template: 10333092, Count: 1},
-		1: {Template: 10333092, Count: 1},
-		2: {Template: 10333113, Count: 1},
+		1: {Template: 10333113, Count: 1},
 	}
 
 	// Event 512 (WelcomeMiningEvent.evt [mining reward info]: stage*10 + node)
@@ -186,10 +190,31 @@ func (w *worldSession) loadEventUIState(now time.Time) persistedEventUIState {
 	}
 	if st.Ev602WeekKey != week {
 		st.Ev602WeekKey = week
+		st.Ev602LastDay = day
 		st.Ev602Energy = 100
 		st.Ev602SearchesUsed = 0
 		st.Ev602PendingIdx = -1
+		st.Ev602SavedIdx = -1
+		st.Ev602SavedItem = 0
+		st.Ev602PickedIndices = nil
 		st.Ev602Transferred = false
+	} else {
+		if st.Ev602LastDay != day {
+			st.Ev602LastDay = day
+			st.Ev602SearchesUsed = 0
+		}
+		if st.Ev602SavedItem == 0 {
+			st.Ev602SavedIdx = -1
+		} else if st.Ev602SavedIdx < 0 || int(st.Ev602SavedIdx) >= len(ev602CubePool) || ev602CubePool[st.Ev602SavedIdx] != st.Ev602SavedItem {
+			// Migrate legacy persisted Ev602SavedItem template to pool index.
+			st.Ev602SavedIdx = -1
+			for i, tmpl := range ev602CubePool {
+				if tmpl == st.Ev602SavedItem {
+					st.Ev602SavedIdx = int32(i)
+					break
+				}
+			}
+		}
 	}
 	return st
 }
@@ -211,16 +236,25 @@ func ev388MissionRows(st persistedEventUIState) []protocol.Ev388MissionRow {
 }
 
 func ev602Packet(st persistedEventUIState) []byte {
+	savedIdx := st.Ev602SavedIdx
+	if st.Ev602SavedItem == 0 {
+		savedIdx = -1
+	}
+	mask := st.Ev602TransferredMask
+	if st.Ev602Transferred {
+		mask |= 1
+	}
 	return protocol.Ev602RiaCubeLabStatus(protocol.Ev602CubeLabState{
-		HasPendingItem:  st.Ev602PendingIdx >= 0,
+		DayIndex:        0,
+		HasPendingItem:  st.Ev602PendingIdx >= 0 || savedIdx >= 0,
+		SavedItemIdx:    savedIdx,
+		PickedIndices:   st.Ev602PickedIndices,
+		TransferredMask: mask,
 		DailySearches:   st.Ev602SearchesUsed,
 		MilestoneMask:   st.Ev602MilestoneMask,
 		TimerSeconds:    900,
 		EnergyPoints:    st.Ev602Energy,
 		CurrentItemIdx:  st.Ev602PendingIdx,
-		TransferredWeek: st.Ev602Transferred,
-		SavedItemID:     st.Ev602SavedItem,
-		Contributions:   st.Ev602Contributions,
 	})
 }
 
@@ -239,7 +273,7 @@ func (w *worldSession) interactiveEventInitPackets(pol events.Policy, now time.T
 	if pol.ExpEventEnabled && pol.ExpMultiplier > 1.0 {
 		out = append(out, outboundPacket{
 			"event_520_status", 0, protocol.NotiEv520ReverseHotTime,
-			protocol.Ev520ReverseHotTimeStatus(st.Ev520AccumSec, st.Ev520Claimed1, st.Ev520Claimed2, 1),
+			protocol.Ev520ReverseHotTimeStatus(st.Ev520AccumSec, st.Ev520Claimed1, st.Ev520Claimed2, 100),
 		})
 	}
 	if pol.Extra.SeriaWelcomeEnabled {
@@ -374,22 +408,22 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 	}
 
 	switch req.EventID {
-	case uint32(eventIDExpHotTime): // 520: Reverse Hot Time
+	case uint32(eventIDExpHotTime): // 520: Reverse Hot Time (0-indexed: 0=5M, 1=10M)
 		slot := arg(0)
-		if slot == 0 {
-			slot = 1
-		}
 		reward, ok := ev520Rewards[slot]
 		if !ok {
 			return []outboundPacket{{"event_520_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
 		}
-		already := (slot == 1 && st.Ev520Claimed1) || (slot == 2 && st.Ev520Claimed2)
+		already := (slot == 0 && st.Ev520Claimed1) || (slot == 1 && st.Ev520Claimed2)
 		if !already {
-			key := fmt.Sprintf("ev520_claim:%d", slot)
+			key := "ev520_claim:5m"
+			if slot == 1 {
+				key = "ev520_claim:10m"
+			}
 			if err := grantItem(key, "us100-ev520-reward-v1", reward); err != nil {
 				return nil, err
 			}
-			if slot == 1 {
+			if slot == 0 {
 				st.Ev520Claimed1 = true
 			} else {
 				st.Ev520Claimed2 = true
@@ -401,7 +435,7 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 		ackParams[1] = reward.Template
 		out = append(out,
 			outboundPacket{"event_520_ack", 1, protocol.CmdEventAction, protocol.EventActionSuccess(req.EventID, ackParams)},
-			outboundPacket{"event_520_status", 0, protocol.NotiEv520ReverseHotTime, protocol.Ev520ReverseHotTimeStatus(st.Ev520AccumSec, st.Ev520Claimed1, st.Ev520Claimed2, 1)},
+			outboundPacket{"event_520_status", 0, protocol.NotiEv520ReverseHotTime, protocol.Ev520ReverseHotTimeStatus(st.Ev520AccumSec, st.Ev520Claimed1, st.Ev520Claimed2, 100)},
 		)
 		return out, nil
 
@@ -489,39 +523,46 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 	case uint32(eventIDFatigueBurning): // 619: Time Guide Stone Daily Check
 		sub := arg(0)
 		var ackParams [10]uint32
-		if cmdID == protocol.CmdEventQuery && sub == 2 {
-			// Reset daily pick pool
-			st.Ev619PickedMask = 0
-			st.Ev619ClaimedDay = false
-			_ = w.saveEventUIState(st)
-		} else if sub == 1 {
-			// Daily random gift claim
-			pickIdx := -1
-			for i := 0; i < len(ev619DailyPool); i++ {
-				if (st.Ev619PickedMask & (1 << uint(i))) == 0 {
-					pickIdx = i
-					break
-				}
-			}
-			if pickIdx == -1 {
+		if cmdID == protocol.CmdEventQuery {
+			switch sub {
+			case 2:
+				// CMD 681 sub=2 (0x14048c510): Reset daily pick pool
 				st.Ev619PickedMask = 0
-				pickIdx = 0
+				st.Ev619ClaimedDay = false
+				_ = w.saveEventUIState(st)
+			case 1:
+				// CMD 681 sub=1 (0x14048c560): Query current Event 619 status (no mutation)
 			}
-			reward := ev619DailyPool[pickIdx]
-			key := fmt.Sprintf("ev619_daily:%s:%d", day, st.Ev619TotalDays+1)
-			if err := grantItem(key, "us100-ev619-daily-v1", reward); err != nil {
-				return nil, err
+		} else if sub == 1 {
+			// CMD 680 sub=1 (0x14048c4a0): Daily random gift claim
+			if !st.Ev619ClaimedDay {
+				pickIdx := -1
+				for i := 0; i < len(ev619DailyPool); i++ {
+					if (st.Ev619PickedMask & (1 << uint(i))) == 0 {
+						pickIdx = i
+						break
+					}
+				}
+				if pickIdx == -1 {
+					st.Ev619PickedMask = 0
+					pickIdx = 0
+				}
+				reward := ev619DailyPool[pickIdx]
+				key := fmt.Sprintf("ev619_daily:%s:%d", day, st.Ev619TotalDays+1)
+				if err := grantItem(key, "us100-ev619-daily-v1", reward); err != nil {
+					return nil, err
+				}
+				st.Ev619PickedMask |= 1 << uint(pickIdx)
+				st.Ev619ClaimedDay = true
+				st.Ev619LastDay = day
+				st.Ev619TotalDays++
+				_ = w.saveEventUIState(st)
+				ackParams[0] = 1
+				ackParams[5] = uint32(pickIdx)
+				out = append(out, outboundPacket{"event_619_ack", 1, protocol.CmdEventAction, protocol.EventActionSuccess(req.EventID, ackParams)})
 			}
-			st.Ev619PickedMask |= 1 << uint(pickIdx)
-			st.Ev619ClaimedDay = true
-			st.Ev619LastDay = day
-			st.Ev619TotalDays++
-			_ = w.saveEventUIState(st)
-			ackParams[0] = 1
-			ackParams[5] = uint32(pickIdx)
-			out = append(out, outboundPacket{"event_619_ack", 1, protocol.CmdEventAction, protocol.EventActionSuccess(req.EventID, ackParams)})
 		} else if sub == 2 {
-			// Bonus milestone claim (0 = 5x, 1 = 10x)
+			// CMD 680 sub=2 (0x14048c430): Bonus milestone claim (0 = 5x, 1 = 10x)
 			bIdx := int(arg(1))
 			if bIdx >= 0 && bIdx < len(ev619BonusRewards) && (st.Ev619BonusMask&(1<<uint(bIdx))) == 0 {
 				reward := ev619BonusRewards[bIdx]
@@ -579,29 +620,58 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 
 	case uint32(eventIDDropGoldBoost): // 602: Ria's Special Cube Lab II
 		sub := arg(0)
+		addPicked := func(idx byte) {
+			for _, v := range st.Ev602PickedIndices {
+				if v == idx {
+					return
+				}
+			}
+			if len(st.Ev602PickedIndices) < 20 {
+				st.Ev602PickedIndices = append(st.Ev602PickedIndices, idx)
+			}
+		}
 		if cmdID == protocol.CmdEventQuery {
 			switch sub {
-			case 1: // Search cube
+			case 1: // Search cube (CMD 681 sub=1, 0x140bdf370)
 				if st.Ev602SearchesUsed < 3 {
-					pick := int32(int(st.Ev602SearchesUsed+byte(st.Ev602Contributions)) % len(ev602CubePool))
+					used := make(map[byte]bool, len(st.Ev602PickedIndices))
+					for _, v := range st.Ev602PickedIndices {
+						used[v] = true
+					}
+					pick := int32(-1)
+					for i := 0; i < len(ev602CubePool); i++ {
+						if !used[byte(i)] {
+							pick = int32(i)
+							break
+						}
+					}
+					if pick < 0 {
+						pick = int32(int(st.Ev602SearchesUsed+byte(st.Ev602Contributions)) % len(ev602CubePool))
+					}
 					st.Ev602PendingIdx = pick
+					addPicked(byte(pick))
 					st.Ev602SearchesUsed++
 					_ = w.saveEventUIState(st)
 				}
-			case 2: // Save pending item (arg1 == 1) or exclude
+			case 2: // Save pending item (arg1 == 1, 0x140bdf310) or exclude (arg1 == 0, 0x140bdf260)
 				if st.Ev602PendingIdx >= 0 && int(st.Ev602PendingIdx) < len(ev602CubePool) {
+					addPicked(byte(st.Ev602PendingIdx))
 					if arg(1) == 1 {
+						st.Ev602SavedIdx = st.Ev602PendingIdx
 						st.Ev602SavedItem = ev602CubePool[st.Ev602PendingIdx]
 					}
 					st.Ev602PendingIdx = -1
 					_ = w.saveEventUIState(st)
 				}
-			case 3: // Query current state (no mutation)
+			case 3: // Query current state (CMD 681 sub=3, 0x140bdf3c0)
 			}
 		} else {
 			switch sub {
-			case 1: // Transfer saved item into inventory
+			case 1: // Transfer saved item into inventory (CMD 680 sub=1, 0x140bdf2c0)
 				tmpl := st.Ev602SavedItem
+				if tmpl == 0 && st.Ev602SavedIdx >= 0 && int(st.Ev602SavedIdx) < len(ev602CubePool) {
+					tmpl = ev602CubePool[st.Ev602SavedIdx]
+				}
 				if tmpl == 0 {
 					tmpl = ev602CubePool[0]
 				}
@@ -611,11 +681,13 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 						return nil, err
 					}
 					st.Ev602Transferred = true
+					st.Ev602TransferredMask |= 1
+					st.Ev602SavedIdx = -1
 					st.Ev602SavedItem = 0
 					st.Ev602Contributions++
 					_ = w.saveEventUIState(st)
 				}
-			case 2: // Claim contribution milestone
+			case 2: // Claim contribution milestone (CMD 680 sub=2, 0x140bdf1f0)
 				mIdx := arg(1)
 				if mIdx < 4 && (st.Ev602MilestoneMask&(1<<mIdx)) == 0 {
 					tmpl := ev602CubePool[int(mIdx)%len(ev602CubePool)]
