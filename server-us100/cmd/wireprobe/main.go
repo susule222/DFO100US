@@ -98,8 +98,27 @@ func generalOptionsOnEntry(store *storage.Store, account int64) ([]byte, error) 
 	return append(p, 0, 0, 0, 0, 0, 0, 0, 0), nil
 }
 
+const (
+	characterOptionsAuraMigratedTable = "character_options_aura_v1"
+	// characterOptionShowAuraIndex is CharacterOption[98] (0x62, byte offset 196),
+	// mapped to optiongrapic.xui checkbox ID="121" (EventSharingControl="auraeffect").
+	// DFO_unpacked.exe CTownUser::UpdateAura (0x143beefc8 -> 0x14378dc80 -> 0x143783e00)
+	// checks (CharacterOption[98] == 1) and stores it in [CTownUser+0x22fc]; both
+	// RenderAuraBack (0x143bf9550) and RenderAuraFront (0x143bf9a20) gate on it.
+	// OptionManager::ctor (0x1450fc2f0) fills all 512 bytes with 0xFF and NOTI 376
+	// (0x143792295) does not normalize 0xFFFF to 1, so leaving NOTI 376 unset or 0xFFFF
+	// hides all auras in both Town and the Avatar Window preview mannequin.
+	characterOptionShowAuraIndex = 98
+)
+
 func characterOptionKey(account, role int64) string {
 	return fmt.Sprintf("%d/%d", account, role)
+}
+
+func defaultCharacterOptionsTable() []byte {
+	table := bytes.Repeat([]byte{0xff}, characterOptionSize)
+	binary.LittleEndian.PutUint16(table[characterOptionShowAuraIndex*2:], 1)
+	return table
 }
 
 func saveCharacterOptions(store *storage.Store, account, role int64, p []byte) error {
@@ -114,23 +133,61 @@ func saveCharacterOptions(store *storage.Store, account, role int64, p []byte) e
 	return store.Database().Mutate(func(tx *db100.Tx) error {
 		var old []byte
 		ok, err := tx.Get(characterOptionsTable, key, &old)
-		if err != nil || (ok && bytes.Equal(old, p[4:516])) {
+		if err != nil {
 			return err
 		}
-		return tx.Put(characterOptionsTable, key, p[4:516])
+		if !ok || !bytes.Equal(old, p[4:516]) {
+			if err := tx.Put(characterOptionsTable, key, p[4:516]); err != nil {
+				return err
+			}
+		}
+		var migrated bool
+		mok, err := tx.Get(characterOptionsAuraMigratedTable, key, &migrated)
+		if err != nil {
+			return err
+		}
+		if !mok || !migrated {
+			return tx.Put(characterOptionsAuraMigratedTable, key, true)
+		}
+		return nil
 	})
 }
 
 func loadCharacterOptions(store *storage.Store, account, role int64) ([]byte, error) {
+	key := characterOptionKey(account, role)
 	var saved []byte
-	ok, err := store.Database().Get(characterOptionsTable, characterOptionKey(account, role), &saved)
-	if err != nil || !ok {
+	ok, err := store.Database().Get(characterOptionsTable, key, &saved)
+	if err != nil {
 		return nil, err
+	}
+	if !ok {
+		return append(binary.LittleEndian.AppendUint32(nil, characterOptionSize), defaultCharacterOptionsTable()...), nil
 	}
 	if len(saved) != characterOptionSize {
 		return nil, fmt.Errorf("invalid stored v2.24 preference size")
 	}
-	return append(binary.LittleEndian.AppendUint32(nil, characterOptionSize), saved...), nil
+	table := append([]byte(nil), saved...)
+	var migrated bool
+	mok, err := store.Database().Get(characterOptionsAuraMigratedTable, key, &migrated)
+	if err != nil {
+		return nil, err
+	}
+	auraVal := binary.LittleEndian.Uint16(table[characterOptionShowAuraIndex*2:])
+	needRepair := auraVal == 0xffff || ((!mok || !migrated) && auraVal == 0)
+	if needRepair {
+		binary.LittleEndian.PutUint16(table[characterOptionShowAuraIndex*2:], 1)
+		_ = store.Database().Mutate(func(tx *db100.Tx) error {
+			if err := tx.Put(characterOptionsTable, key, table); err != nil {
+				return err
+			}
+			return tx.Put(characterOptionsAuraMigratedTable, key, true)
+		})
+	} else if !mok || !migrated {
+		_ = store.Database().Mutate(func(tx *db100.Tx) error {
+			return tx.Put(characterOptionsAuraMigratedTable, key, true)
+		})
+	}
+	return append(binary.LittleEndian.AppendUint32(nil, characterOptionSize), table...), nil
 }
 
 // Target equipment is a per-character display list, never an item grant or move.
@@ -3006,6 +3063,11 @@ func main() {
 					} else {
 						plan.GeneralOptions = options
 					}
+					if charOpts, readErr := loadCharacterOptions(characters.Store, developmentAccount, role.ID); readErr != nil {
+						event(map[string]any{"kind": "character_options_read_error", "character_id": role.ID, "error": readErr.Error()})
+					} else {
+						plan.CharacterOptions = charOpts
+					}
 					if seenBody, seenErr := seenCinematicsOnEntry(characters.Store, developmentAccount); seenErr != nil {
 						event(map[string]any{"kind": "seen_cinematics_read_error", "error": seenErr.Error()})
 					} else {
@@ -3063,13 +3125,6 @@ func main() {
 						event(map[string]any{"kind": "guide_target_read_error", "character_id": role.ID, "error": err.Error()})
 					} else if ok {
 						packets = append(packets, outboundPacket{"guide_targets_restored", 0, 2304, goals.payload()})
-					}
-					// Restore after skill initialization; omit a missing row so new
-					// characters retain the client's own defaults.
-					if options, readErr := loadCharacterOptions(characters.Store, developmentAccount, role.ID); readErr != nil {
-						event(map[string]any{"kind": "character_options_read_error", "character_id": role.ID, "error": readErr.Error()})
-					} else if options != nil {
-						packets = append(packets, outboundPacket{"character_options_restored", 0, 376, options})
 					}
 					var entryDailyMileage uint32
 					if worldState != nil {

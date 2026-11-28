@@ -130,3 +130,23 @@ func TestCharacterListV224EncodesAppearanceRows(t *testing.T) {
 		t.Fatal("accepted duplicate appearance slot")
 	}
 }
+
+func TestCharacterListV224ShowAuraFlag(t *testing.T) {
+	p, err := CharacterListV224(2, []CharacterRow{
+		{Slot: 0, Name: "us100a", Level: 100},
+		{Slot: 1, Name: "us100b", Level: 100, HideAura: true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Row 0 starts at byte 15, row width for 6-byte name with 0 appearance rows is 101 bytes.
+	// ShowAura u16 (0x143807cc2) is at row-relative offset 84 (right after u32@80, before u8x3@86).
+	row0 := 15
+	row1 := 15 + 101
+	if got := binary.LittleEndian.Uint16(p[row0+84:]); got != 1 {
+		t.Fatalf("default roster row showAura = %d, want 1", got)
+	}
+	if got := binary.LittleEndian.Uint16(p[row1+84:]); got != 0 {
+		t.Fatalf("HideAura roster row showAura = %d, want 0", got)
+	}
+}

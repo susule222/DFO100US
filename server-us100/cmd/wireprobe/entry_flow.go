@@ -33,6 +33,7 @@ type entryPayloads struct {
 	ItemLocks                                                                 []byte
 	AccountMaterials                                                          []byte
 	GeneralOptions                                                            []byte
+	CharacterOptions                                                          []byte
 	SeenCinematics                                                            []byte
 	StoryDigestLevel                                                          []byte
 	AccountOptions                                                            []byte
@@ -92,6 +93,9 @@ func (p entryPayloads) packets() []outboundPacket {
 		{"account_materials_restored", 0, 1140, p.AccountMaterials},
 		// Restore the saved scale before the first town scene, not after world entry.
 		{"general_options_initialized", 0, 173, p.GeneralOptions},
+		// Restore per-character options (NOTI 376) after Basic/Skills and before first town spawn
+		// so CharacterOption[98] (Show Aura Effect, 0x14378dc80/0x143783e00) is active on first render.
+		{"character_options_restored", 0, 376, p.CharacterOptions},
 		// Restore seen-cinematic bitmask (NOTI 1352) so Option 82 ("跳过所有过场动画") takes effect.
 		{"seen_cinematics_initialized", 0, 1352, p.SeenCinematics},
 		// Restore StoryDigest seen level (NOTI 1370) before NOTI 124 so StoryDigest/MoviePlayer does not replay on every client launch.

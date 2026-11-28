@@ -109,6 +109,7 @@ type CharacterRow struct {
 	Equipment        []Equipment
 	FatigueRemaining uint16
 	FatigueBonus     uint16
+	HideAura         bool
 }
 
 // Native list parser 0x145637a20, row parser 0x14563e280. Unknown scalar
@@ -264,7 +265,13 @@ func CharacterListV224(capacity uint16, roles []CharacterRow) ([]byte, error) {
 		p = add32(p, 0)
 		p = append(p, make([]byte, 26)...)
 		p = add32(p, 0)
-		p = add16(p, 0)
+		// 0x143807cc2..0x143807cd9 reads u16 showAura, sets [UserInfo+0x49a] = (v == 1),
+		// and calls CTownUser::SetShowAura(v == 1) for the character-select preview.
+		showAura := uint16(1)
+		if r.HideAura {
+			showAura = 0
+		}
+		p = add16(p, showAura)
 		p = append(p, 0, 0, 0)
 		p = add32(p, 0)
 		p = add16(p, r.FatigueRemaining)

@@ -145,6 +145,7 @@ func (s *Service) ListWithFatigue(ctx context.Context, account int64, fatigue *F
 			if bag, bagErr := inventory.ReadBag(c.State); bagErr == nil {
 				row.Equipment = mode0Appearance(bag)
 			}
+			row.HideAura = s.isAuraExplicitlyHidden(account, c.ID)
 		}
 		rows = append(rows, row)
 	}
@@ -283,6 +284,28 @@ func (s *Service) equippedTownSkins(accountID, charID int64) (partyFrame, partyR
 		weaponSkin = slots[0]
 	}
 	return partyFrame, partyReqFrame, weaponSkin
+}
+
+// isAuraExplicitlyHidden reports whether the player explicitly turned off
+// CharacterOption[98] (0x62, "Show Aura Effect" / optiongrapic.xui ID=121)
+// after the aura-default migration. Characters without the migration marker
+// default to showing their aura so legacy 0xFFFF/0 rows never hide auras.
+func (s *Service) isAuraExplicitlyHidden(accountID, charID int64) bool {
+	if s == nil || s.Store == nil || s.Store.Database() == nil || charID == 0 {
+		return false
+	}
+	key := fmt.Sprintf("%d/%d", accountID, charID)
+	var migrated bool
+	ok, err := s.Store.Database().Get("character_options_aura_v1", key, &migrated)
+	if err != nil || !ok || !migrated {
+		return false
+	}
+	var saved []byte
+	ok, err = s.Store.Database().Get("character_options_v224", key, &saved)
+	if err != nil || !ok || len(saved) < (98+1)*2 {
+		return false
+	}
+	return saved[98*2] == 0 && saved[98*2+1] == 0
 }
 
 func mode0Appearance(bag inventory.Bag) []protocol.Equipment {
