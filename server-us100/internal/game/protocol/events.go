@@ -370,6 +370,42 @@ func EventGiftStatus(entries []EventGiftEntry) []byte {
 	return p
 }
 
+// Ev392OneDayPlanStep is one repeatable step-bonus record inside NOTI 1789
+// (0x6fd, handler 0x141105420 -> [obj+0x130], rendered at 0x141445916..0x1414459b0):
+//   - Completed: cumulative daily completions for this mission
+//   - Claimed:   how many times this step bonus has been claimed (0..maxClaims)
+type Ev392OneDayPlanStep struct {
+	Completed byte
+	Claimed   byte
+}
+
+// Ev392OneDayPlanStatus encodes NOTI 1789 (0x6fd, handler 0x141105420 -> Ev392::SetData 0x1411066e0):
+//   - [0]: i8  day/cycle index ([obj+0x100])
+//   - [1]: i8  selected daily mission index (0=unselected, 1..4) ([obj+0x104])
+//   - [2]: i8  current daily mission progress ([obj+0x108])
+//   - [3]: u8  daily reward claimed flag (0/1) ([obj+0x10c])
+//   - [4]: u8  oneTimeStepCount (0 for US100 dailyselectmissionevent.evt)
+//   - [5]: u8  repeatableStepCount (4 for US100 [step bonus mission info])
+//   - [6..]: repeatableStepCount * (u8 completed, u8 claimed)
+//
+// Receiving NOTI 1789 sets both Ev392UI readiness flags ([singleton+0x1a]=1 via
+// 0x1411068b3 and [singleton+0x19]=1 via 0x141444d30), unlocking Window 0x29f.
+func Ev392OneDayPlanStatus(dayIdx, selectedMission, progress int8, dailyClaimed bool, steps []Ev392OneDayPlanStep) []byte {
+	if len(steps) > 255 {
+		steps = steps[:255]
+	}
+	p := make([]byte, 0, 6+len(steps)*2)
+	claimed := byte(0)
+	if dailyClaimed {
+		claimed = 1
+	}
+	p = append(p, byte(dayIdx), byte(selectedMission), byte(progress), claimed, 0, byte(len(steps)))
+	for _, s := range steps {
+		p = append(p, s.Completed, s.Claimed)
+	}
+	return p
+}
+
 // Ev500SlotState is one 12-byte weapon slot record inside NOTI 1870 (0x74e, 0x140d1d3e0).
 type Ev500SlotState struct {
 	Upgrade   uint32 `json:"upgrade"`
@@ -378,16 +414,37 @@ type Ev500SlotState struct {
 	Extracted byte   `json:"extracted"`
 }
 
-// Ev500SoulAnvilStatus encodes NOTI 1870 (0x74e, 64 bytes, handler 0x140d1d3e0):
-//   - [0..43]  44-byte core block ([obj+0x10..+0x3b]):
+// Ev500ResonanceState stores the weapon resonance/synchronization tail inside
+// NOTI 1870 (0x74e, 0x140d1d48b..0x140d1d6b4).
+type Ev500ResonanceState struct {
+	Active   byte   `json:"active,omitempty"`
+	Count    uint16 `json:"count,omitempty"`
+	Slot     byte   `json:"slot,omitempty"`
+	CharName string `json:"char_name,omitempty"`
+}
+
+// Ev500SoulAnvilStatus encodes NOTI 1870 (0x74e, 64 bytes when CharName is empty,
+// handler 0x140d1d3e0).
+func Ev500SoulAnvilStatus(accumCount uint32, slots [3]Ev500SlotState, rewardMask uint32) []byte {
+	return Ev500SoulAnvilStatusWithResonance(accumCount, slots, rewardMask, Ev500ResonanceState{})
+}
+
+// Ev500SoulAnvilStatusWithResonance encodes NOTI 1870 (0x74e, handler 0x140d1d3e0):
+//   - [0..43]    44-byte core block ([obj+0x10..+0x3b]):
 //       [0..3]:   u32 accumCount ([obj+0x10])
 //       [4..39]:  3 * 12-byte slot structs ([obj+0x14..+0x37])
 //       [40..43]: u32 rewardClaimMask ([obj+0x38])
-//   - [44..47] u8(0), u16(0), u8(0)
-//   - [48..51] u32 wideStrByteLen (0)
-//   - [52..63] 3 * u32 reserved (0)
-func Ev500SoulAnvilStatus(accumCount uint32, slots [3]Ev500SlotState, rewardMask uint32) []byte {
-	p := make([]byte, 64)
+//   - [44]       u8  resonanceActive ([obj+0x48])
+//   - [45..46]   u16 resonanceCount ([obj+0x4a])
+//   - [47]       u8  resonanceSlot ([obj+0x4c])
+//   - [48..51+N] u32 charNameByteLen (< 0x3c) + N UTF-8/ASCII bytes ([obj+0x50])
+//   - [tail 12B] 3 * u32 reserved ([obj+0x7c..+0x84])
+func Ev500SoulAnvilStatusWithResonance(accumCount uint32, slots [3]Ev500SlotState, rewardMask uint32, res Ev500ResonanceState) []byte {
+	nameBytes := []byte(res.CharName)
+	if len(nameBytes) > 0x3b {
+		nameBytes = nameBytes[:0x3b]
+	}
+	p := make([]byte, 64+len(nameBytes))
 	binary.LittleEndian.PutUint32(p[0:4], accumCount)
 	for i := 0; i < 3; i++ {
 		off := 4 + i*12
@@ -397,5 +454,10 @@ func Ev500SoulAnvilStatus(accumCount uint32, slots [3]Ev500SlotState, rewardMask
 		p[off+9] = slots[i].Extracted
 	}
 	binary.LittleEndian.PutUint32(p[40:44], rewardMask)
+	p[44] = res.Active
+	binary.LittleEndian.PutUint16(p[45:47], res.Count)
+	p[47] = res.Slot
+	binary.LittleEndian.PutUint32(p[48:52], uint32(len(nameBytes)))
+	copy(p[52:52+len(nameBytes)], nameBytes)
 	return p
 }

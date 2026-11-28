@@ -90,11 +90,12 @@ type persistedEventUIState struct {
 	Ev367ClaimCount   uint32 `json:"ev367_claim_count,omitempty"`
 
 	// Event 500: Forge of Souls / Anvil of Souls (UpgradableStoneEventScript.evt)
-	Ev500Initialized   bool                       `json:"ev500_initialized,omitempty"`
-	Ev500AccumCount    uint32                     `json:"ev500_accum_count,omitempty"`
-	Ev500Slots         [3]protocol.Ev500SlotState `json:"ev500_slots,omitempty"`
-	Ev500RewardMask    uint32                     `json:"ev500_reward_mask,omitempty"`
-	Ev500DailyClaimDay string                     `json:"ev500_daily_claim_day,omitempty"`
+	Ev500Initialized   bool                         `json:"ev500_initialized,omitempty"`
+	Ev500AccumCount    uint32                       `json:"ev500_accum_count,omitempty"`
+	Ev500Slots         [3]protocol.Ev500SlotState   `json:"ev500_slots,omitempty"`
+	Ev500RewardMask    uint32                       `json:"ev500_reward_mask,omitempty"`
+	Ev500DailyClaimDay string                       `json:"ev500_daily_claim_day,omitempty"`
+	Ev500Resonance     protocol.Ev500ResonanceState `json:"ev500_resonance,omitempty"`
 }
 
 type eventRewardItem struct {
@@ -227,6 +228,30 @@ var (
 		8: {50060824, 1},
 		9: {50060826, 1},
 	}
+
+	// [upgrade stone change info] from UpgradableStoneEventScript.evt:
+	// stoneLevel (1..15) -> {weaponReinforceTicket, weaponRefineTicket (0 if none)}.
+	ev500ChangeRewards = map[uint32][2]uint32{
+		1:  {50060834, 0},
+		2:  {50060835, 0},
+		3:  {50060836, 0},
+		4:  {50060837, 0},
+		5:  {50060838, 0},
+		6:  {50060839, 0},
+		7:  {50060840, 50060849},
+		8:  {50060841, 50060850},
+		9:  {50060842, 50060851},
+		10: {50060843, 50060852},
+		11: {50060844, 50060853},
+		12: {50060845, 50060854},
+		13: {50060846, 50060854},
+		14: {50060847, 50060854},
+		15: {50060848, 50060854},
+	}
+
+	// [upgrade stone synchronize info] from UpgradableStoneEventScript.evt:
+	// resonance count (0..9+) -> 50060799 Soul Stone cost.
+	ev500SyncCosts = []uint32{0, 10, 20, 30, 60, 120, 240, 480, 960, 2000}
 )
 
 func eventUIStateKey(account int64) string {
@@ -439,6 +464,13 @@ func ev388MissionRows(st persistedEventUIState) []protocol.Ev388MissionRow {
 	}
 }
 
+func ev500StatusPacket(st persistedEventUIState) outboundPacket {
+	return outboundPacket{
+		"event_500_soul_anvil_status", 0, protocol.NotiEv500SoulAnvil,
+		protocol.Ev500SoulAnvilStatusWithResonance(st.Ev500AccumCount, st.Ev500Slots, st.Ev500RewardMask, st.Ev500Resonance),
+	}
+}
+
 func ev602Packet(st persistedEventUIState) []byte {
 	savedIdx := st.Ev602SavedIdx
 	if st.Ev602SavedItem == 0 {
@@ -552,10 +584,7 @@ func (w *worldSession) interactiveEventInitPackets(pol events.Policy, now time.T
 			dailyClaimed = 1
 		}
 		out = append(out,
-			outboundPacket{
-				"event_500_soul_anvil_status", 0, protocol.NotiEv500SoulAnvil,
-				protocol.Ev500SoulAnvilStatus(st.Ev500AccumCount, st.Ev500Slots, st.Ev500RewardMask),
-			},
+			ev500StatusPacket(st),
 			outboundPacket{
 				"event_gift_reset", 0, protocol.NotiEventGiftReset,
 				protocol.EventGiftStatus([]protocol.EventGiftEntry{
@@ -1175,59 +1204,141 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 
 	case uint32(eventIDHellParty): // 500: Forge of Souls / Anvil of Souls (UpgradableStoneEventScript.evt)
 		if cmdID == protocol.CmdEventQuery {
-			// CMD 681 (0x140d1e0d0): args = [0, 0, slotIdx(0..2)] -> reinforce Soul Stone
+			sub := arg(0)
 			slot := arg(2)
 			if slot > 2 {
 				return []outboundPacket{{"event_500_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
 			}
-			curLv := st.Ev500Slots[slot].Upgrade
-			if curLv >= 15 {
-				return []outboundPacket{{"event_500_max_level", 1, cmdID, protocol.EventActionRefused(0x64, req.EventID)}}, nil
-			}
-			nextLv := curLv + 1
-			step, ok := ev500UpgradeSteps[nextLv]
-			if !ok {
-				return []outboundPacket{{"event_500_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
-			}
-			rate, cost := step[0], step[1]
-			key := fmt.Sprintf("ev500_forge:%d:%d", slot, st.Ev500AccumCount+1)
-			matPkts, paid, cerr := w.consumeBagMaterial(ctx, key, "us100-ev500-forge-v1", ev500MaterialItem, cost)
-			if cerr != nil {
-				return nil, cerr
-			}
-			if !paid {
-				return []outboundPacket{{"event_500_no_material", 1, cmdID, protocol.EventActionRefused(0x12, req.EventID)}}, nil
-			}
-			out = append(out, matPkts...)
+			switch sub {
+			case 2:
+				// CMD 681 (Window 0x2ac @ 0x140321458): args = [2, 1, slotIdx(0..2)] -> extract Soul Stone to ticket(s)
+				sl := st.Ev500Slots[slot]
+				if sl.Unlocked == 0 || sl.Extracted != 0 || sl.Upgrade < 1 {
+					return []outboundPacket{
+						{"event_500_extract_refused", 1, cmdID, protocol.EventActionRefused(0x64, req.EventID)},
+						ev500StatusPacket(st),
+					}, nil
+				}
+				pair, ok := ev500ChangeRewards[sl.Upgrade]
+				if !ok || pair[0] == 0 {
+					return []outboundPacket{{"event_500_extract_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
+				}
+				if err := grantItem(fmt.Sprintf("ev500_extract:%d:reinforce", slot), "us100-ev500-extract-v1", eventRewardItem{Template: pair[0], Count: 1}); err != nil {
+					return nil, err
+				}
+				if pair[1] > 0 {
+					if err := grantItem(fmt.Sprintf("ev500_extract:%d:refine", slot), "us100-ev500-extract-v1", eventRewardItem{Template: pair[1], Count: 1}); err != nil {
+						return nil, err
+					}
+				}
+				st.Ev500Slots[slot].Extracted = 1
+				_ = w.saveEventUIState(st)
+				var ackParams [10]uint32
+				ackParams[0] = 2
+				ackParams[1] = 1
+				ackParams[2] = slot
+				out = append(out,
+					outboundPacket{"event_500_extract_ack", 1, protocol.CmdEventQuery, protocol.EventActionSuccess(req.EventID, ackParams)},
+					ev500StatusPacket(st),
+				)
+				return out, nil
 
-			success := uint32(1)
-			if rate < 10000 {
-				var rb [4]byte
-				_, _ = rand.Read(rb[:])
-				roll := binary.LittleEndian.Uint32(rb[:]) % 10000
-				if roll >= rate {
-					success = 0
+			case 1:
+				// CMD 681: args = [1, _, slotIdx(0..2)] -> weapon resonance / synchronize
+				sl := st.Ev500Slots[slot]
+				if sl.Unlocked == 0 || sl.Upgrade < 1 {
+					return []outboundPacket{
+						{"event_500_sync_refused", 1, cmdID, protocol.EventActionRefused(0x64, req.EventID)},
+						ev500StatusPacket(st),
+					}, nil
 				}
-			}
-			st.Ev500AccumCount++
-			st.Ev500Slots[slot].Unlocked = 1
-			st.Ev500Slots[slot].TryCount++
-			if success == 1 {
-				st.Ev500Slots[slot].Upgrade = nextLv
-				if nextLv >= 10 && slot+1 < 3 {
-					st.Ev500Slots[slot+1].Unlocked = 1
+				costIdx := int(st.Ev500Resonance.Count)
+				if costIdx >= len(ev500SyncCosts) {
+					costIdx = len(ev500SyncCosts) - 1
 				}
+				cost := ev500SyncCosts[costIdx]
+				if cost > 0 {
+					key := fmt.Sprintf("ev500_sync:%d:%d", slot, st.Ev500Resonance.Count+1)
+					matPkts, paid, cerr := w.consumeBagMaterial(ctx, key, "us100-ev500-sync-v1", ev500MaterialItem, cost)
+					if cerr != nil {
+						return nil, cerr
+					}
+					if !paid {
+						return []outboundPacket{{"event_500_no_material", 1, cmdID, protocol.EventActionRefused(0x12, req.EventID)}}, nil
+					}
+					out = append(out, matPkts...)
+				}
+				st.Ev500Resonance = protocol.Ev500ResonanceState{
+					Active:   1,
+					Count:    st.Ev500Resonance.Count + 1,
+					Slot:     byte(slot),
+					CharName: w.role.Name,
+				}
+				_ = w.saveEventUIState(st)
+				var ackParams [10]uint32
+				ackParams[0] = 1
+				ackParams[1] = 1
+				ackParams[2] = slot
+				out = append(out,
+					outboundPacket{"event_500_sync_ack", 1, protocol.CmdEventQuery, protocol.EventActionSuccess(req.EventID, ackParams)},
+					ev500StatusPacket(st),
+				)
+				return out, nil
+
+			default:
+				// CMD 681 (0x140d1e0d0): args = [0, 0, slotIdx(0..2)] -> reinforce Soul Stone
+				if st.Ev500Slots[slot].Extracted != 0 {
+					return []outboundPacket{{"event_500_already_extracted", 1, cmdID, protocol.EventActionRefused(0x64, req.EventID)}}, nil
+				}
+				curLv := st.Ev500Slots[slot].Upgrade
+				if curLv >= 15 {
+					return []outboundPacket{{"event_500_max_level", 1, cmdID, protocol.EventActionRefused(0x64, req.EventID)}}, nil
+				}
+				nextLv := curLv + 1
+				step, ok := ev500UpgradeSteps[nextLv]
+				if !ok {
+					return []outboundPacket{{"event_500_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
+				}
+				rate, cost := step[0], step[1]
+				key := fmt.Sprintf("ev500_forge:%d:%d", slot, st.Ev500AccumCount+1)
+				matPkts, paid, cerr := w.consumeBagMaterial(ctx, key, "us100-ev500-forge-v1", ev500MaterialItem, cost)
+				if cerr != nil {
+					return nil, cerr
+				}
+				if !paid {
+					return []outboundPacket{{"event_500_no_material", 1, cmdID, protocol.EventActionRefused(0x12, req.EventID)}}, nil
+				}
+				out = append(out, matPkts...)
+
+				success := uint32(1)
+				if rate < 10000 {
+					var rb [4]byte
+					_, _ = rand.Read(rb[:])
+					roll := binary.LittleEndian.Uint32(rb[:]) % 10000
+					if roll >= rate {
+						success = 0
+					}
+				}
+				st.Ev500AccumCount++
+				st.Ev500Slots[slot].Unlocked = 1
+				st.Ev500Slots[slot].TryCount++
+				if success == 1 {
+					st.Ev500Slots[slot].Upgrade = nextLv
+					if nextLv >= 10 && slot+1 < 3 {
+						st.Ev500Slots[slot+1].Unlocked = 1
+					}
+				}
+				_ = w.saveEventUIState(st)
+				var ackParams [10]uint32
+				ackParams[0] = 0
+				ackParams[1] = success
+				ackParams[2] = st.Ev500Slots[slot].Upgrade
+				out = append(out,
+					outboundPacket{"event_500_forge_ack", 1, protocol.CmdEventQuery, protocol.EventActionSuccess(req.EventID, ackParams)},
+					ev500StatusPacket(st),
+				)
+				return out, nil
 			}
-			_ = w.saveEventUIState(st)
-			var ackParams [10]uint32
-			ackParams[0] = 0
-			ackParams[1] = success
-			ackParams[2] = st.Ev500Slots[slot].Upgrade
-			out = append(out,
-				outboundPacket{"event_500_forge_ack", 1, protocol.CmdEventQuery, protocol.EventActionSuccess(req.EventID, ackParams)},
-				outboundPacket{"event_500_soul_anvil_status", 0, protocol.NotiEv500SoulAnvil, protocol.Ev500SoulAnvilStatus(st.Ev500AccumCount, st.Ev500Slots, st.Ev500RewardMask)},
-			)
-			return out, nil
 		}
 		// CMD 680 (0x140d1e010): args = [rewardIdx] -> claim cumulative reward
 		idx := arg(0)
@@ -1247,7 +1358,7 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 		ackParams[0] = idx
 		out = append(out,
 			outboundPacket{"event_500_reward_ack", 1, protocol.CmdEventAction, protocol.EventActionSuccess(req.EventID, ackParams)},
-			outboundPacket{"event_500_soul_anvil_status", 0, protocol.NotiEv500SoulAnvil, protocol.Ev500SoulAnvilStatus(st.Ev500AccumCount, st.Ev500Slots, st.Ev500RewardMask)},
+			ev500StatusPacket(st),
 		)
 		return out, nil
 

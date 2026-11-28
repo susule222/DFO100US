@@ -515,6 +515,28 @@ func (w *worldSession) onActivityClear(ctx context.Context) []outboundPacket {
 		}
 	}
 
+	// 3b. Event 500 (Forge of Souls): grant Soul Stones (50060799) on every dungeon clear
+	// so players can actively farm reinforcement materials beyond the daily gift box.
+	if ev.HellParty.Enabled {
+		stoneCount := uint32(25)
+		if w.activeDungeon.Definition.BasisLevel >= 95 || w.activeDungeon.HasHellRoom {
+			stoneCount = 40
+		}
+		if pkts, rerr := w.grantActivityReward(
+			ctx,
+			fmt.Sprintf("ev500_clear:%s", w.activeDungeon.RunID),
+			"us100-ev500-clear-v1",
+			0,
+			ev500MaterialItem,
+			stoneCount,
+			0,
+			day,
+			0,
+		); rerr == nil {
+			out = append(out, pkts...)
+		}
+	}
+
 	// 4. Advance interactive event progress counters (Mining 388/512, Melody 614, Cube Lab 602).
 	out = append(out, w.onInteractiveEventClear(now)...)
 

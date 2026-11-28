@@ -370,4 +370,89 @@ func TestInteractiveEventStepByStepProgressionAndClaims(t *testing.T) {
 	if !gotRewMask {
 		t.Fatalf("Ev500 reward 0 claim should set rewardMask bit 0")
 	}
+
+	// Resonance (CMD 681 args=[1, 0, 0]): first resonance is free (cost=0) and sets CharName in NOTI 1870.
+	syncPkts, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(500, 1, 0, 0), t45m)
+	if err != nil {
+		t.Fatalf("Ev500 CMD 681 resonance failed: %v", err)
+	}
+	var gotSyncNoti bool
+	for _, p := range syncPkts {
+		if p.ID == protocol.NotiEv500SoulAnvil && len(p.Payload) == 64+len(w.role.Name) && p.Payload[44] == 1 && binary.LittleEndian.Uint16(p.Payload[45:47]) == 1 {
+			nameLen := binary.LittleEndian.Uint32(p.Payload[48:52])
+			if string(p.Payload[52:52+nameLen]) == w.role.Name {
+				gotSyncNoti = true
+			}
+		}
+	}
+	if !gotSyncNoti {
+		t.Fatalf("Ev500 resonance expected NOTI 1870 with active=1, count=1, charName=%q", w.role.Name)
+	}
+
+	// Extract Soul Stone (Window 0x2ac CMD 681 args=[2, 1, 0]): grants +1 weapon reinforce ticket 50060834,
+	// marks slot 0 Extracted=1, and blocks both duplicate extract and further forging on slot 0.
+	extPkts, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(500, 2, 1, 0), t45m)
+	if err != nil {
+		t.Fatalf("Ev500 CMD 681 extract failed: %v", err)
+	}
+	var gotExtAck, gotExtNoti bool
+	for _, p := range extPkts {
+		if p.ID == protocol.CmdEventQuery && len(p.Payload) == 45 && p.Payload[0] == 1 && binary.LittleEndian.Uint32(p.Payload[5:9]) == 2 {
+			gotExtAck = true
+		}
+		if p.ID == protocol.NotiEv500SoulAnvil && len(p.Payload) >= 64 && p.Payload[4+9] == 1 {
+			gotExtNoti = true
+		}
+	}
+	if !gotExtAck || !gotExtNoti {
+		t.Fatalf("Ev500 extract expected ACK 681 + NOTI 1870(extracted=1), got ack=%v noti=%v", gotExtAck, gotExtNoti)
+	}
+	bagAfterExt, err := inventory.ReadBag(w.role.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hasTicket50060834 bool
+	for _, it := range bagAfterExt.Items {
+		if it.Template == 50060834 && it.Amount >= 1 {
+			hasTicket50060834 = true
+		}
+	}
+	if !hasTicket50060834 {
+		t.Fatalf("Ev500 extract (+1 stone) should grant weapon reinforce ticket 50060834")
+	}
+	if dupExt, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(500, 2, 1, 0), t45m); err != nil || len(dupExt) == 0 || dupExt[0].Payload[0] != 0 {
+		t.Fatalf("Ev500 duplicate extract must be refused, got %+v err=%v", dupExt, err)
+	}
+	if postExtForge, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(500, 0, 0, 0), t45m); err != nil || len(postExtForge) == 0 || postExtForge[0].Payload[0] != 0 {
+		t.Fatalf("Ev500 forging an extracted slot must be refused, got %+v err=%v", postExtForge, err)
+	}
+
+	// Dungeon clear Soul Stone drop (50060799) when HellParty.Enabled
+	var stonesBefore uint32
+	for _, it := range bagAfterExt.Items {
+		if it.Template == ev500MaterialItem {
+			stonesBefore += it.Amount
+		}
+	}
+	w.activeDungeon = &dungeon.Session{
+		RunID:      "ev500-clear-drop-test-run",
+		Definition: catalog.DungeonDefinition{ID: 3, BasisLevel: 100},
+	}
+	clearPkts := w.onActivityClear(ctx)
+	if len(clearPkts) == 0 {
+		t.Fatalf("expected dungeon clear activity packets")
+	}
+	bagAfterClear, err := inventory.ReadBag(w.role.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stonesAfter uint32
+	for _, it := range bagAfterClear.Items {
+		if it.Template == ev500MaterialItem {
+			stonesAfter += it.Amount
+		}
+	}
+	if stonesAfter-stonesBefore != 40 {
+		t.Fatalf("Ev500 high-tier dungeon clear Soul Stone drop = +%d, want +40", stonesAfter-stonesBefore)
+	}
 }
