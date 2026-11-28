@@ -29,6 +29,7 @@ type entryPayloads struct {
 	ItemLocks                                                                 []byte
 	AccountMaterials                                                          []byte
 	GeneralOptions                                                            []byte
+	SeenCinematics                                                            []byte
 	AccountOptions                                                            []byte
 	TimeSync                                                                  []byte
 	Events                                                                    []byte
@@ -81,6 +82,8 @@ func (p entryPayloads) packets() []outboundPacket {
 		{"account_materials_restored", 0, 1140, p.AccountMaterials},
 		// Restore the saved scale before the first town scene, not after world entry.
 		{"general_options_initialized", 0, 173, p.GeneralOptions},
+		// Restore seen-cinematic bitmask (NOTI 1352) so Option 82 ("跳过所有过场动画") takes effect.
+		{"seen_cinematics_initialized", 0, 1352, p.SeenCinematics},
 		// Sync server clock (CMD 1959) before NOTI 108 so EventCalendar renders
 		// today's real date and active event date ranges instead of 1970-01-01.
 		{"server_time_synced", 1, 1959, p.TimeSync},

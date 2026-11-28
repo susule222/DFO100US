@@ -1912,7 +1912,25 @@ func main() {
 					} else if e := saveGeneralOptions(characters.Store, developmentAccount, plaintext); e != nil {
 						event(map[string]any{"kind": "general_options_rejected", "error": e.Error()})
 					} else {
-						event(map[string]any{"kind": "general_options_saved", "ui_size": binary.LittleEndian.Uint16(plaintext[4+2*uiSizeIndex:])})
+						skipMode := binary.LittleEndian.Uint16(plaintext[4+2*cinematicSkipOptionIndex:])
+						event(map[string]any{"kind": "general_options_saved", "ui_size": binary.LittleEndian.Uint16(plaintext[4+2*uiSizeIndex:]), "cinematic_skip_mode": skipMode})
+						if seenBody, se := seenCinematicsOnEntry(characters.Store, developmentAccount); se == nil && len(seenBody) > 0 {
+							if err = sendPayload(0, protocol.NotiSeenCinematics, seenBody); err != nil {
+								return
+							}
+							event(map[string]any{"kind": "seen_cinematics_synced", "cinematic_skip_mode": skipMode})
+						}
+					}
+					continue
+				}
+				if frame.Type == 1 && frame.ID == protocol.CmdRecordSeenCinematic {
+					if !bootstrapped || !verified || selectedCharacterID == 0 || characters == nil {
+						continue
+					}
+					if cid, decErr := protocol.DecodeRecordSeenCinematic(plaintext); decErr == nil {
+						if recErr := recordSeenCinematic(characters.Store, developmentAccount, cid); recErr == nil {
+							event(map[string]any{"kind": "seen_cinematic_recorded", "cinematic_id": cid})
+						}
 					}
 					continue
 				}
@@ -2830,6 +2848,11 @@ func main() {
 						event(map[string]any{"kind": "general_options_read_error", "error": readErr.Error()})
 					} else {
 						plan.GeneralOptions = options
+					}
+					if seenBody, seenErr := seenCinematicsOnEntry(characters.Store, developmentAccount); seenErr != nil {
+						event(map[string]any{"kind": "seen_cinematics_read_error", "error": seenErr.Error()})
+					} else {
+						plan.SeenCinematics = seenBody
 					}
 					nowEntry := time.Now()
 					plan.TimeSync = protocol.UserInfoTimeSyncUS100(uint32(nowEntry.Unix()))
