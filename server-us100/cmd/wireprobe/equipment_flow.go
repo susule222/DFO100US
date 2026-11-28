@@ -49,19 +49,19 @@ func (s *equipmentSession) handle(service *inventory.WearService, w *worldSessio
 		return nil, e
 	}
 	// US100 v2.24 ACK 19 (0x1434b3a20) only dispatches EquipSwap (0x143b149d0)
-	// when SourceList is a bag (0/1/...) and DestinationList is 3 (worn); it has
-	// no branch for SourceList=3 -> DestinationList=0/1. Normalize drag-unequip
+	// when SourceList is a bag (0/1/0x2b/...) and DestinationList is 3 (worn); it has
+	// no branch for SourceList=3 -> DestinationList=0/1/0x2b. Normalize drag-unequip
 	// replies so EquipSwap always unlocks the bag, updates CUser, and recalculates
 	// character stats in real time.
 	ackReq := r
-	if ackReq.SourceList == 3 && (ackReq.DestinationList == 0 || ackReq.DestinationList == 1) {
+	if ackReq.SourceList == 3 && (ackReq.DestinationList == 0 || ackReq.DestinationList == 1 || ackReq.DestinationList == protocol.TalismanSpace) {
 		ackReq.SourceList, ackReq.DestinationList = ackReq.DestinationList, ackReq.SourceList
 		ackReq.SourceSlot, ackReq.DestinationSlot = ackReq.DestinationSlot, ackReq.SourceSlot
 		ackReq.SourceItem, ackReq.DestinationItem = ackReq.DestinationItem, ackReq.SourceItem
 	}
 	plan := []outboundPacket{{"equipment_move_committed", 1, 19, protocol.ItemMoveSuccess(ackReq, 1)}}
 	isAvatarMove := r.SourceList == 1 || r.DestinationList == 1
-	for _, space := range []byte{0, 1, 3} {
+	for _, space := range []byte{0, 1, 3, protocol.TalismanSpace} {
 		var rows [][protocol.CurrentItemRecordSize]byte
 		for _, loc := range []struct {
 			space byte
@@ -71,11 +71,26 @@ func (s *equipmentSession) handle(service *inventory.WearService, w *worldSessio
 				continue
 			}
 			// US100 v2.24 NOTI 14 (0x1435106e0) checks template == 0xffffffff (-1)
-			// across spaces 0, 1, and 3 to delete/skip an emptied slot cleanly.
+			// across spaces 0, 1, 3, and 0x2b to delete/skip an emptied slot cleanly.
 			row := protocol.EmptySlotItem(loc.slot)
+			if space == protocol.TalismanSpace && loc.slot >= inventory.RuneSlotStart {
+				for _, rn := range b.Runes {
+					if rn.Slot == loc.slot {
+						row = protocol.OrdinaryItem(rn.Slot, rn.Template, rn.Amount)
+						if rn.SortLocked {
+							row[protocol.ItemSortLockOffset] = 1
+						}
+						break
+					}
+				}
+				rows = append(rows, row)
+				continue
+			}
 			items := b.Equipment
 			if space == 1 {
 				items = b.Avatars
+			} else if space == protocol.TalismanSpace {
+				items = b.Talismans
 			} else if space == 3 {
 				if isAvatarMove || loc.slot <= 11 {
 					items = b.WornAvatars

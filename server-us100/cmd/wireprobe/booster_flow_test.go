@@ -303,11 +303,14 @@ func TestOpenLv100EpicSelectionBox10333090MultiDim(t *testing.T) {
 	if len(bag.Items) != 0 {
 		t.Fatalf("expected both boxes consumed, remaining items: %+v", bag.Items)
 	}
+	if len(bag.Equipment) != 0 {
+		t.Fatalf("talisman choices 100401044/100401093 must NOT land in ordinary equipment bag, got %+v", bag.Equipment)
+	}
 	got := map[uint32]bool{}
-	for _, eq := range bag.Equipment {
-		got[eq.Template] = true
+	for _, tl := range bag.Talismans {
+		got[tl.Template] = true
 	}
 	if !got[100401044] || !got[100401093] {
-		t.Fatalf("expected 100401044 and 100401093 in equipment bag, got %+v", bag.Equipment)
+		t.Fatalf("expected 100401044 and 100401093 in talisman bag (space 0x2b), got %+v", bag.Talismans)
 	}
 }

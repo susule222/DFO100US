@@ -140,6 +140,36 @@ func (w *worldSession) syncGrantedBag(account, id int64, send func(byte, uint16,
 			event(map[string]any{"kind": "gm_avatar_update_sent", "character_id": id, "rows": len(avatarRows)})
 		}
 	}
+	if len(bag.Talismans) > 0 || len(prevBag.Talismans) > 0 || len(bag.Runes) > 0 || len(prevBag.Runes) > 0 {
+		talRows := bag.TalismanRows()
+		present := make(map[uint16]bool, len(bag.Talismans)+len(bag.Runes))
+		for _, t := range bag.Talismans {
+			present[t.Slot] = true
+		}
+		for _, r := range bag.Runes {
+			present[r.Slot] = true
+		}
+		for _, old := range prevBag.Talismans {
+			if !present[old.Slot] {
+				talRows = append(talRows, protocol.EmptySlotItem(old.Slot))
+			}
+		}
+		for _, old := range prevBag.Runes {
+			if !present[old.Slot] {
+				talRows = append(talRows, protocol.EmptySlotItem(old.Slot))
+			}
+		}
+		if len(talRows) > 0 {
+			tp, terr := protocol.US224TalismanUpdate(talRows)
+			if terr != nil {
+				return terr
+			}
+			if err = send(0, 14, tp); err != nil {
+				return err
+			}
+			event(map[string]any{"kind": "gm_talisman_update_sent", "character_id": id, "rows": len(talRows)})
+		}
+	}
 	var prevState, nextState character.State
 	_ = json.Unmarshal(w.role.State, &prevState)
 	_ = json.Unmarshal(role.State, &nextState)
@@ -261,6 +291,12 @@ func (w *worldSession) syncGrantedBag(account, id int64, send func(byte, uint16,
 		autoPkts := w.onActivityLogin(ctx)
 		cancel()
 		for _, pkt := range autoPkts {
+			if err = send(pkt.Kind, pkt.ID, pkt.Payload); err != nil {
+				return err
+			}
+			event(map[string]any{"kind": pkt.Name, "character_id": id, "id": pkt.ID})
+		}
+		for _, pkt := range w.onInteractiveEventTick(pol, now) {
 			if err = send(pkt.Kind, pkt.ID, pkt.Payload); err != nil {
 				return err
 			}

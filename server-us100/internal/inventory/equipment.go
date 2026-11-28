@@ -162,16 +162,40 @@ func LoadEquipmentCatalog(path, source string) (*EquipmentCatalog, error) {
 }
 
 type BagEquipment struct {
-	RentalUntil  int64  `json:"neo_rental_until,omitempty"`
-	Slot         uint16 `json:"slot"`
-	Template     uint32 `json:"template"`
-	Durability   uint16 `json:"durability"`
-	Upgrade      byte   `json:"upgrade,omitempty"`
-	AmplifyType  byte   `json:"amplify_type,omitempty"`
-	AmplifyValue uint16 `json:"amplify_value,omitempty"`
-	SortLocked   bool   `json:"sort_locked,omitempty"`
-	ItemLock     byte   `json:"item_lock,omitempty"`
-	UnlockAt     int64  `json:"unlock_at,omitempty"`
+	RentalUntil  int64   `json:"neo_rental_until,omitempty"`
+	Slot         uint16  `json:"slot"`
+	Template     uint32  `json:"template"`
+	Durability   uint16  `json:"durability"`
+	Upgrade      byte    `json:"upgrade,omitempty"`
+	AmplifyType  byte    `json:"amplify_type,omitempty"`
+	AmplifyValue uint16  `json:"amplify_value,omitempty"`
+	RuneSockets  [3]byte `json:"rune_sockets,omitempty"`
+	SortLocked   bool    `json:"sort_locked,omitempty"`
+	ItemLock     byte    `json:"item_lock,omitempty"`
+	UnlockAt     int64   `json:"unlock_at,omitempty"`
+}
+
+// IsTalismanTemplate reports whether an equipment template ID belongs to the
+// US100 PVF talisman namespace (all 1,513 entries in list/equipment.lst under
+// equipment/character/common/talisman/*.equ live exclusively in [100400000..100401470]
+// and [400400000..400400071] with zero non-talisman overlap).
+func IsTalismanTemplate(id uint32) bool {
+	return (id >= 100400000 && id <= 100401470) || (id >= 400400000 && id <= 400400071)
+}
+
+// IsTalisman reports whether template id is a talisman according to either the
+// loaded equipment catalog ([equipment type] == [talisman]) or the US100 PVF
+// talisman template bands.
+func (c *EquipmentCatalog) IsTalisman(id uint32) bool {
+	if c != nil {
+		if def, ok := c.index[id]; ok {
+			if k := def.Fields["[equipment type]"]; len(k) > 0 && k[0].Text == "[talisman]" {
+				return true
+			}
+			return false
+		}
+	}
+	return IsTalismanTemplate(id)
 }
 
 // EffectiveUpgrade returns the displayed reinforcement/amplification level.
@@ -259,7 +283,8 @@ func EquipmentRow(i BagEquipment) [protocol.CurrentItemRecordSize]byte {
 	// Current NOTI13 logs (0x1434fc780..0x1434fc966) verify exact US224 row offsets:
 	//   +0x00 u16 slot, +0x02 u32 template, +0x06 u32 data, +0x0a u8 upgrade,
 	//   +0x0b u16 durability, +0x0d u8 isSealed, +0x0e u32 enchantCard,
-	//   +0x12 u8 enchantUpgrade, +0x13 u8 amplify_type, +0x14 u16 amplify_value.
+	//   +0x12 u8 enchantUpgrade, +0x13 u8 amplify_type, +0x14 u16 amplify_value,
+	//   +0x55 u8 sortLocked, +0x67..0x69 [3]u8 talisman rune socket colors (1..5).
 	r := protocol.OrdinaryItem(i.Slot, i.Template, 0)
 	r[10] = i.EffectiveUpgrade()
 	binary.LittleEndian.PutUint16(r[11:], i.Durability)
@@ -267,12 +292,27 @@ func EquipmentRow(i BagEquipment) [protocol.CurrentItemRecordSize]byte {
 		r[19] = i.AmplifyType
 		binary.LittleEndian.PutUint16(r[20:], i.AmplifyValue)
 	}
+	if i.RuneSockets != [3]byte{} {
+		r[protocol.TalismanRuneSocketsOffset] = i.RuneSockets[0]
+		r[protocol.TalismanRuneSocketsOffset+1] = i.RuneSockets[1]
+		r[protocol.TalismanRuneSocketsOffset+2] = i.RuneSockets[2]
+	}
 	if i.SortLocked {
 		r[protocol.ItemSortLockOffset] = 1
 	}
 	return r
 }
 func (b Bag) AddEquipment(c *EquipmentCatalog, slots [2]uint16, id, count uint32) (Bag, []uint16, error) {
+	if c != nil && c.IsTalisman(id) {
+		if count == 0 || count > uint32(TalismanSlotCount) {
+			return b, nil, fmt.Errorf("invalid talisman award")
+		}
+		ids := make([]uint32, count)
+		for i := range ids {
+			ids[i] = id
+		}
+		return b.AddTalismans(ids)
+	}
 	if c == nil || slots[0] == 0 || slots[0] > slots[1] || count == 0 || count > uint32(slots[1]-slots[0]+1) {
 		return b, nil, fmt.Errorf("invalid equipment award")
 	}
@@ -308,10 +348,21 @@ func (b Bag) AddEquipment(c *EquipmentCatalog, slots [2]uint16, id, count uint32
 
 // AddRawEquipment places count copies of equipment template id (with source
 // PVF durability) into free slots in the equipment tab (slots[0]..slots[1]).
+// Talismans are automatically routed to the Talisman tab (space 0x2b, 0..79).
 // Used by PVF-backed booster/selection/package boxes whose reward items may
 // not be in the monster-drop equipment.generated.json pool (e.g. Lv.100 event
-// weapons, epics, titles).
+// weapons, epics, titles, talismans).
 func (b Bag) AddRawEquipment(slots [2]uint16, id uint32, durability uint16, count uint32) (Bag, []uint16, error) {
+	if IsTalismanTemplate(id) {
+		if count == 0 || count > uint32(TalismanSlotCount) {
+			return b, nil, fmt.Errorf("invalid talisman award")
+		}
+		ids := make([]uint32, count)
+		for i := range ids {
+			ids[i] = id
+		}
+		return b.AddTalismans(ids)
+	}
 	if id == 0 || slots[0] == 0 || slots[0] > slots[1] || count == 0 || count > uint32(slots[1]-slots[0]+1) {
 		return b, nil, fmt.Errorf("invalid equipment award")
 	}

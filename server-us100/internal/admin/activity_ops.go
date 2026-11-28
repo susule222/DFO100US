@@ -23,6 +23,17 @@ func (s *Service) deliverActivityItem(bag inventory.Bag, tpl, qty uint32) (inven
 	if s.Awarder == nil {
 		return bag, fmt.Errorf("inventory awarder not configured")
 	}
+	if inventory.IsTalismanTemplate(tpl) {
+		if qty > uint32(inventory.TalismanSlotCount) {
+			return bag, fmt.Errorf("invalid talisman award quantity %d", qty)
+		}
+		ids := make([]uint32, qty)
+		for i := range ids {
+			ids[i] = tpl
+		}
+		next, _, addErr := bag.AddTalismans(ids)
+		return next, addErr
+	}
 	if _, ok := s.Awarder.Catalog.Items[tpl]; ok {
 		next, _, err := bag.Add(s.Awarder.Catalog, s.Awarder.Rules, tpl, qty)
 		return next, err

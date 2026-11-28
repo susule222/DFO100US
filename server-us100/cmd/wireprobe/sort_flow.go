@@ -22,7 +22,7 @@ func sortInventory(
 	if err != nil {
 		return role, nil, 0, err
 	}
-	if req.Space != 0 && req.Space != 1 {
+	if req.Space != 0 && req.Space != 1 && req.Space != protocol.TalismanSpace {
 		return role, nil, req.Space, fmt.Errorf("unsupported sort inventory space %d", req.Space)
 	}
 	moveMap := make(map[uint16]uint16, len(req.Pairs))
@@ -33,6 +33,9 @@ func sortInventory(
 		}
 		if req.Space == 1 && (pair.From >= inventory.AvatarBagCapacity || pair.To >= inventory.AvatarBagCapacity) {
 			return role, nil, req.Space, fmt.Errorf("sort slot out of avatar bag range: %d->%d", pair.From, pair.To)
+		}
+		if req.Space == protocol.TalismanSpace && (pair.From >= inventory.EquippedRuneStart || pair.To >= inventory.EquippedRuneStart) {
+			return role, nil, req.Space, fmt.Errorf("sort slot out of talisman/rune bag range: %d->%d", pair.From, pair.To)
 		}
 		if _, dup := moveMap[pair.From]; dup {
 			return role, nil, req.Space, fmt.Errorf("duplicate sort source slot %d", pair.From)
@@ -72,7 +75,7 @@ func sortInventory(
 					b.Equipment[i].Slot = dst
 				}
 			}
-		} else {
+		} else if req.Space == 1 {
 			for _, av := range b.Avatars {
 				if _, moving := moveMap[av.Slot]; !moving && destSeen[av.Slot] {
 					return nil, nil, fmt.Errorf("sort destination avatar slot %d occupied by unmoved avatar", av.Slot)
@@ -81,6 +84,27 @@ func sortInventory(
 			for i := range b.Avatars {
 				if dst, ok := moveMap[b.Avatars[i].Slot]; ok {
 					b.Avatars[i].Slot = dst
+				}
+			}
+		} else {
+			for _, tl := range b.Talismans {
+				if _, moving := moveMap[tl.Slot]; !moving && destSeen[tl.Slot] {
+					return nil, nil, fmt.Errorf("sort destination talisman slot %d occupied by unmoved talisman", tl.Slot)
+				}
+			}
+			for _, rn := range b.Runes {
+				if _, moving := moveMap[rn.Slot]; !moving && destSeen[rn.Slot] {
+					return nil, nil, fmt.Errorf("sort destination rune slot %d occupied by unmoved rune", rn.Slot)
+				}
+			}
+			for i := range b.Talismans {
+				if dst, ok := moveMap[b.Talismans[i].Slot]; ok {
+					b.Talismans[i].Slot = dst
+				}
+			}
+			for i := range b.Runes {
+				if dst, ok := moveMap[b.Runes[i].Slot]; ok {
+					b.Runes[i].Slot = dst
 				}
 			}
 		}
@@ -106,8 +130,10 @@ func sortInventory(
 	var invRestore []byte
 	if req.Space == 0 {
 		invRestore, err = protocol.US224InventoryRestoreWithExpansion(bag.ExpandedSlots, bag.Rows())
-	} else {
+	} else if req.Space == 1 {
 		invRestore, err = protocol.US224AvatarRestore(inventory.AvatarBagCapacity, bag.AvatarRows())
+	} else {
+		invRestore, err = protocol.US224TalismanRestore(bag.TalismanRows())
 	}
 	if err != nil {
 		return saved, nil, req.Space, err

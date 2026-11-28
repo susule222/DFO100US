@@ -11,6 +11,18 @@ import (
 // [decoded+0xd2] -> [item+0x62b].
 const ItemSortLockOffset = 0x55
 
+// TalismanRuneSocketsOffset is the 3-byte offset within the 0xb1-byte US224
+// item row that maps to the talisman's 3 rune socket colors (1..5). Verified
+// from DFO_unpacked.exe: 0x14391b717 copies [raw+0x67..0x6a] -> [decoded+0xe4..0xe7],
+// and 0x141405d76 -> 0x14391db40 reads [decoded+0xe4+idx] for idx=0..2.
+const TalismanRuneSocketsOffset = 0x67
+
+// TalismanSpace is the US224 inventory space for the Talisman & Rune tab (护石栏).
+// Verified from DFO_unpacked.exe: 0x1414055f0 calls GetInventoryBySpace(0x2b),
+// initialized at 0x143a886e2 with capacity 0x149 (329 slots: 0..79 talismans,
+// 80..319 runes, 320..328 equipped runes for worn talisman slots 33..35).
+const TalismanSpace byte = 0x2b
+
 // OrdinaryItem is the current 181-byte base row. Special equipment branches
 // require extra source/type validation and are deliberately separate.
 func OrdinaryItem(slot uint16, template, amount uint32) [CurrentItemRecordSize]byte {
@@ -132,9 +144,23 @@ func US224AvatarUpdate(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 	return us224AvatarList([]byte{1}, rows)
 }
 
+// US224TalismanRestore encodes NOTI13 space 0x2b (Talisman & Rune Inventory / 护石栏):
+// u8 space=0x2b, u16 count, count * 0xb1 bytes (no capacity header, no avatar trailers;
+// verified at 0x1434fc010 and trailer predicates 0x143a4cd70 / 0x143a4cdb0).
+func US224TalismanRestore(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
+	return us224OrdinaryList([]byte{TalismanSpace}, rows)
+}
+
+// US224TalismanUpdate encodes NOTI14 space 0x2b (live online Talisman & Rune update):
+// u8 space=0x2b, u16 count, count * 0xb1 bytes (0x14351074b..0x143510a08).
+func US224TalismanUpdate(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
+	return us224OrdinaryList([]byte{TalismanSpace}, rows)
+}
+
 // Space 3 has the same item framing in the US224 restore and update
 // readers: 0xb1 bytes; two length-prefixed extras for an avatar template.
-// The inventory layer keeps avatars and ordinary equipment in disjoint slots.
+// The inventory layer keeps avatars, ordinary equipment, and worn talismans
+// (slots 33..35 = 0x21..0x23) in disjoint slots.
 func us224WornList(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 	const size = 0xb1
 	if len(rows) > 65535 {
@@ -144,7 +170,7 @@ func us224WornList(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 	p := add16([]byte{3}, uint16(len(rows)))
 	for _, r := range rows {
 		slot := binary.LittleEndian.Uint16(r[:])
-		if slot > 25 {
+		if slot > 25 && (slot < 33 || slot > 35) {
 			return nil, fmt.Errorf("unsupported worn slot %d", slot)
 		}
 		if seen[slot] {
@@ -183,6 +209,9 @@ func US224InventorySpaceUpdate(space byte, rows [][CurrentItemRecordSize]byte) (
 	}
 	if space == 3 {
 		return US224WornUpdate(rows)
+	}
+	if space == TalismanSpace {
+		return US224TalismanUpdate(rows)
 	}
 	return InventorySpaceUpdate(space, rows)
 }

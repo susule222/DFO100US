@@ -24,7 +24,7 @@ func setSortLock(
 	if err != nil {
 		return role, nil, err
 	}
-	if req.Space != 0 && req.Space != 1 {
+	if req.Space != 0 && req.Space != 1 && req.Space != protocol.TalismanSpace {
 		return role, nil, fmt.Errorf("unsupported sort lock space %d", req.Space)
 	}
 	cmdID := protocol.CmdSortUnlock
@@ -63,6 +63,23 @@ func setSortLock(
 					b.Avatars[i].SortLocked = locked
 					found = true
 					break
+				}
+			}
+		} else if req.Space == protocol.TalismanSpace {
+			for i := range b.Talismans {
+				if b.Talismans[i].Slot == req.Slot {
+					b.Talismans[i].SortLocked = locked
+					found = true
+					break
+				}
+			}
+			if !found {
+				for i := range b.Runes {
+					if b.Runes[i].Slot == req.Slot {
+						b.Runes[i].SortLocked = locked
+						found = true
+						break
+					}
 				}
 			}
 		}
@@ -122,6 +139,21 @@ func mutateBagItemLock(b *inventory.Bag, space byte, slot uint16, state byte, un
 			if b.WornAvatars[i].Slot == slot {
 				b.WornAvatars[i].ItemLock = state
 				b.WornAvatars[i].UnlockAt = unlockAt
+				return true
+			}
+		}
+	case protocol.TalismanSpace:
+		for i := range b.Talismans {
+			if b.Talismans[i].Slot == slot {
+				b.Talismans[i].ItemLock = state
+				b.Talismans[i].UnlockAt = unlockAt
+				return true
+			}
+		}
+		for i := range b.Runes {
+			if b.Runes[i].Slot == slot {
+				b.Runes[i].ItemLock = state
+				b.Runes[i].UnlockAt = unlockAt
 				return true
 			}
 		}

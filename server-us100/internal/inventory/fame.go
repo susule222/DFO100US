@@ -81,6 +81,13 @@ func (c *EquipmentCatalog) wornEquipmentFame(slot uint16, template uint32, upgra
 			}
 		}
 		return creatureFameTable[1]
+	case WornTalismanSlotMin, WornTalismanSlotMin + 1, WornTalismanSlotMax: // worn talismans (33..35)
+		// Unique Lv.100 talismans (Capella's Stigma / 光芒圣痕) grant 185 fame;
+		// rare Lv.95 talismans grant 116 fame.
+		if ok && rarity <= 2 {
+			return 116
+		}
+		return 185
 	}
 	if slot < 12 || slot > 25 {
 		return 0

@@ -164,7 +164,7 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 		eqPaths[r.ID] = p
 	}
 
-	// Cache equipment metadata (avatar vs ordinary equipment + durability) on demand.
+	// Cache equipment metadata (avatar vs talisman vs ordinary equipment + durability) on demand.
 	eqCache := map[uint32]boosterEquipMeta{}
 	classifyEquip := func(id uint32) boosterEquipMeta {
 		if m, ok := eqCache[id]; ok {
@@ -178,6 +178,7 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 		}
 		lower := strings.ToLower(p)
 		isAv := strings.Contains(lower, "/avatar/") || strings.Contains(lower, "avatar/")
+		isTal := strings.Contains(lower, "/talisman/") || strings.Contains(lower, "talisman/")
 		var dur uint16 = 35
 		if s, err := ResolveScript(a, p); err == nil {
 			if tc := sectionCells(s.Cells, "[equipment type]"); len(tc) > 0 {
@@ -185,15 +186,18 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 				if strings.Contains(eqType, "avatar") {
 					isAv = true
 				}
+				if eqType == "[talisman]" {
+					isTal = true
+				}
 			}
 			if dc := sectionCells(s.Cells, "[durability]"); len(dc) > 0 && dc[0].Type == 0 && dc[0].Value > 0 && dc[0].Value <= 65535 {
 				dur = uint16(dc[0].Value)
 			}
 		}
-		if isAv {
+		if isAv || isTal {
 			dur = 0
 		}
-		m := boosterEquipMeta{isAvatar: isAv, durability: dur}
+		m := boosterEquipMeta{isAvatar: isAv, isTalisman: isTal, durability: dur}
 		eqCache[id] = m
 		return m
 	}
@@ -343,6 +347,7 @@ func intValues(cells []pvf.Token) []int32 {
 
 type boosterEquipMeta struct {
 	isAvatar   bool
+	isTalisman bool
 	durability uint16
 }
 
@@ -410,6 +415,8 @@ func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) booster
 					em := classifyEquip(tpl)
 					if em.isAvatar {
 						items = append(items, BoosterAward{Template: tpl, Quantity: q, Kind: "a"})
+					} else if em.isTalisman {
+						items = append(items, BoosterAward{Template: tpl, Quantity: q, Kind: "t"})
 					} else {
 						items = append(items, BoosterAward{Template: tpl, Quantity: q, Kind: "e", Durability: em.durability})
 					}
@@ -506,6 +513,8 @@ func parseBoosterInfo(cells []pvf.Token, classifyEquip func(uint32) boosterEquip
 						em := classifyEquip(aw.Template)
 						if em.isAvatar {
 							aw.Kind = "a"
+						} else if em.isTalisman {
+							aw.Kind = "t"
 						} else {
 							aw.Kind = "e"
 							aw.Durability = em.durability
@@ -549,6 +558,8 @@ func parsePackageData(cells []pvf.Token, eqPaths map[uint32]string, classifyEqui
 				em := classifyEquip(id)
 				if em.isAvatar {
 					aw.Kind = "a"
+				} else if em.isTalisman {
+					aw.Kind = "t"
 				} else {
 					aw.Kind = "e"
 					aw.Durability = em.durability

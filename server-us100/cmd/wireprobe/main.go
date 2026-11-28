@@ -2600,6 +2600,9 @@ func main() {
 						if e == nil {
 							plan.Avatars, e = inventory.AvatarPayload(role.State)
 						}
+						if e == nil {
+							plan.Talismans, e = inventory.TalismanPayload(role.State)
+						}
 						if e != nil {
 							event(map[string]any{"kind": "entry_worn_error", "error": e.Error()})
 							continue

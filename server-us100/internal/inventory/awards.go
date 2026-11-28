@@ -29,6 +29,15 @@ func (a *Awarder) Grant(raw json.RawMessage, id, amount uint32) (json.RawMessage
 		var slot uint16
 		b, slot, e = b.Add(a.Catalog, a.Rules, id, amount)
 		r.Slots = []uint16{slot}
+	} else if IsTalismanTemplate(id) || (a.Equipment != nil && a.Equipment.IsTalisman(id)) {
+		if amount == 0 || amount > uint32(TalismanSlotCount) {
+			return nil, r, fmt.Errorf("invalid talisman award")
+		}
+		ids := make([]uint32, amount)
+		for i := range ids {
+			ids[i] = id
+		}
+		b, r.Slots, e = b.AddTalismans(ids)
 	} else {
 		if a.Equipment == nil || a.Equipment.Source.Checksum != a.Rules.Source {
 			return nil, r, fmt.Errorf("equipment award source missing")

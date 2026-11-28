@@ -105,7 +105,9 @@ func (s *WearService) moveOrdinary(role storage.Character, r protocol.ItemMoveRe
 	if s == nil || s.Catalog == nil || s.Catalog.Source.Checksum != role.ConfigVersion || s.Rules.Source != role.ConfigVersion || s.Professions.Source.Checksum != role.ConfigVersion {
 		return nil, fmt.Errorf("wear service source mismatch")
 	}
-	if (r.SourceList != 0 && r.SourceList != 1 && r.SourceList != 3) || (r.DestinationList != 0 && r.DestinationList != 1 && r.DestinationList != 3) || r.Count > 1 || r.Extra != 0 || r.Selection != 0xffffffff || r.Flags != [3]byte{} {
+	if (r.SourceList != 0 && r.SourceList != 1 && r.SourceList != 3 && r.SourceList != protocol.TalismanSpace) ||
+		(r.DestinationList != 0 && r.DestinationList != 1 && r.DestinationList != 3 && r.DestinationList != protocol.TalismanSpace) ||
+		r.Count > 1 || r.Extra != 0 || r.Selection != 0xffffffff || r.Flags != [3]byte{} {
 		return nil, fmt.Errorf("unsupported ordinary equipment move")
 	}
 	if r.SourceList == r.DestinationList && r.SourceSlot == r.DestinationSlot {
@@ -114,6 +116,110 @@ func (s *WearService) moveOrdinary(role storage.Character, r protocol.ItemMoveRe
 	b, e := ReadBag(role.State)
 	if e != nil {
 		return nil, e
+	}
+	// Talisman & Rune move path:
+	//   - Talismans: space 0x2b (0..79) <-> space 3 (worn slots 33..35 = 0x21..0x23) or within 0x2b (0..79)
+	//   - Runes:     space 0x2b (80..328, bag 80..319 and equipped 320..328) <-> space 0x2b (80..328)
+	if r.SourceList == protocol.TalismanSpace || r.DestinationList == protocol.TalismanSpace ||
+		(r.SourceList == 3 && r.SourceSlot >= WornTalismanSlotMin && r.SourceSlot <= WornTalismanSlotMax) ||
+		(r.DestinationList == 3 && r.DestinationSlot >= WornTalismanSlotMin && r.DestinationSlot <= WornTalismanSlotMax) {
+		if r.SourceList == 0 || r.DestinationList == 0 || r.SourceList == 1 || r.DestinationList == 1 {
+			return nil, fmt.Errorf("cannot move talisman or rune into ordinary/avatar bag")
+		}
+		isRuneMove := r.SourceList == protocol.TalismanSpace && r.DestinationList == protocol.TalismanSpace &&
+			r.SourceSlot >= RuneSlotStart && r.DestinationSlot >= RuneSlotStart
+		if isRuneMove {
+			if r.SourceSlot >= TalismanBagCapacity || r.DestinationSlot >= TalismanBagCapacity {
+				return nil, fmt.Errorf("slot outside rune inventory")
+			}
+			findRune := func(slot uint16) *BagItem {
+				for _, v := range b.Runes {
+					if v.Slot == slot {
+						cp := v
+						return &cp
+					}
+				}
+				return nil
+			}
+			a := findRune(r.SourceSlot)
+			z := findRune(r.DestinationSlot)
+			if a == nil && z == nil {
+				return nil, fmt.Errorf("both rune locations are empty")
+			}
+			if (a == nil && r.SourceItem != 0) || (a != nil && r.SourceItem != 0 && r.SourceItem != a.Template) || (r.DestinationItem != 0 && (z == nil || r.DestinationItem != z.Template)) {
+				return nil, fmt.Errorf("stale rune identity")
+			}
+			replaceRune := func(slot uint16, item *BagItem) {
+				kept := make([]BagItem, 0, len(b.Runes)+1)
+				for _, v := range b.Runes {
+					if v.Slot != slot {
+						kept = append(kept, v)
+					}
+				}
+				if item != nil {
+					v := *item
+					v.Slot = slot
+					kept = append(kept, v)
+				}
+				b.Runes = kept
+			}
+			replaceRune(r.SourceSlot, z)
+			replaceRune(r.DestinationSlot, a)
+			return SaveBag(role.State, b)
+		}
+		findTalisman := func(list byte, slot uint16) (*BagEquipment, error) {
+			rows := b.Worn
+			if list == protocol.TalismanSpace {
+				if slot >= TalismanSlotCount {
+					return nil, fmt.Errorf("slot outside talisman bag")
+				}
+				rows = b.Talismans
+			} else if slot < WornTalismanSlotMin || slot > WornTalismanSlotMax {
+				return nil, fmt.Errorf("slot outside worn talisman slots")
+			}
+			for _, v := range rows {
+				if v.Slot == slot {
+					cp := v
+					return &cp, nil
+				}
+			}
+			return nil, nil
+		}
+		a, err := findTalisman(r.SourceList, r.SourceSlot)
+		if err != nil {
+			return nil, err
+		}
+		z, err := findTalisman(r.DestinationList, r.DestinationSlot)
+		if err != nil {
+			return nil, err
+		}
+		if a == nil && z == nil {
+			return nil, fmt.Errorf("both talisman locations are empty")
+		}
+		if (a == nil && r.SourceItem != 0) || (a != nil && r.SourceItem != 0 && r.SourceItem != a.Template) || (r.DestinationItem != 0 && (z == nil || r.DestinationItem != z.Template)) {
+			return nil, fmt.Errorf("stale talisman identity")
+		}
+		replaceTalisman := func(list byte, slot uint16, item *BagEquipment) {
+			rows := &b.Worn
+			if list == protocol.TalismanSpace {
+				rows = &b.Talismans
+			}
+			kept := make([]BagEquipment, 0, len(*rows)+1)
+			for _, v := range *rows {
+				if v.Slot != slot {
+					kept = append(kept, v)
+				}
+			}
+			if item != nil {
+				v := *item
+				v.Slot = slot
+				kept = append(kept, v)
+			}
+			*rows = kept
+		}
+		replaceTalisman(r.SourceList, r.SourceSlot, z)
+		replaceTalisman(r.DestinationList, r.DestinationSlot, a)
+		return SaveBag(role.State, b)
 	}
 	// Avatar move path: list 1 (Avatar Bag 0..279) <-> list 3 (Worn Avatars 0..11)
 	if r.SourceList == 1 || r.DestinationList == 1 {
@@ -312,4 +418,14 @@ func AvatarPayload(state json.RawMessage) ([]byte, error) {
 		return nil, e
 	}
 	return protocol.US224AvatarRestore(AvatarBagCapacity, b.AvatarRows())
+}
+
+// TalismanPayload encodes NOTI13 space 0x2b (Talisman & Rune Inventory / 护石栏)
+// for character entry.
+func TalismanPayload(state json.RawMessage) ([]byte, error) {
+	b, e := ReadBag(state)
+	if e != nil {
+		return nil, e
+	}
+	return protocol.US224TalismanRestore(b.TalismanRows())
 }

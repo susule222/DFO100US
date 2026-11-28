@@ -88,6 +88,26 @@ func LoadBagRules(p string) (BagRules, error) {
 
 const AvatarBagCapacity uint16 = 280
 
+// Talisman & Rune Inventory (space 0x2b) slot layout verified from DFO_unpacked.exe:
+//   0..79    (0x00..0x4f): 80 Talisman bag slots (0x1416c0c90(0)=0, 0x141406ca0()=0x50)
+//   80..319  (0x50..0x13f): 240 Rune bag slots (0x1416c0c90(1)=0x50, 0x1414062d0()=0xf0)
+//   320..328 (0x140..0x148): 9 equipped Rune slots (3 per worn talisman 33..35, 0x1414061c0)
+const (
+	TalismanBagCapacity uint16 = 329 // 0x149
+	TalismanSlotCount   uint16 = 80  // 0x50: slots 0..79
+	RuneSlotStart       uint16 = 80  // 0x50: slots 80..319
+	RuneSlotEnd         uint16 = 319 // 0x13f
+	EquippedRuneStart   uint16 = 320 // 0x140: slots 320..328
+	EquippedRuneEnd     uint16 = 328 // 0x148
+	WornTalismanSlotMin uint16 = 33  // 0x21
+	WornTalismanSlotMax uint16 = 35  // 0x23
+)
+
+// DefaultTalismanRuneSockets provides 3 valid distinct rune socket color IDs
+// (2=Terracotta/Purple, 3=Circle Mage/Blue, 4=Second Pact/Red) when a talisman
+// has no persisted socket roll yet.
+var DefaultTalismanRuneSockets = [3]byte{2, 3, 4}
+
 // MaxExpandedInventorySlots is the US224 client's maximum ordinary inventory
 // expansion (+2 rows = +16 slots per tab, verified at DFO_unpacked.exe
 // 0x1439af840 / 0x1439b0e55: stage 1=base 0, stage 2=+8, stage 3=+16).
@@ -110,6 +130,8 @@ type Bag struct {
 	Worn          []BagEquipment `json:"worn,omitempty"`
 	Avatars       []BagEquipment `json:"avatars,omitempty"`
 	WornAvatars   []BagEquipment `json:"worn_avatars,omitempty"`
+	Talismans     []BagEquipment `json:"talismans,omitempty"`
+	Runes         []BagItem      `json:"runes,omitempty"`
 }
 
 // ExpandInventory upgrades the character's ordinary inventory expansion slots
@@ -176,9 +198,15 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		seen[i.Slot] = true
 	}
 	seen = map[uint16]bool{}
-	for _, i := range b.Worn {
-		if i.Slot < 12 || i.Slot > 25 || i.Template == 0 || seen[i.Slot] {
+	for idx := range b.Worn {
+		i := b.Worn[idx]
+		validOrdinary := i.Slot >= 12 && i.Slot <= 25
+		validTalisman := i.Slot >= WornTalismanSlotMin && i.Slot <= WornTalismanSlotMax
+		if (!validOrdinary && !validTalisman) || i.Template == 0 || seen[i.Slot] {
 			return b, fmt.Errorf("invalid saved worn equipment")
+		}
+		if validTalisman && b.Worn[idx].RuneSockets == [3]byte{} {
+			b.Worn[idx].RuneSockets = DefaultTalismanRuneSockets
 		}
 		seen[i.Slot] = true
 	}
@@ -195,6 +223,59 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 			return b, fmt.Errorf("invalid saved worn avatar")
 		}
 		seen[i.Slot] = true
+	}
+	seen = map[uint16]bool{}
+	for idx := range b.Talismans {
+		i := b.Talismans[idx]
+		if i.Slot >= TalismanSlotCount || i.Template == 0 || seen[i.Slot] {
+			return b, fmt.Errorf("invalid saved talisman item")
+		}
+		if b.Talismans[idx].RuneSockets == [3]byte{} {
+			b.Talismans[idx].RuneSockets = DefaultTalismanRuneSockets
+		}
+		seen[i.Slot] = true
+	}
+	for _, i := range b.Runes {
+		if i.Slot < RuneSlotStart || i.Slot >= TalismanBagCapacity || i.Template == 0 || i.Amount == 0 || seen[i.Slot] {
+			return b, fmt.Errorf("invalid saved rune item")
+		}
+		seen[i.Slot] = true
+	}
+	// Auto-migrate any talismans previously placed in the ordinary Equipment tab
+	// (space 0) into free slots in the Talisman tab (space 0x2b, slots 0..79).
+	if len(b.Equipment) > 0 {
+		var keptEquip []BagEquipment
+		var migrated []BagEquipment
+		for _, eq := range b.Equipment {
+			if IsTalismanTemplate(eq.Template) {
+				migrated = append(migrated, eq)
+			} else {
+				keptEquip = append(keptEquip, eq)
+			}
+		}
+		if len(migrated) > 0 {
+			sort.Slice(migrated, func(i, j int) bool { return migrated[i].Slot < migrated[j].Slot })
+			for _, eq := range migrated {
+				placed := false
+				for slot := uint16(0); slot < TalismanSlotCount; slot++ {
+					if !seen[slot] {
+						seen[slot] = true
+						eq.Slot = slot
+						eq.Durability = 0
+						if eq.RuneSockets == [3]byte{} {
+							eq.RuneSockets = DefaultTalismanRuneSockets
+						}
+						b.Talismans = append(b.Talismans, eq)
+						placed = true
+						break
+					}
+				}
+				if !placed {
+					keptEquip = append(keptEquip, eq)
+				}
+			}
+			b.Equipment = keptEquip
+		}
 	}
 	return b, nil
 }
@@ -277,6 +358,12 @@ func (b Bag) LockedItemEntries(now int64) []protocol.ItemLockEntry {
 	for _, av := range b.WornAvatars {
 		add(3, av.Slot, av.ItemLock, av.UnlockAt)
 	}
+	for _, tl := range b.Talismans {
+		add(protocol.TalismanSpace, tl.Slot, tl.ItemLock, tl.UnlockAt)
+	}
+	for _, rn := range b.Runes {
+		add(protocol.TalismanSpace, rn.Slot, rn.ItemLock, rn.UnlockAt)
+	}
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Space != out[j].Space {
 			return out[i].Space < out[j].Space
@@ -284,6 +371,86 @@ func (b Bag) LockedItemEntries(now int64) []protocol.ItemLockEntry {
 		return out[i].Slot < out[j].Slot
 	})
 	return out
+}
+
+// TalismanRows projects the character's Talisman & Rune Inventory (space 0x2b)
+// sorted by slot: talismans in 0..79 and runes in 80..328.
+func (b Bag) TalismanRows() [][protocol.CurrentItemRecordSize]byte {
+	rows := make([][protocol.CurrentItemRecordSize]byte, 0, len(b.Talismans)+len(b.Runes))
+	for _, t := range b.Talismans {
+		rows = append(rows, EquipmentRow(t))
+	}
+	for _, r := range b.Runes {
+		row := protocol.OrdinaryItem(r.Slot, r.Template, r.Amount)
+		if r.SortLocked {
+			row[protocol.ItemSortLockOffset] = 1
+		}
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return uint16(rows[i][0])|uint16(rows[i][1])<<8 < uint16(rows[j][0])|uint16(rows[j][1])<<8
+	})
+	return rows
+}
+
+// AddTalismans places one or more talisman templates into free slots in space
+// 0x2b (slots 0..79). Refuses atomically if the talisman tab is full.
+func (b Bag) AddTalismans(ids []uint32) (Bag, []uint16, error) {
+	if len(ids) == 0 {
+		return b, nil, fmt.Errorf("at least one talisman template is required")
+	}
+	occupied := map[uint16]bool{}
+	for _, t := range b.Talismans {
+		occupied[t.Slot] = true
+	}
+	slots := make([]uint16, 0, len(ids))
+	for n := uint16(0); n < TalismanSlotCount && len(slots) < len(ids); n++ {
+		if !occupied[n] {
+			slots = append(slots, n)
+		}
+	}
+	if len(slots) < len(ids) {
+		return b, nil, fmt.Errorf("talisman bag is full")
+	}
+	b.Talismans = append([]BagEquipment(nil), b.Talismans...)
+	for i, id := range ids {
+		if id == 0 {
+			return b, nil, fmt.Errorf("invalid talisman template 0")
+		}
+		b.Talismans = append(b.Talismans, BagEquipment{
+			Slot:        slots[i],
+			Template:    id,
+			Durability:  0,
+			RuneSockets: DefaultTalismanRuneSockets,
+		})
+	}
+	return b, slots, nil
+}
+
+// AddRunes places count copies of a rune template into free slots in space 0x2b
+// (slots 80..319). Each rune occupies one slot with Amount=1.
+func (b Bag) AddRunes(id, count uint32) (Bag, []uint16, error) {
+	if id == 0 || count == 0 || count > uint32(RuneSlotEnd-RuneSlotStart+1) {
+		return b, nil, fmt.Errorf("invalid rune award")
+	}
+	occupied := map[uint16]bool{}
+	for _, r := range b.Runes {
+		occupied[r.Slot] = true
+	}
+	slots := make([]uint16, 0, count)
+	for n := RuneSlotStart; n <= RuneSlotEnd && len(slots) < int(count); n++ {
+		if !occupied[n] {
+			slots = append(slots, n)
+		}
+	}
+	if len(slots) < int(count) {
+		return b, nil, fmt.Errorf("rune bag is full")
+	}
+	b.Runes = append([]BagItem(nil), b.Runes...)
+	for _, slot := range slots {
+		b.Runes = append(b.Runes, BagItem{Slot: slot, Template: id, Amount: 1})
+	}
+	return b, slots, nil
 }
 
 // AvatarRows projects the character's Avatar Inventory (space 1) sorted by slot.
