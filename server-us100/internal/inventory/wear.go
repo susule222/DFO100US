@@ -58,6 +58,9 @@ func (s *WearService) conquerorBonus(accountID int64) byte {
 func (s *WearService) wearable(role storage.Character, item BagEquipment, slot uint16, extraLevel byte) error {
 	d, ok := s.Catalog.index[item.Template]
 	if !ok {
+		if IsKnownOrdinaryEquipment(item.Template) && slot >= 12 && slot <= 25 {
+			return nil
+		}
 		return fmt.Errorf("equipment definition missing")
 	}
 	// Wearing uses the structural reward check, NOT the drop-pool Basic rule.
@@ -232,6 +235,31 @@ func (s *WearService) moveOrdinary(role storage.Character, r protocol.ItemMoveRe
 				kept = append(kept, v)
 			}
 			*rows = kept
+		}
+		if !isArtifact {
+			// Auto-hatch sealed Creature Eggs when equipped into Space 3 slot 26
+			// (e.g. right-clicking egg 500980049 sends CMD 19 Space 7 -> Space 3:26),
+			// and guarantee a non-zero CreatureID for NOTI 105 rendering.
+			if a != nil {
+				if r.DestinationList == 3 && r.DestinationSlot == WornCreatureSlot {
+					if hatched := CreatureEggOutput(a.Template); hatched != 0 {
+						a.Template = hatched
+					}
+				}
+				if a.CreatureID == 0 {
+					a.CreatureID = b.nextCreatureID()
+				}
+			}
+			if z != nil {
+				if r.SourceList == 3 && r.SourceSlot == WornCreatureSlot {
+					if hatched := CreatureEggOutput(z.Template); hatched != 0 {
+						z.Template = hatched
+					}
+				}
+				if z.CreatureID == 0 {
+					z.CreatureID = b.nextCreatureID()
+				}
+			}
 		}
 		replaceCreature(r.SourceList, r.SourceSlot, z)
 		replaceCreature(r.DestinationList, r.DestinationSlot, a)
@@ -655,6 +683,22 @@ func CreaturePayload(state json.RawMessage) ([]byte, error) {
 		return nil, e
 	}
 	return protocol.US224CreatureRestore(b.CreatureRows())
+}
+
+// CreatureInfoPayload encodes NOTI 105 (0x69, CreatureInfo map registration)
+// for all creatures owned by the character. Must be sent before Space 7 / Space 3
+// restore or update packets so the client's CreatureRender (0x14400b150) resolves
+// each creature's ItemExtra+0x00 instance ID in 0x1497cf930.
+func CreatureInfoPayload(state json.RawMessage) ([]byte, error) {
+	b, e := ReadBag(state)
+	if e != nil {
+		return nil, e
+	}
+	entries := b.CreatureInfoEntries()
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	return protocol.CreatureInfoList(entries), nil
 }
 
 // InsigniaPayload encodes NOTI13 space 0x25 (Insignia & Gem Inventory / 勋章栏)

@@ -100,6 +100,19 @@ func (s *equipmentSession) handle(service *inventory.WearService, w *worldSessio
 		ackReq.SourceItem, ackReq.DestinationItem = ackReq.DestinationItem, ackReq.SourceItem
 	}
 	plan := []outboundPacket{{"equipment_move_committed", 1, 19, protocol.ItemMoveSuccess(ackReq, 1)}}
+	isCreatureMove := r.SourceList == protocol.CreatureSpace || r.DestinationList == protocol.CreatureSpace ||
+		(r.SourceList == 3 && r.SourceSlot == inventory.WornCreatureSlot) ||
+		(r.DestinationList == 3 && r.DestinationSlot == inventory.WornCreatureSlot)
+	if isCreatureMove {
+		if entries := b.CreatureInfoEntries(); len(entries) > 0 {
+			plan = append(plan, outboundPacket{
+				"creature_info_updated",
+				0,
+				protocol.NotiCreatureInfo,
+				protocol.CreatureInfoList(entries),
+			})
+		}
+	}
 	isAvatarMove := r.SourceList == 1 || r.DestinationList == 1
 	for _, space := range []byte{0, 1, 3, protocol.CreatureSpace, protocol.InsigniaSpace, protocol.TalismanSpace} {
 		var rows [][protocol.CurrentItemRecordSize]byte

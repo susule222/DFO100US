@@ -45,6 +45,11 @@ func TestCreatureBoosterHatchEquipSortAndAllCategoryMigrations(t *testing.T) {
 	if hatched := bc.CreatureEggs[500980049]; hatched != 500990710 {
 		t.Fatalf("expected CreatureEggs[500980049]=500990710, got %d (total=%d)", hatched, len(bc.CreatureEggs))
 	}
+	registerInventoryLookups(bc, eqCat)
+	defer func() {
+		inventory.RegisterCreatureEggLookup(nil)
+		inventory.RegisterOrdinaryEquipmentLookup(nil)
+	}()
 
 	path := filepath.Join(t.TempDir(), "creature.db")
 	store, err := storage.Open(ctx, storage.Config{DBPath: path, SkipSeed: true})
@@ -173,14 +178,20 @@ func TestCreatureBoosterHatchEquipSortAndAllCategoryMigrations(t *testing.T) {
 	if err != nil {
 		t.Fatalf("handleCreatureEggHatch failed: %v", err)
 	}
-	if len(hatchPlan) != 2 || hatchPlan[0].ID != protocol.CmdCreatureEggHatch ||
+	if len(hatchPlan) != 3 || hatchPlan[0].ID != protocol.CmdCreatureEggHatch ||
 		len(hatchPlan[0].Payload) != 4 || hatchPlan[0].Payload[0] != 1 ||
 		binary.LittleEndian.Uint16(hatchPlan[0].Payload[1:3]) != 0 || hatchPlan[0].Payload[3] != protocol.CreatureSpace {
 		t.Fatalf("unexpected ACK 102 payload: %+v", hatchPlan)
 	}
-	if hatchPlan[1].ID != 14 || hatchPlan[1].Payload[0] != protocol.CreatureSpace ||
-		binary.LittleEndian.Uint32(hatchPlan[1].Payload[5:9]) != 500990710 {
-		t.Fatalf("expected NOTI 14 Space 7 with hatched 500990710, got %x", hatchPlan[1].Payload[:min(16, len(hatchPlan[1].Payload))])
+	if hatchPlan[1].ID != protocol.NotiCreatureInfo || len(hatchPlan[1].Payload) == 0 {
+		t.Fatalf("expected NOTI 105 before NOTI 14 on egg hatch, got %+v", hatchPlan)
+	}
+	if hatchPlan[2].ID != 14 || hatchPlan[2].Payload[0] != protocol.CreatureSpace ||
+		binary.LittleEndian.Uint32(hatchPlan[2].Payload[5:9]) != 500990710 {
+		t.Fatalf("expected NOTI 14 Space 7 with hatched 500990710, got %x", hatchPlan[2].Payload[:min(16, len(hatchPlan[2].Payload))])
+	}
+	if cid := binary.LittleEndian.Uint32(hatchPlan[2].Payload[9:13]); cid == 0 {
+		t.Fatalf("expected non-zero CreatureID at row[6:10] (payload[9:13]), got 0")
 	}
 
 	// 4. Equip hatched creature (Space 7:0 -> Space 3:26), artifact (Space 7:160 -> Space 3:27), insignia (Space 0x25:0 -> Space 3:31).
@@ -259,4 +270,204 @@ func TestCreatureBoosterHatchEquipSortAndAllCategoryMigrations(t *testing.T) {
 		}
 	}
 	_ = st
+}
+
+func TestCreatureRenderNoti105AutoHatchAndBoosterTitleMigration(t *testing.T) {
+	ctx := context.Background()
+	c, err := catalog.LoadLoot("../../configs/us100/loot.generated.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := inventory.LoadBagRules("../../configs/us100/rules.bag.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bc, err := catalog.LoadBoosters("../../configs/us100/boosters.generated.json.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chars, err := catalog.LoadCharacters("../../configs/us100/characters.generated.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eqCat, err := inventory.LoadEquipmentCatalog("../../configs/us100/equipment.generated.json", r.Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wearRules, err := inventory.LoadWearRules("../../configs/us100/rules.wear.json", r.Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerInventoryLookups(bc, eqCat)
+	defer func() {
+		inventory.RegisterCreatureEggLookup(nil)
+		inventory.RegisterOrdinaryEquipmentLookup(nil)
+	}()
+
+	// 1. Verify NOTI 105 exact wire encoding (0x1434f2390): 1 + 16*N bytes for unnamed creatures.
+	ci := protocol.CreatureInfoList([]protocol.CreatureInfoEntry{
+		{InstanceID: 7, Stamina: 100, Level: 1},
+	})
+	if len(ci) != 17 || ci[0] != 1 ||
+		binary.LittleEndian.Uint32(ci[1:5]) != 7 ||
+		ci[5] != 100 || ci[6] != 0 ||
+		binary.LittleEndian.Uint32(ci[7:11]) != 0 ||
+		ci[11] != 1 ||
+		binary.LittleEndian.Uint32(ci[12:16]) != 0 ||
+		ci[16] != 0 {
+		t.Fatalf("unexpected NOTI 105 wire bytes: %x", ci)
+	}
+
+	// 2. Verify entryPayloads places NOTI 105 BEFORE Space 7 and Space 3 restore.
+	ep := entryPayloads{
+		CreatureInfo: ci,
+		Creatures:    []byte{protocol.CreatureSpace, 0, 0},
+		Worn:         []byte{3, 0, 0},
+	}
+	var idx105, idxCre, idxWorn = -1, -1, -1
+	for i, pkt := range ep.packets() {
+		switch pkt.Name {
+		case "creature_info_restored":
+			idx105 = i
+		case "creature_inventory_restored":
+			idxCre = i
+		case "worn_equipment_restored":
+			idxWorn = i
+		}
+	}
+	if idx105 < 0 || idxCre < 0 || idxWorn < 0 || !(idx105 < idxCre && idx105 < idxWorn) {
+		t.Fatalf("expected NOTI 105 before Space 7 and Space 3: idx105=%d idxCre=%d idxWorn=%d", idx105, idxCre, idxWorn)
+	}
+
+	// 3. Seed legacy Char 48 state:
+	//    - Worn slot 26 holds unhatched egg 500980049 with CreatureID=0
+	//    - Space 7 slot 0 holds another unhatched egg 500980049 with CreatureID=0
+	//    - Space 0 slot 78 holds misplaced Title 500330547 from older booster catalog
+	//    - Space 0 slot 79 holds Title Random Box 590005789
+	path := filepath.Join(t.TempDir(), "creature_render.db")
+	store, err := storage.Open(ctx, storage.Config{DBPath: path, SkipSeed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	err = store.Database().Mutate(func(tx *db100.Tx) error {
+		return tx.Put("characters", "48", map[string]any{
+			"id": 48, "account_id": 42, "wire_id": 1, "name": "PetHero", "profession": 0,
+			"config_version": r.Source,
+			"state": map[string]any{
+				"level": 100,
+				"inventory": inventory.Bag{
+					Version: "ordinary-bag-v1",
+					Worn: []inventory.BagEquipment{
+						{Slot: inventory.WornCreatureSlot, Template: 500980049},
+					},
+					Creatures: []inventory.BagEquipment{
+						{Slot: 0, Template: 500980049},
+					},
+					Items: []inventory.BagItem{
+						{Slot: 78, Template: 500330547, Amount: 1},
+						{Slot: 79, Template: 590005789, Amount: 1},
+					},
+				},
+			},
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := store.LiveCharacter(42, 48)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 4. ReadBag auto-hatches worn egg 500980049 -> 500990710, assigns deterministic
+	//    unique CreatureIDs (1 and 2), and migrates Title 500330547 into Equipment (9..64).
+	bag, err := inventory.ReadBag(role.State)
+	if err != nil {
+		t.Fatalf("ReadBag failed: %v", err)
+	}
+	if len(bag.Worn) != 1 || bag.Worn[0].Template != 500990710 || bag.Worn[0].CreatureID == 0 {
+		t.Fatalf("expected auto-hatched worn creature 500990710 with CreatureID>0, got %+v", bag.Worn)
+	}
+	if len(bag.Creatures) != 1 || bag.Creatures[0].CreatureID == 0 || bag.Creatures[0].CreatureID == bag.Worn[0].CreatureID {
+		t.Fatalf("expected unique non-zero CreatureID for bag creature, got worn=%+v bag=%+v", bag.Worn, bag.Creatures)
+	}
+	wornRow := inventory.EquipmentRow(bag.Worn[0])
+	if gotID := binary.LittleEndian.Uint32(wornRow[6:10]); gotID != bag.Worn[0].CreatureID {
+		t.Fatalf("expected EquipmentRow[6:10]=%d, got %d", bag.Worn[0].CreatureID, gotID)
+	}
+	if len(bag.Equipment) != 1 || bag.Equipment[0].Template != 500330547 || bag.Equipment[0].Slot < 9 || bag.Equipment[0].Slot > 64 {
+		t.Fatalf("expected migrated Title 500330547 in Equipment 9..64, got %+v", bag.Equipment)
+	}
+
+	// Verify CreatureInfoPayload is deterministic and includes both CreatureIDs.
+	ciPayload, err := inventory.CreatureInfoPayload(role.State)
+	if err != nil || len(ciPayload) != 1+2*16 || ciPayload[0] != 2 {
+		t.Fatalf("expected 2 creatures in NOTI 105 payload, err=%v len=%d", err, len(ciPayload))
+	}
+
+	w := &worldSession{
+		account:    42,
+		role:       role,
+		characters: &character.Service{Store: store, Equipment: eqCat},
+		loot:       &loot.Service{Store: store, Catalog: c, BagRules: r, Equipment: eqCat, Boosters: bc},
+	}
+	wearSvc := &inventory.WearService{
+		Store:       store,
+		Catalog:     eqCat,
+		Professions: chars,
+		BagRules:    r,
+		Rules:       wearRules,
+	}
+	var eqSess equipmentSession
+
+	// 5. Equipping Title 500330547 from migrated Equipment slot 9 -> Space 3 slot 13 succeeds.
+	if _, err := eqSess.handle(wearSvc, w, encodeCMD19(0, bag.Equipment[0].Slot, 500330547, 3, 13, 0), []byte("eq-title-500330547")); err != nil {
+		t.Fatalf("equip booster title 500330547 failed: %v", err)
+	}
+
+	// 6. Right-click equipping unhatched egg 500980049 (Space 7:0 -> Space 3:26) via CMD 19
+	//    auto-hatches to 500990710 and emits NOTI 105 BEFORE NOTI 14 Space 3!
+	plan, err := eqSess.handle(wearSvc, w, encodeCMD19(protocol.CreatureSpace, 0, 500980049, 3, inventory.WornCreatureSlot, 500990710), []byte("eq-egg-auto-hatch"))
+	if err != nil {
+		t.Fatalf("equip creature egg failed: %v", err)
+	}
+	noti105Idx, noti14WornIdx := -1, -1
+	var wornTpl, wornCID uint32
+	for i, pkt := range plan {
+		if pkt.ID == protocol.NotiCreatureInfo {
+			noti105Idx = i
+		}
+		if pkt.ID == 14 && len(pkt.Payload) >= 13 && pkt.Payload[0] == 3 {
+			noti14WornIdx = i
+			wornTpl = binary.LittleEndian.Uint32(pkt.Payload[5:9])
+			wornCID = binary.LittleEndian.Uint32(pkt.Payload[9:13])
+		}
+	}
+	if noti105Idx < 0 || noti14WornIdx < 0 || noti105Idx > noti14WornIdx {
+		t.Fatalf("expected NOTI 105 before NOTI 14 Space 3, got plan=%+v", plan)
+	}
+	if wornTpl != 500990710 || wornCID == 0 {
+		t.Fatalf("expected auto-hatched 500990710 with CreatureID>0 in Space 3 NOTI 14, got tpl=%d cid=%d", wornTpl, wornCID)
+	}
+
+	// 7. Opening Title Random Box 590005789 awards Title directly into Equipment (9..64), NOT Items!
+	cmd160 := make([]byte, 8)
+	binary.LittleEndian.PutUint16(cmd160[0:2], 79)
+	binary.LittleEndian.PutUint16(cmd160[2:4], 1)
+	savedAfterBox, _, _, awardTpl, _, applied, err := openBoosterBox(ctx, store, nil, w.loot, 42, w.role, []byte("open-title-box-590005789"), cmd160, func(n uint32) uint32 { return 0 })
+	if err != nil || !applied {
+		t.Fatalf("openBoosterBox(590005789) failed: err=%v applied=%v", err, applied)
+	}
+	bagAfterBox, _ := inventory.ReadBag(savedAfterBox.State)
+	foundInEquip := false
+	for _, eq := range bagAfterBox.Equipment {
+		if eq.Template == awardTpl && eq.Slot >= 9 && eq.Slot <= 64 {
+			foundInEquip = true
+		}
+	}
+	if !foundInEquip {
+		t.Fatalf("expected title %d from box 590005789 in Equipment (9..64), got equip=%+v items=%+v", awardTpl, bagAfterBox.Equipment, bagAfterBox.Items)
+	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"dfolan/internal/game/protocol"
 	"dfolan/internal/game/wire"
 	"fmt"
 	"io"
@@ -23,6 +24,7 @@ type entryPayloads struct {
 	Experience, CompletedQuests, Inventory                                    []byte
 	DanjiInventory                                                            []byte
 	Avatars                                                                   []byte
+	CreatureInfo                                                              []byte
 	Creatures                                                                 []byte
 	Insignias                                                                 []byte
 	Talismans                                                                 []byte
@@ -78,6 +80,9 @@ func (p entryPayloads) packets() []outboundPacket {
 		{"inventory_restored", 0, 13, p.Inventory},
 		{"danji_inventory_restored", 0, 13, p.DanjiInventory},
 		{"avatar_inventory_restored", 0, 13, p.Avatars},
+		// Register CreatureInfo map (0x1497cf930) BEFORE Space 7 and Space 3 restore
+		// so CreatureRender (0x14400b150) resolves each creature's ItemExtra+0x00 ID.
+		{"creature_info_restored", 0, protocol.NotiCreatureInfo, p.CreatureInfo},
 		{"creature_inventory_restored", 0, 13, p.Creatures},
 		{"insignia_inventory_restored", 0, 13, p.Insignias},
 		{"talisman_inventory_restored", 0, 13, p.Talismans},

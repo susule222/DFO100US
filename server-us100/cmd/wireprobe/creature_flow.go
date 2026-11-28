@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/sha256"
+	"dfolan/internal/catalog"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/inventory"
 	"dfolan/internal/storage"
@@ -87,10 +88,52 @@ func (w *worldSession) handleCreatureEggHatch(plaintext, rawFrame []byte) ([]out
 	plan := []outboundPacket{
 		{"creature_egg_hatch_ack", 1, protocol.CmdCreatureEggHatch, protocol.CreatureEggHatchSuccess(space, slot)},
 	}
+	if ciPayload, cerr := inventory.CreatureInfoPayload(saved.State); cerr == nil && len(ciPayload) > 0 {
+		plan = append(plan, outboundPacket{"creature_info_updated", 0, protocol.NotiCreatureInfo, ciPayload})
+	}
 	if hatchedEquip.Template != 0 {
 		if upd, uerr := protocol.US224CreatureUpdate([][protocol.CurrentItemRecordSize]byte{inventory.EquipmentRow(hatchedEquip)}); uerr == nil {
 			plan = append(plan, outboundPacket{"creature_egg_hatched_sync", 0, 14, upd})
 		}
 	}
 	return plan, nil
+}
+
+// registerInventoryLookups wires PVF creature-egg outputs and ordinary equipment
+// templates from loaded catalogs into package inventory so ReadBag and WearService
+// auto-hatch sealed eggs on equip and auto-migrate misplaced booster equipment/titles.
+func registerInventoryLookups(bc *catalog.BoosterCatalog, eq *inventory.EquipmentCatalog) {
+	if bc != nil && len(bc.CreatureEggs) > 0 {
+		eggs := bc.CreatureEggs
+		inventory.RegisterCreatureEggLookup(func(id uint32) uint32 {
+			return eggs[id]
+		})
+	}
+	ordEq := map[uint32]bool{}
+	if bc != nil {
+		for _, box := range bc.Boxes {
+			for _, grp := range box.Groups {
+				for _, aw := range grp {
+					if aw.Kind == "e" {
+						ordEq[aw.Template] = true
+					}
+				}
+			}
+			for _, items := range box.Categories {
+				for _, aw := range items {
+					if aw.Kind == "e" {
+						ordEq[aw.Template] = true
+					}
+				}
+			}
+		}
+	}
+	if eq != nil || len(ordEq) > 0 {
+		inventory.RegisterOrdinaryEquipmentLookup(func(id uint32) bool {
+			if eq != nil && eq.Has(id) {
+				return true
+			}
+			return ordEq[id]
+		})
+	}
 }

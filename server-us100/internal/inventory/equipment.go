@@ -166,6 +166,7 @@ type BagEquipment struct {
 	Slot         uint16  `json:"slot"`
 	Template     uint32  `json:"template"`
 	Durability   uint16  `json:"durability"`
+	CreatureID   uint32  `json:"creature_id,omitempty"`
 	Upgrade      byte    `json:"upgrade,omitempty"`
 	AmplifyType  byte    `json:"amplify_type,omitempty"`
 	AmplifyValue uint16  `json:"amplify_value,omitempty"`
@@ -173,6 +174,15 @@ type BagEquipment struct {
 	SortLocked   bool    `json:"sort_locked,omitempty"`
 	ItemLock     byte    `json:"item_lock,omitempty"`
 	UnlockAt     int64   `json:"unlock_at,omitempty"`
+}
+
+// Has reports whether equipment template id exists in the loaded equipment catalog.
+func (c *EquipmentCatalog) Has(id uint32) bool {
+	if c == nil || id == 0 {
+		return false
+	}
+	_, ok := c.index[id]
+	return ok
 }
 
 // IsTalismanTemplate reports whether an equipment template ID belongs to the
@@ -281,11 +291,11 @@ func (c *EquipmentCatalog) Basic(id uint32) (uint16, error) {
 }
 func EquipmentRow(i BagEquipment) [protocol.CurrentItemRecordSize]byte {
 	// Current NOTI13 logs (0x1434fc780..0x1434fc966) verify exact US224 row offsets:
-	//   +0x00 u16 slot, +0x02 u32 template, +0x06 u32 data, +0x0a u8 upgrade,
-	//   +0x0b u16 durability, +0x0d u8 isSealed, +0x0e u32 enchantCard,
+	//   +0x00 u16 slot, +0x02 u32 template, +0x06 u32 data (creature instance ID for creatures),
+	//   +0x0a u8 upgrade, +0x0b u16 durability, +0x0d u8 isSealed, +0x0e u32 enchantCard,
 	//   +0x12 u8 enchantUpgrade, +0x13 u8 amplify_type, +0x14 u16 amplify_value,
 	//   +0x55 u8 sortLocked, +0x67..0x69 [3]u8 talisman rune socket colors (1..5).
-	r := protocol.OrdinaryItem(i.Slot, i.Template, 0)
+	r := protocol.OrdinaryItem(i.Slot, i.Template, i.CreatureID)
 	r[10] = i.EffectiveUpgrade()
 	binary.LittleEndian.PutUint16(r[11:], i.Durability)
 	if i.AmplifyType != 0 {

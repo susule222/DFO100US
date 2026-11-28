@@ -30,6 +30,12 @@ const (
 	// when right-clicking a Creature Egg in Space 7: u8 space (=7), u16 slot.
 	// ACK 102 (0x1434b91c0): u8 1, u16 slot, u8 space (=7).
 	CmdCreatureEggHatch uint16 = 102
+
+	// NotiCreatureInfo is NOTI 105 (0x69), handled by DFO_unpacked.exe (0x1434f2390).
+	// Populates the client's CreatureMap (0x1497cf930) keyed by creatureInstanceID
+	// (matching raw[0x06..0x0a] of the 0xb1 creature item row) so equipped creatures
+	// render in the Creature Window summon circle and follow the character in town.
+	NotiCreatureInfo uint16 = 105
 )
 
 // OrdinaryItem is the current 181-byte base row. Special equipment branches
@@ -202,6 +208,57 @@ func DecodeCreatureEggHatch(p []byte) (space byte, slot uint16, err error) {
 func CreatureEggHatchSuccess(space byte, slot uint16) []byte {
 	p := add16([]byte{1}, slot)
 	return append(p, space)
+}
+
+// CreatureInfoEntry describes one creature registered in the client's CreatureMap
+// (0x1497cf930) via NOTI 105 (0x69, 0x1434f2390).
+type CreatureInfoEntry struct {
+	InstanceID  uint32
+	Stamina     byte   // 0..100 loyalty / fullness (default 100)
+	Level       byte   // >= 1 (default 1)
+	Exp         uint32 // creature experience
+	Name        string // optional custom name (< 30 bytes; empty uses PVF default)
+	NameChanged bool
+}
+
+// CreatureInfoList encodes NOTI 105 (0x69, verified at DFO_unpacked.exe 0x1434f2390):
+//
+//	u8 count
+//	for each entry:
+//	  u32 instanceID, u8 stamina, u8 isEvolved(0), u32 exp, u8 level,
+//	  u32 nameLen + nameBytes (0x144e6eec0), u8 nameChanged.
+func CreatureInfoList(entries []CreatureInfoEntry) []byte {
+	if len(entries) > 255 {
+		entries = entries[:255]
+	}
+	p := make([]byte, 0, 1+len(entries)*16)
+	p = append(p, byte(len(entries)))
+	for _, e := range entries {
+		stamina := e.Stamina
+		if stamina == 0 {
+			stamina = 100
+		}
+		level := e.Level
+		if level == 0 {
+			level = 1
+		}
+		nameBytes := []byte(e.Name)
+		if len(nameBytes) >= 30 {
+			nameBytes = nameBytes[:29]
+		}
+		var nameChanged byte
+		if e.NameChanged {
+			nameChanged = 1
+		}
+		p = add32(p, e.InstanceID)
+		p = append(p, stamina, 0) // stamina, isEvolved=0
+		p = add32(p, e.Exp)
+		p = append(p, level)
+		p = add32(p, uint32(len(nameBytes)))
+		p = append(p, nameBytes...)
+		p = append(p, nameChanged)
+	}
+	return p
 }
 
 // Space 3 has the same item framing in the US224 restore and update

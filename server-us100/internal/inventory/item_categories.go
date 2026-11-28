@@ -1,5 +1,7 @@
 package inventory
 
+import "sync"
+
 // Verified US100 (v2.24.0.124) specialized inventory space layouts from DFO_unpacked.exe:
 //
 // Space 7 — Creature Inventory (宠物栏, 0x143a88674: cap 0x110 = 272 slots;
@@ -138,4 +140,59 @@ func IsFlagGemTemplate(id uint32) bool {
 // IsRuneTemplate reports whether template id is a US100 Rune (Space 0x2b, 80..319).
 func IsRuneTemplate(id uint32) bool {
 	return matchIDBands(id, us100RuneBands)
+}
+
+var (
+	catalogLookupMu        sync.RWMutex
+	creatureEggLookupFn    func(uint32) uint32
+	ordinaryEquipLookupFn  func(uint32) bool
+)
+
+// RegisterCreatureEggLookup registers the PVF creature-egg -> hatched-creature
+// template resolver (loaded from boosters.generated.json.gz) so ReadBag and
+// WearService can auto-hatch sealed eggs when equipped to Space 3 slot 26.
+func RegisterCreatureEggLookup(fn func(uint32) uint32) {
+	catalogLookupMu.Lock()
+	creatureEggLookupFn = fn
+	catalogLookupMu.Unlock()
+}
+
+// CreatureEggOutput returns the hatched creature template ID for a creature egg,
+// or 0 if template id is not a known hatchable egg.
+func CreatureEggOutput(id uint32) uint32 {
+	if id == 0 {
+		return 0
+	}
+	catalogLookupMu.RLock()
+	fn := creatureEggLookupFn
+	catalogLookupMu.RUnlock()
+	if fn == nil {
+		return 0
+	}
+	return fn(id)
+}
+
+// RegisterOrdinaryEquipmentLookup registers a PVF-derived predicate identifying
+// ordinary equipment templates (weapons, armors, accessories, titles) so ReadBag
+// can auto-migrate misplaced equipment from stackable tabs into Equipment (9..64)
+// and WearService can equip booster-only titles/weapons absent from drop tables.
+func RegisterOrdinaryEquipmentLookup(fn func(uint32) bool) {
+	catalogLookupMu.Lock()
+	ordinaryEquipLookupFn = fn
+	catalogLookupMu.Unlock()
+}
+
+// IsKnownOrdinaryEquipment reports whether id is a known ordinary equipment
+// template (excluding creatures, artifacts, insignias, and talismans).
+func IsKnownOrdinaryEquipment(id uint32) bool {
+	if id == 0 || IsCreatureTemplate(id) || IsCreatureArtifactTemplate(id) || IsInsigniaTemplate(id) || IsTalismanTemplate(id) {
+		return false
+	}
+	catalogLookupMu.RLock()
+	fn := ordinaryEquipLookupFn
+	catalogLookupMu.RUnlock()
+	if fn == nil {
+		return false
+	}
+	return fn(id)
 }

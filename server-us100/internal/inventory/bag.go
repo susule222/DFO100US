@@ -215,6 +215,11 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		if validTalisman && b.Worn[idx].RuneSockets == [3]byte{} {
 			b.Worn[idx].RuneSockets = DefaultTalismanRuneSockets
 		}
+		if i.Slot == WornCreatureSlot {
+			if hatched := CreatureEggOutput(b.Worn[idx].Template); hatched != 0 {
+				b.Worn[idx].Template = hatched
+			}
+		}
 		seen[i.Slot] = true
 	}
 	seen = map[uint16]bool{}
@@ -333,10 +338,11 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 	}
 	// Auto-migrate any specialized items previously placed in Space 0 stackable tabs
 	// (Creatures/Eggs, Artifacts, Creature Consumables, Insignias, Flag Gems, Runes,
-	// and misaligned Emblems) into their native spaces/tabs.
+	// misaligned Emblems, and ordinary equipment/titles from older booster catalogs)
+	// into their native spaces/tabs.
 	if len(b.Items) > 0 {
 		var keptItems []BagItem
-		var migCre, migArt, migIns []BagItem
+		var migCre, migArt, migIns, migOrdEq []BagItem
 		var migCreStk, migGems, migRunes, migratedEmblems []BagItem
 		occupiedSpace0 := make(map[uint16]bool, len(b.Items)+len(b.Equipment))
 		for _, eq := range b.Equipment {
@@ -358,6 +364,8 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 				migRunes = append(migRunes, it)
 			case IsEmblemTemplate(it.Template) && (it.Slot < EmblemSlotStart || it.Slot > EmblemSlotEnd):
 				migratedEmblems = append(migratedEmblems, it)
+			case IsKnownOrdinaryEquipment(it.Template):
+				migOrdEq = append(migOrdEq, it)
 			default:
 				keptItems = append(keptItems, it)
 				occupiedSpace0[it.Slot] = true
@@ -457,6 +465,41 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		placeItemAsEquip(migCre, &b.Creatures, seenCreature, CreatureSlotStart, CreatureSlotEnd)
 		placeItemAsEquip(migArt, &b.CreatureArtifacts, seenCreature, ArtifactSlotStart, ArtifactSlotEnd)
 		placeItemAsEquip(migIns, &b.Insignias, seenInsignia, InsigniaSlotStart, InsigniaSlotEnd)
+		if len(migOrdEq) > 0 {
+			sort.Slice(migOrdEq, func(i, j int) bool { return migOrdEq[i].Slot < migOrdEq[j].Slot })
+			for _, it := range migOrdEq {
+				count := it.Amount
+				if count == 0 {
+					count = 1
+				}
+				rem := uint32(0)
+				for c := uint32(0); c < count; c++ {
+					placed := false
+					for slot := uint16(9); slot <= 64; slot++ {
+						if !occupiedSpace0[slot] {
+							occupiedSpace0[slot] = true
+							b.Equipment = append(b.Equipment, BagEquipment{
+								Slot:       slot,
+								Template:   it.Template,
+								Durability: 35,
+								SortLocked: it.SortLocked,
+								ItemLock:   it.ItemLock,
+								UnlockAt:   it.UnlockAt,
+							})
+							placed = true
+							break
+						}
+					}
+					if !placed {
+						rem++
+					}
+				}
+				if rem > 0 {
+					it.Amount = rem
+					keptItems = append(keptItems, it)
+				}
+			}
+		}
 		placeItemStack(migCreStk, &b.CreatureItems, seenCreature, CreatureItemSlotStart, CreatureItemSlotEnd, true)
 		placeItemStack(migGems, &b.Gems, seenInsignia, GemSlotStart, GemSlotEnd, true)
 		placeItemStack(migRunes, &b.Runes, seen, RuneSlotStart, RuneSlotEnd, false)
@@ -490,7 +533,115 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		}
 		b.Items = keptItems
 	}
+	b.ensureCreatureIDs()
 	return b, nil
+}
+
+// ensureCreatureIDs deterministically assigns unique non-zero CreatureIDs to
+// every creature in Space 3 slot 26 and Space 7 (0..159). US100's creature
+// renderer (0x14400b150) reads ItemExtra+0x00 (decoded from raw[6:10]) and looks
+// it up in the NOTI 105 CreatureMap (0x1497cf930); ID 0 causes the sprite to be
+// skipped completely.
+func (b *Bag) ensureCreatureIDs() {
+	used := map[uint32]bool{}
+	var maxID uint32
+	for _, w := range b.Worn {
+		if w.Slot == WornCreatureSlot && w.CreatureID != 0 {
+			used[w.CreatureID] = true
+			if w.CreatureID > maxID {
+				maxID = w.CreatureID
+			}
+		}
+	}
+	for _, c := range b.Creatures {
+		if c.CreatureID != 0 {
+			used[c.CreatureID] = true
+			if c.CreatureID > maxID {
+				maxID = c.CreatureID
+			}
+		}
+	}
+	seen := map[uint32]bool{}
+	alloc := func() uint32 {
+		maxID++
+		for maxID == 0 || used[maxID] || seen[maxID] {
+			maxID++
+		}
+		used[maxID] = true
+		seen[maxID] = true
+		return maxID
+	}
+	for idx := range b.Worn {
+		if b.Worn[idx].Slot != WornCreatureSlot {
+			continue
+		}
+		id := b.Worn[idx].CreatureID
+		if id == 0 || seen[id] {
+			b.Worn[idx].CreatureID = alloc()
+		} else {
+			seen[id] = true
+		}
+	}
+	order := make([]int, len(b.Creatures))
+	for i := range b.Creatures {
+		order[i] = i
+	}
+	sort.Slice(order, func(i, j int) bool {
+		return b.Creatures[order[i]].Slot < b.Creatures[order[j]].Slot
+	})
+	for _, idx := range order {
+		id := b.Creatures[idx].CreatureID
+		if id == 0 || seen[id] {
+			b.Creatures[idx].CreatureID = alloc()
+		} else {
+			seen[id] = true
+		}
+	}
+}
+
+func (b Bag) nextCreatureID() uint32 {
+	var maxID uint32
+	for _, w := range b.Worn {
+		if w.Slot == WornCreatureSlot && w.CreatureID > maxID {
+			maxID = w.CreatureID
+		}
+	}
+	for _, c := range b.Creatures {
+		if c.CreatureID > maxID {
+			maxID = c.CreatureID
+		}
+	}
+	return maxID + 1
+}
+
+// CreatureInfoEntries collects NOTI 105 metadata entries for every creature
+// owned by the character (both Space 3 worn slot 26 and Space 7 bag 0..159).
+func (b Bag) CreatureInfoEntries() []protocol.CreatureInfoEntry {
+	seen := map[uint32]bool{}
+	var out []protocol.CreatureInfoEntry
+	add := func(id uint32) {
+		if id == 0 || seen[id] {
+			return
+		}
+		seen[id] = true
+		out = append(out, protocol.CreatureInfoEntry{
+			InstanceID: id,
+			Stamina:    100,
+			Level:      1,
+		})
+	}
+	for _, w := range b.Worn {
+		if w.Slot == WornCreatureSlot {
+			add(w.CreatureID)
+		}
+	}
+	for _, c := range b.Creatures {
+		add(c.CreatureID)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].InstanceID < out[j].InstanceID
+	})
+	return out
 }
 func SaveBag(state json.RawMessage, b Bag) (json.RawMessage, error) {
 	var fields map[string]json.RawMessage
@@ -643,11 +794,13 @@ func (b Bag) AddCreatures(ids []uint32) (Bag, []uint16, error) {
 		return b, nil, fmt.Errorf("creature bag is full")
 	}
 	b.Creatures = append([]BagEquipment(nil), b.Creatures...)
+	nextID := b.nextCreatureID()
 	for i, id := range ids {
 		if id == 0 {
 			return b, nil, fmt.Errorf("invalid creature template 0")
 		}
-		b.Creatures = append(b.Creatures, BagEquipment{Slot: slots[i], Template: id})
+		b.Creatures = append(b.Creatures, BagEquipment{Slot: slots[i], Template: id, CreatureID: nextID})
+		nextID++
 	}
 	return b, slots, nil
 }

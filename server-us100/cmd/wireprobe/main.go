@@ -702,6 +702,7 @@ func main() {
 				log.Fatal(be)
 			}
 			lootService.Boosters = bc
+			registerInventoryLookups(bc, nil)
 			log.Printf("booster catalog: loaded %d boxes from %s", len(bc.Boxes), boosterPath)
 		}
 		if tc, tp := loadTicketCatalog(*lootCatalogFile, boosterPath); tc != nil {
@@ -747,6 +748,7 @@ func main() {
 			// monster gear drops, and Adventurer Fame calculations.
 			lootService.Equipment = equipment
 			characters.Equipment = equipment
+			registerInventoryLookups(lootService.Boosters, equipment)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		e = characters.Store.MigrateQuests(ctx)
@@ -1813,6 +1815,11 @@ func main() {
 						}
 					}
 					if hasCreature {
+						if ciPayload, cerr := inventory.CreatureInfoPayload(latest.State); cerr == nil && len(ciPayload) > 0 {
+							if sendPayload(0, protocol.NotiCreatureInfo, ciPayload) != nil {
+								return
+							}
+						}
 						if crInv, cerr := inventory.CreaturePayload(latest.State); cerr == nil {
 							if sendPayload(0, 13, crInv) != nil {
 								return
@@ -2864,6 +2871,9 @@ func main() {
 						}
 						if e == nil {
 							plan.Avatars, e = inventory.AvatarPayload(role.State)
+						}
+						if e == nil {
+							plan.CreatureInfo, e = inventory.CreatureInfoPayload(role.State)
 						}
 						if e == nil {
 							plan.Creatures, e = inventory.CreaturePayload(role.State)

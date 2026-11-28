@@ -567,7 +567,7 @@ func openBoosterBox(
 			}
 		case a.Rune || a.StackableType == "[rune]" || inventory.IsRuneTemplate(a.Template):
 			runeAwards = append(runeAwards, a)
-		case a.Equipment:
+		case a.Equipment || inventory.IsKnownOrdinaryEquipment(a.Template):
 			equipAwards = append(equipAwards, a)
 		default:
 			if kind, days, ok := directContractItem(a.Template); ok {
@@ -1070,6 +1070,14 @@ func finalizeBoosterPackets(
 		plan = append(plan, outboundPacket{"booster_avatar_restored", 0, 13, avInv})
 	}
 	if syncCreatures {
+		if entries := bag.CreatureInfoEntries(); len(entries) > 0 {
+			plan = append(plan, outboundPacket{
+				"booster_creature_info_restored",
+				0,
+				protocol.NotiCreatureInfo,
+				protocol.CreatureInfoList(entries),
+			})
+		}
 		crInv, cerr := protocol.US224CreatureRestore(bag.CreatureRows())
 		if cerr != nil {
 			return saved, nil, box, 0, 0, applied, cerr

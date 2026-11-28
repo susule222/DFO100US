@@ -325,7 +325,7 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 		cat.TypeCounts[stType]++
 
 		if hasSel {
-			box := parseBoosterSelection(s.Cells, classifyEquip)
+			box := parseBoosterSelection(s.Cells, eqPaths, classifyEquip)
 			if len(box.Categories) > 0 {
 				cat.Boxes[id] = box
 				cat.BoxTagStats["sel"]++
@@ -333,7 +333,7 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 			continue
 		}
 		if hasBst {
-			box := parseBoosterInfo(s.Cells, classifyEquip)
+			box := parseBoosterInfo(s.Cells, eqPaths, classifyEquip)
 			if len(box.Groups) > 0 {
 				cat.Boxes[id] = box
 				cat.BoxTagStats["bst"]++
@@ -440,7 +440,7 @@ func (m boosterEquipMeta) applyToAward(aw *BoosterAward) {
 	}
 }
 
-func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
+func parseBoosterSelection(cells []pvf.Token, eqPaths map[uint32]string, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
 	selNum := 1
 	if sn := sectionCells(cells, "[booster selection num]"); len(sn) > 0 && sn[0].Type == 0 {
 		selNum = int(sn[0].Value)
@@ -509,16 +509,24 @@ func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) booster
 			}
 		}
 		// [etc], [stackable], [emblem], [cera]: 2-tuples (template, qty)
+		// Many US100 boxes list titles, weapons, armors, avatars, creatures, talismans,
+		// or insignias inside [etc]/[cera]; check eqPaths so they are never misrouted as stackables.
 		for _, tag := range []string{"[etc]", "[stackable]", "[emblem]", "[cera]"} {
 			for _, sub := range extractSubBlocks(blk, tag) {
 				nums := intValues(sub)
 				for i := 0; i+1 < len(nums); i += 2 {
 					if nums[i] > 0 {
+						tpl := uint32(nums[i])
 						q := uint32(1)
 						if nums[i+1] > 0 {
 							q = uint32(nums[i+1])
 						}
-						items = append(items, BoosterAward{Template: uint32(nums[i]), Quantity: q})
+						aw := BoosterAward{Template: tpl, Quantity: q}
+						if _, isEq := eqPaths[tpl]; isEq {
+							em := classifyEquip(tpl)
+							em.applyToAward(&aw)
+						}
+						items = append(items, aw)
 					}
 				}
 			}
@@ -547,7 +555,7 @@ func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) booster
 	return BoosterBox{Mode: "sel", SelectNum: selNum, Categories: cats}
 }
 
-func parseBoosterInfo(cells []pvf.Token, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
+func parseBoosterInfo(cells []pvf.Token, eqPaths map[uint32]string, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
 	blocks := extractSubBlocks(cells, "[booster info]")
 	if len(blocks) == 0 {
 		return BoosterBox{}
@@ -603,6 +611,13 @@ func parseBoosterInfo(cells []pvf.Token, classifyEquip func(uint32) boosterEquip
 							aw.Kind = "ca"
 						} else {
 							aw.Kind = "c"
+						}
+					default:
+						// Many US100 [booster info] boxes place titles, weapons, armors,
+						// avatars, talismans, insignias, or creatures under [etc]/[cera].
+						if _, isEq := eqPaths[aw.Template]; isEq {
+							em := classifyEquip(aw.Template)
+							em.applyToAward(&aw)
 						}
 					}
 					entries = append(entries, aw)
