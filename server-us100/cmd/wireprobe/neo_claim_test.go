@@ -127,10 +127,45 @@ func TestUS100NeoMemberClaims(t *testing.T) {
 	store = open()
 	w.role = get()
 	claim(1201, nil, false)
-	claim(1200, []byte{1, 1, 0, 1}, false)
+	// Switching to a different Phoenix weapon (choice 3 = Zanbato 101030814) while
+	// holding Katana 101010938 in Space 0 bag replaces the old rental and emits
+	// ACK 1200 (with removed Space 0 slot) BEFORE NOTI 14.
+	swapPlan, e := w.claimNeo(1200, []byte{1, 1, 0, 3}, 41, 48, store, ls, ws)
+	if e != nil || len(swapPlan) != 2 || swapPlan[0].ID != 1200 || swapPlan[1].ID != 14 {
+		t.Fatalf("switch bag rental failed: plan=%+v err=%v", swapPlan, e)
+	}
+	if got := swapPlan[0].Payload; len(got) != 5 || got[0] != 1 || got[1] != 1 || got[2] != 0 || got[3] != 9 || got[4] != 0 {
+		t.Fatalf("unexpected ACK 1200 bag-replace payload: %x", got)
+	}
+	// Move the rented Zanbato into Worn slot 12, then switch back to Katana (choice 1):
+	// ACK 1200 must report removed Space 3 slot 12 and grant Katana 101010938 in bag.
+	bWorn, e := inventory.ReadBag(get().State)
+	if e != nil || len(bWorn.Equipment) != 1 || bWorn.Equipment[0].Template != 101030814 {
+		t.Fatalf("expected rented Zanbato 101030814 in bag, got %+v err=%v", bWorn.Equipment, e)
+	}
+	wornZan := bWorn.Equipment[0]
+	wornZan.Slot = 12
+	bWorn.Worn = []inventory.BagEquipment{wornZan}
+	bWorn.Equipment = nil
+	wornState, e := inventory.SaveBag(get().State, bWorn)
+	if e != nil {
+		t.Fatal(e)
+	}
+	setState(wornState)
+	w.role = get()
+	wornSwapPlan, e := w.claimNeo(1200, []byte{1, 1, 0, 1}, 41, 48, store, ls, ws)
+	if e != nil || len(wornSwapPlan) < 2 || wornSwapPlan[0].ID != 1200 || wornSwapPlan[1].ID != 14 {
+		t.Fatalf("switch worn rental failed: plan=%+v err=%v", wornSwapPlan, e)
+	}
+	if got := wornSwapPlan[0].Payload; len(got) != 5 || got[0] != 1 || got[1] != 1 || got[2] != 3 || got[3] != 12 || got[4] != 0 {
+		t.Fatalf("unexpected ACK 1200 worn-replace payload: %x", got)
+	}
 	b, e = inventory.ReadBag(get().State)
 	if e != nil {
 		t.Fatal(e)
+	}
+	if len(b.Worn) != 0 {
+		t.Fatalf("expected old worn rental cleared, got worn=%+v", b.Worn)
 	}
 	qty := uint32(0)
 	for _, it := range b.Items {

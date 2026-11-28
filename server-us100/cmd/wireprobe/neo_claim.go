@@ -1,10 +1,12 @@
 package main
 
 import (
+	"dfolan/internal/character"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/inventory"
 	"dfolan/internal/loot"
 	"dfolan/internal/storage"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 )
@@ -74,6 +76,7 @@ func (w *worldSession) claimNeo(cmd uint16, p []byte, account, id int64, store *
 		return nil, fmt.Errorf("invalid single rental selection")
 	}
 	var update []byte
+	var removed []inventory.RemovedRental
 	role, e := store.ClaimNeoBenefit(account, id, w.role.ConfigVersion, daily, func(cur storage.Character, end int64) (json.RawMessage, error) {
 		b, e := inventory.ReadBag(cur.State)
 		if e != nil {
@@ -87,7 +90,7 @@ func (w *worldSession) claimNeo(cmd uint16, p []byte, account, id int64, store *
 			if !ok {
 				return nil, fmt.Errorf("unknown rental profession")
 			}
-			b, slot, e = b.NeoWeapon(job.Job, p[3], end, wear.Catalog, wear.BagRules)
+			b, slot, removed, e = b.ReplaceNeoWeapon(job.Job, p[3], end, wear.Catalog, wear.BagRules)
 		}
 		if e != nil {
 			return nil, e
@@ -110,7 +113,48 @@ func (w *worldSession) claimNeo(cmd uint16, p []byte, account, id int64, store *
 	w.role = role
 	ack := []byte{1}
 	if !daily {
-		ack = append(ack, 0)
-	} // zero previous rental slots to remove
-	return []outboundPacket{{"neo_claim_inventory", 0, 14, update}, {"neo_claim_ack", 1, cmd, ack}}, nil
+		// ACK 1200 (DFO_unpacked.exe 0x142cf7c90):
+		//   u8 status=1, u8 removeCount, then removeCount * (u8 space, u16 slot).
+		//   space==3 clears worn weapon slot directly on CUser; space==0 removes
+		//   the old rental from CInventory(0) before NOTI 14 writes the new slot.
+		ack = append(ack, byte(len(removed)))
+		for _, rem := range removed {
+			ack = append(ack, rem.Space)
+			ack = binary.LittleEndian.AppendUint16(ack, rem.Slot)
+		}
+	}
+	if len(removed) == 0 {
+		return []outboundPacket{{"neo_claim_inventory", 0, 14, update}, {"neo_claim_ack", 1, cmd, ack}}, nil
+	}
+	// When replacing an existing rental, emit ACK 1200 BEFORE NOTI 14 so the client
+	// removes the old rental slot first (even when the new rental reuses the same
+	// Space 0 slot) and never deletes the newly granted weapon.
+	plan := []outboundPacket{
+		{"neo_claim_ack", 1, cmd, ack},
+		{"neo_claim_inventory", 0, 14, update},
+	}
+	removedWorn := false
+	for _, rem := range removed {
+		if rem.Space == 3 {
+			removedWorn = true
+			break
+		}
+	}
+	if removedWorn {
+		if b, berr := inventory.ReadBag(role.State); berr == nil && role.WireID != 0 && role.WireID != 0xffff {
+			if fameBody, ferr := protocol.AdventurerFameUpdate(role.WireID, wear.Catalog.BagAdventurerFame(b)); ferr == nil {
+				plan = append(plan, outboundPacket{"adventurer_fame_updated", 0, protocol.AdventurerFameNotiID, fameBody})
+			}
+		}
+		if w.activeDungeon == nil && !w.selectingDungeon && role.WireID != 0 && role.WireID != 0xffff && role.Name != "" {
+			charSvc := w.characters
+			if charSvc == nil {
+				charSvc = &character.Service{Equipment: wear.Catalog, Store: wear.Store}
+			}
+			if appearanceBody, aerr := charSvc.EntryBasicProbe(role, w.channelCtx); aerr == nil {
+				plan = append(plan, outboundPacket{"town_appearance_updated", 0, 2, appearanceBody})
+			}
+		}
+	}
+	return plan, nil
 }
