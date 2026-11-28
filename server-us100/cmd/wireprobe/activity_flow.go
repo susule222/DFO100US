@@ -25,6 +25,7 @@ const (
 	eventIDDropGoldBoost   uint16 = 602  // btn=222, grp=3, cc="", drop/bonus HUD icon
 	eventIDFatigueBurning  uint16 = 619  // btn=254, grp=3, cc="", time/fatigue HUD icon
 	eventIDMileageBonus    uint16 = 367  // btn=167, cc="univ", gift/mileage HUD icon
+	eventIDMileageShop     uint16 = 131  // 0x83: enables CeraShop Mileage tab (0x143851bd3) & checkout rebate preview (0x142a53a61)
 	eventIDHellParty       uint16 = 500  // btn=215, grp=3, cc="", forge/hell HUD icon
 	eventIDDailyChallenge  uint16 = 392  // btn=204, grp=3, cc="", daily mission HUD icon
 	eventIDWeeklyDungeon   uint16 = 614  // btn=245, grp=3, cc="", weekly mission HUD icon
@@ -155,6 +156,15 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			fmt.Sprintf("Daily grind cap: %d Mileage.", pol.Mileage.DailyCap),
 			"Status: Active on server",
 		))
+		// Event 131 (0x83) is checked directly by EventManager::ParseActiveEvents
+		// (0x143851bd3 -> CeraShop::RebuildTabList 0x142a60a80) and
+		// CeraShop::IsFeatureDisabled(4) (0x142a53a61). Registering 131 with
+		// HasDetail=false enables the Cash Shop Mileage tab and checkout rebate
+		// preview ("返还商城积分") without cluttering the Event Calendar.
+		entries = append(entries, protocol.ActiveEventEntry{
+			EventID:   eventIDMileageShop,
+			HasDetail: false,
+		})
 	}
 	if pol.HellParty.Enabled {
 		// Leave NOTI 108 Title empty so calendar.xui preserves its native UTF-16LE
@@ -265,15 +275,43 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 	return protocol.ActiveEventsDetailedWithParams(entries, params)
 }
 
-func fundsPayload(cera, mileage uint64) []byte {
+// fundsPayload encodes NOTI 53 (0x35, 0x14351ac00): u8 silentFlag(1),
+// u32 cera (-> g_cera 0x14a210e38), u32 shopMode(0). Note that the 2nd u32 is
+// a 0/1 shop mode enum (values >1 are ignored by the client), NOT Mileage.
+// Mileage balances use NOTI 413 (silent restore) and NOTI 524 (live rebate/earn).
+func fundsPayload(cera uint64) []byte {
 	if cera > math.MaxInt32 {
 		cera = math.MaxInt32
 	}
-	if mileage > math.MaxInt32 {
-		mileage = math.MaxInt32
-	}
 	p := binary.LittleEndian.AppendUint32([]byte{1}, uint32(cera))
-	return binary.LittleEndian.AppendUint32(p, uint32(mileage))
+	return binary.LittleEndian.AppendUint32(p, 0)
+}
+
+func clampU32(v uint64) uint32 {
+	if v > math.MaxUint32 {
+		return math.MaxUint32
+	}
+	return uint32(v)
+}
+
+func (w *worldSession) dailyMileage(ctx context.Context, now time.Time) uint32 {
+	if w == nil {
+		return 0
+	}
+	var store *storage.Store
+	if w.characters != nil && w.characters.Store != nil {
+		store = w.characters.Store
+	} else if w.loot != nil && w.loot.Store != nil {
+		store = w.loot.Store
+	}
+	if store == nil {
+		return 0
+	}
+	v, err := store.AccountDailyMileage(ctx, w.account, w.activityDay(now))
+	if err != nil {
+		return 0
+	}
+	return v
 }
 
 func (w *worldSession) eventPolicy() events.Policy {
@@ -351,9 +389,15 @@ func (w *worldSession) grantActivityReward(ctx context.Context, eventKey, model 
 	if mileage > 0 {
 		added, total, err := w.characters.Store.AddAccountMileage(ctx, w.account, mileage, dayKey, dailyCap)
 		if err == nil && added > 0 {
-			if cera, err := w.characters.Store.AccountCera(ctx, w.account); err == nil {
-				out = append(out, outboundPacket{"activity_mileage_updated", 0, 53, fundsPayload(cera, total)})
-			}
+			prev := total - uint64(added)
+			daily := w.dailyMileage(ctx, time.Now())
+			out = append(out, outboundPacket{
+				"activity_mileage_updated",
+				0,
+				protocol.NotiMileageUpdate,
+				protocol.MileageUpdate(protocol.MileageReasonGeneric, clampU32(prev), clampU32(total), daily),
+			})
+			w.lastSyncedMileage = total
 		}
 	}
 	return out, nil
@@ -440,9 +484,15 @@ func (w *worldSession) onActivityClear(ctx context.Context) []outboundPacket {
 	if ev.Mileage.Enabled && ev.Mileage.DungeonClearPoints > 0 {
 		added, total, err := w.characters.Store.AddAccountMileage(ctx, w.account, ev.Mileage.DungeonClearPoints, day, ev.Mileage.DailyCap)
 		if err == nil && added > 0 {
-			if cera, err := w.characters.Store.AccountCera(ctx, w.account); err == nil {
-				out = append(out, outboundPacket{"clear_mileage_updated", 0, 53, fundsPayload(cera, total)})
-			}
+			prev := total - uint64(added)
+			daily := w.dailyMileage(ctx, now)
+			out = append(out, outboundPacket{
+				"clear_mileage_updated",
+				0,
+				protocol.NotiMileageUpdate,
+				protocol.MileageUpdate(protocol.MileageReasonDungeon, clampU32(prev), clampU32(total), daily),
+			})
+			w.lastSyncedMileage = total
 		}
 	}
 

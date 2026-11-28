@@ -1712,6 +1712,8 @@ func main() {
 					if e != nil {
 						return
 					}
+					var mileageAdded int64
+					var mileageTotal uint64
 					if applied {
 						var ceraSpent int64
 						if isNeo {
@@ -1727,7 +1729,7 @@ func main() {
 								if rebate < 1 {
 									rebate = 1
 								}
-								_, _, _ = characters.Store.AddAccountMileage(context.Background(), developmentAccount, rebate, "", 0)
+								mileageAdded, mileageTotal, _ = characters.Store.AddAccountMileage(context.Background(), developmentAccount, rebate, "", 0)
 							}
 						}
 					}
@@ -1735,12 +1737,21 @@ func main() {
 					if e != nil {
 						return
 					}
-					funds := fundsPayload(bal, mileage)
+					funds := fundsPayload(bal)
 					latest.WireID = worldState.role.WireID
 					worldState.role = latest
-					event(map[string]any{"kind": "shop_buy_committed", "product": product, "character_id": selectedCharacterID, "delivery": delivery, "applied": applied, "lines": len(lines)})
+					worldState.lastSyncedCera = bal
+					worldState.lastSyncedMileage = mileage
+					event(map[string]any{"kind": "shop_buy_committed", "product": product, "character_id": selectedCharacterID, "delivery": delivery, "applied": applied, "lines": len(lines), "mileage_rebate": mileageAdded, "mileage_total": mileage})
 					if sendPayload(0, 14, inv) != nil || sendPayload(0, 53, funds) != nil {
 						return
+					}
+					if mileageAdded > 0 {
+						prevMileage := mileageTotal - uint64(mileageAdded)
+						daily := worldState.dailyMileage(context.Background(), time.Now())
+						if sendPayload(0, protocol.NotiMileageUpdate, protocol.MileageUpdate(protocol.MileageReasonShop, clampU32(prevMileage), clampU32(mileageTotal), daily)) != nil {
+							return
+						}
 					}
 					for _, l := range lines {
 						if l.Template == danjiPotTemplate {
@@ -2910,9 +2921,20 @@ func main() {
 					} else if options != nil {
 						packets = append(packets, outboundPacket{"character_options_restored", 0, 376, options})
 					}
-					if entryMileage > 0 {
-						packets = append(packets, outboundPacket{"account_funds_restored", 0, 53, fundsPayload(cera, entryMileage)})
+					var entryDailyMileage uint32
+					if worldState != nil {
+						worldState.lastSyncedCera = cera
+						worldState.lastSyncedMileage = entryMileage
+						ctxDM, cancelDM := context.WithTimeout(context.Background(), 5*time.Second)
+						entryDailyMileage = worldState.dailyMileage(ctxDM, time.Now())
+						cancelDM()
 					}
+					packets = append(packets, outboundPacket{
+						"account_mileage_restored",
+						0,
+						protocol.NotiMileageRestore,
+						protocol.MileageRestore(clampU32(entryMileage), entryDailyMileage),
+					})
 					if worldState != nil && eventsPath != "" {
 						nowEv := time.Now()
 						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)

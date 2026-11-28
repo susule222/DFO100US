@@ -224,18 +224,30 @@ func (w *worldSession) syncGrantedBag(account, id int64, send func(byte, uint16,
 			}
 		}
 	}
-	// Sync account CERA & Mileage (NOTI 53), active contracts (NOTI 66), and live fatigue (NOTI 36)
+	// Sync account CERA (NOTI 53), Mileage (NOTI 413), active contracts (NOTI 66), and live fatigue (NOTI 36)
 	// only when values changed so ordinary item grants keep minimal packet traffic while
 	// launcher activity/contract/mileage changes take effect immediately without relogging.
 	if w.loot != nil && w.loot.Store != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		cera, mileage, berr := w.loot.Store.AccountBalances(ctx, account)
+		var daily uint32
+		if berr == nil && mileage != w.lastSyncedMileage {
+			daily = w.dailyMileage(ctx, time.Now())
+		}
 		cancel()
-		if berr == nil && (cera != w.lastSyncedCera || mileage != w.lastSyncedMileage) {
-			if err = send(0, 53, fundsPayload(cera, mileage)); err != nil {
-				return err
+		if berr == nil {
+			if cera != w.lastSyncedCera {
+				if err = send(0, 53, fundsPayload(cera)); err != nil {
+					return err
+				}
+				w.lastSyncedCera = cera
 			}
-			w.lastSyncedCera, w.lastSyncedMileage = cera, mileage
+			if mileage != w.lastSyncedMileage {
+				if err = send(0, protocol.NotiMileageRestore, protocol.MileageRestore(clampU32(mileage), daily)); err != nil {
+					return err
+				}
+				w.lastSyncedMileage = mileage
+			}
 		}
 		if entries, perr := w.loot.Store.NeoPremiumSeconds(account); perr == nil {
 			sig, _ := json.Marshal(entries)

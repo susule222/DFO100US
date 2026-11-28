@@ -118,9 +118,40 @@ func TestHellPartyNoti28AndActivityClearFlow(t *testing.T) {
 	if len(killPkts) < 2 {
 		t.Fatalf("expected inventory + mileage packets on daily kill completion, got %d", len(killPkts))
 	}
+	var sawKillMileage bool
+	for _, p := range killPkts {
+		if p.Kind == 0 && p.ID == protocol.NotiMileageUpdate {
+			if len(p.Payload) != 13 || p.Payload[0] != protocol.MileageReasonGeneric {
+				t.Fatalf("unexpected kill NOTI 524 payload: %x", p.Payload)
+			}
+			if oldM, newM := binary.LittleEndian.Uint32(p.Payload[1:5]), binary.LittleEndian.Uint32(p.Payload[5:9]); oldM != 0 || newM != 10 {
+				t.Fatalf("kill NOTI 524 old=%d new=%d, want 0->10", oldM, newM)
+			}
+			sawKillMileage = true
+		}
+	}
+	if !sawKillMileage {
+		t.Fatalf("expected NOTI 524 on daily kill mileage grant")
+	}
+
 	clearPkts := w.onActivityClear(ctx)
 	if len(clearPkts) < 3 {
 		t.Fatalf("expected mileage + daily clear + weekly packets, got %d", len(clearPkts))
+	}
+	var sawDungeonMileage bool
+	for _, p := range clearPkts {
+		if p.Kind == 0 && p.ID == protocol.NotiMileageUpdate && p.Payload[0] == protocol.MileageReasonDungeon {
+			oldM := binary.LittleEndian.Uint32(p.Payload[1:5])
+			newM := binary.LittleEndian.Uint32(p.Payload[5:9])
+			dailyM := binary.LittleEndian.Uint32(p.Payload[9:13])
+			if oldM != 10 || newM != 12 || dailyM != 2 {
+				t.Fatalf("dungeon clear NOTI 524 old=%d new=%d daily=%d, want 10->12 daily=2", oldM, newM, dailyM)
+			}
+			sawDungeonMileage = true
+		}
+	}
+	if !sawDungeonMileage {
+		t.Fatalf("expected NOTI 524 (reason=%d) on dungeon clear", protocol.MileageReasonDungeon)
 	}
 
 	_, mileage, err := store.AccountBalances(ctx, acctID)
@@ -128,8 +159,12 @@ func TestHellPartyNoti28AndActivityClearFlow(t *testing.T) {
 	if err != nil || mileage != 37 {
 		t.Fatalf("mileage after kill+clear = %d, want 37, err=%v", mileage, err)
 	}
-	fp := fundsPayload(1234, mileage)
-	if len(fp) != 9 || fp[0] != 1 || binary.LittleEndian.Uint32(fp[1:5]) != 1234 || binary.LittleEndian.Uint32(fp[5:9]) != 37 {
+	dailyEarned, err := store.AccountDailyMileage(ctx, acctID, w.activityDay(time.Now()))
+	if err != nil || dailyEarned != 2 {
+		t.Fatalf("daily contents mileage = %d, want 2, err=%v", dailyEarned, err)
+	}
+	fp := fundsPayload(1234)
+	if len(fp) != 9 || fp[0] != 1 || binary.LittleEndian.Uint32(fp[1:5]) != 1234 || binary.LittleEndian.Uint32(fp[5:9]) != 0 {
 		t.Fatalf("unexpected NOTI 53 fundsPayload: %x", fp)
 	}
 }
@@ -200,17 +235,21 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 		}
 		cnt := int(binary.LittleEndian.Uint16(evBytes[0:2]))
 		off := 2
-		var saw388 bool
+		var saw388, saw131 bool
 		for i := 0; i < cnt; i++ {
 			evID := binary.LittleEndian.Uint16(evBytes[off : off+2])
 			off += 2
 			hasDetail := evBytes[off]
 			off++
 			if hasDetail == 0 {
-				if evID != eventIDMiningMission {
+				switch evID {
+				case eventIDMiningMission:
+					saw388 = true
+				case eventIDMileageShop:
+					saw131 = true
+				default:
 					t.Fatalf("unexpected non-detail entry %d eventID=%d", i, evID)
 				}
-				saw388 = true
 				continue
 			}
 			if hasDetail != 1 {
@@ -238,6 +277,9 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 		}
 		if !saw388 {
 			t.Fatalf("expected companion Event 388 in NOTI 108 when SeriaWelcomeEnabled is true")
+		}
+		if !saw131 {
+			t.Fatalf("expected companion Event 131 (Mileage Shop & checkout rebate) in NOTI 108 when Mileage.Enabled is true")
 		}
 		paramCount := evBytes[off]
 		off++
@@ -336,5 +378,36 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 	dupPkts := w.onActivityLogin(ctx)
 	if len(dupPkts) != 0 {
 		t.Fatalf("expected idempotent second onActivityLogin to emit 0 packets, got %d", len(dupPkts))
+	}
+
+	// Verify live GM Mileage top-up syncs via NOTI 413 (9 bytes) without abusing NOTI 53
+	if _, _, err := store.AddAccountMileage(ctx, acctID, 250, "", 0); err != nil {
+		t.Fatal(err)
+	}
+	var gmSent []outboundPacket
+	if err := w.syncGrantedBag(acctID, role.ID, func(kind byte, id uint16, payload []byte) error {
+		gmSent = append(gmSent, outboundPacket{Kind: kind, ID: id, Payload: append([]byte(nil), payload...)})
+		return nil
+	}, func(map[string]any) {}); err != nil {
+		t.Fatal(err)
+	}
+	var saw413 bool
+	for _, p := range gmSent {
+		if p.Kind == 0 && p.ID == 53 {
+			t.Fatalf("expected GM Mileage-only sync not to emit NOTI 53, got %x", p.Payload)
+		}
+		if p.Kind == 0 && p.ID == protocol.NotiMileageRestore {
+			if len(p.Payload) != 9 || p.Payload[0] != 1 {
+				t.Fatalf("unexpected NOTI 413 payload: %x", p.Payload)
+			}
+			// 10+20+30+5 (auto extra perks) + 250 = 315
+			if got := binary.LittleEndian.Uint32(p.Payload[1:5]); got != 315 {
+				t.Fatalf("NOTI 413 mileage = %d, want 315", got)
+			}
+			saw413 = true
+		}
+	}
+	if !saw413 {
+		t.Fatalf("expected NOTI 413 on GM Mileage top-up")
 	}
 }

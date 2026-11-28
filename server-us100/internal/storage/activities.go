@@ -87,6 +87,31 @@ func (s *Store) AccountMileage(ctx context.Context, account int64) (uint64, erro
 	return m, err
 }
 
+// AccountDailyMileage returns the account's daily contents Mileage earned for dayKey.
+func (s *Store) AccountDailyMileage(ctx context.Context, account int64, dayKey string) (uint32, error) {
+	if account <= 0 || dayKey == "" {
+		return 0, nil
+	}
+	var earned uint32
+	err := s.db.Mutate(func(tx *db100.Tx) error {
+		var d accountMileageDailyRow
+		ok, e := tx.Get("account_mileage_daily", idKey(account), &d)
+		if e != nil {
+			return e
+		}
+		if !ok || d.Day != dayKey || d.Earned <= 0 {
+			return nil
+		}
+		if d.Earned > math.MaxUint32 {
+			earned = math.MaxUint32
+		} else {
+			earned = uint32(d.Earned)
+		}
+		return nil
+	})
+	return earned, err
+}
+
 // AddAccountMileage credits Mileage to an account, optionally respecting a
 // per-day cap (dailyCap > 0 with non-empty dayKey) matching etc/mileageshop.etc.
 func (s *Store) AddAccountMileage(ctx context.Context, account, delta int64, dayKey string, dailyCap int64) (added int64, total uint64, err error) {
