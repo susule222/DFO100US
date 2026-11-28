@@ -610,6 +610,13 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 	if upd, err := protocol.US224InventoryUpdate(afterRows); err == nil {
 		out = append(out, outboundPacket{Name: "npc_shop_inventory_sync", Kind: 0, ID: 14, Payload: upd})
 	}
+	if isAccountEventSpace2AItem(req.ItemTemplate) {
+		if afterBag, berr := inventory.ReadBag(saved.State); berr == nil {
+			if djUpd, djErr := danjiSpaceUpdatePayload(afterBag); djErr == nil {
+				out = append(out, outboundPacket{Name: "npc_shop_space2a_sync", Kind: 0, ID: 14, Payload: djUpd})
+			}
+		}
+	}
 	if boughtSpace != 0 && len(spaceRows) > 0 {
 		if boughtSpace == protocol.CreatureSpace {
 			if ciPayload, cerr := inventory.CreatureInfoPayload(saved.State); cerr == nil && len(ciPayload) > 0 {

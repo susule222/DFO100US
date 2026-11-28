@@ -206,6 +206,9 @@ func deleteInventoryItems(
 				plan = append(plan, outboundPacket{"item_locks_restored", 0, protocol.NotiItemLockList, lockBody})
 			}
 		}
+		if djUpd, djErr := danjiSpaceUpdatePayload(bag); djErr == nil {
+			plan = append(plan, outboundPacket{"delete_space2a_updated", 0, 14, djUpd})
+		}
 	}
 	return saved, plan, req.Space, 0, nil
 }

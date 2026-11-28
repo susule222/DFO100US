@@ -1780,7 +1780,7 @@ func main() {
 						}
 					}
 					for _, l := range lines {
-						if l.Template == danjiPotTemplate {
+						if isAccountEventSpace2AItem(l.Template) {
 							if djInv, djErr := danjiSpaceUpdatePayload(bag); djErr == nil {
 								if sendPayload(0, 14, djInv) != nil {
 									return

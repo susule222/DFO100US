@@ -96,6 +96,22 @@ func TestCapsuleDrawEvent4189Flow(t *testing.T) {
 		t.Fatalf("buildActiveEventsPayload missing EventIDCapsuleDraw (%d)", protocol.EventIDCapsuleDraw)
 	}
 
+	// 1b. Entry Space 0x2a restore (NOTI 13) must mirror 2x 590005793 in slot 1 so
+	//     DFO_unpacked.exe (0x140242445 / 0x140242e7a -> GetItemCount(0x149788e68, 590005793))
+	//     displays 2 coins and enables Insert Coin!.
+	djRestore, err := danjiSpaceRestorePayload(w.role.State)
+	if err != nil {
+		t.Fatalf("danjiSpaceRestorePayload failed: %v", err)
+	}
+	const wireRowSize = 0xb1
+	if len(djRestore) != 3+wireRowSize || djRestore[0] != protocol.DanjiInventorySpace ||
+		binary.LittleEndian.Uint16(djRestore[1:3]) != 1 ||
+		binary.LittleEndian.Uint16(djRestore[3:5]) != 1 ||
+		binary.LittleEndian.Uint32(djRestore[5:9]) != ev4189CoinItem ||
+		binary.LittleEndian.Uint32(djRestore[9:13]) != 2 {
+		t.Fatalf("unexpected entry Space 0x2a restore for capsule coins: len=%d hdr=%x row=%x", len(djRestore), djRestore[:3], djRestore[3:13])
+	}
+
 	// 2. Login init must emit 72-byte NOTI 2338 with drawnIndex=-1, drawnCount=0, 60x '0'.
 	initPkts := w.interactiveEventInitPackets(pol, now)
 	var init2338 []byte
@@ -125,14 +141,26 @@ func TestCapsuleDrawEvent4189Flow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var noti1 []byte
+	var noti1, space2a1 []byte
 	for _, p := range draw1 {
 		if p.ID == protocol.NotiEv4189CapsuleDraw {
 			noti1 = p.Payload
 		}
+		if p.ID == 14 && len(p.Payload) >= 3 && p.Payload[0] == protocol.DanjiInventorySpace {
+			space2a1 = p.Payload
+		}
 	}
 	if len(noti1) != 72 {
 		t.Fatalf("draw #1 missing 72-byte NOTI 2338")
+	}
+	if len(space2a1) != 3+2*wireRowSize {
+		t.Fatalf("draw #1 missing Space 0x2a NOTI 14 coin sync, got len=%d", len(space2a1))
+	}
+	slot1Row := space2a1[3+wireRowSize : 3+2*wireRowSize]
+	if binary.LittleEndian.Uint16(slot1Row[0:2]) != 1 ||
+		binary.LittleEndian.Uint32(slot1Row[2:6]) != ev4189CoinItem ||
+		binary.LittleEndian.Uint32(slot1Row[6:10]) != 1 {
+		t.Fatalf("draw #1 Space 0x2a slot 1 expected 590005793 x1, got %x", slot1Row[:10])
 	}
 	idx1 := int(int16(binary.LittleEndian.Uint16(noti1[2:4])))
 	if idx1 < 0 || idx1 >= len(ev4189Pool) {
@@ -172,11 +200,21 @@ func TestCapsuleDrawEvent4189Flow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var noti2 []byte
+	var noti2, space2a2 []byte
 	for _, p := range draw2 {
 		if p.ID == protocol.NotiEv4189CapsuleDraw {
 			noti2 = p.Payload
 		}
+		if p.ID == 14 && len(p.Payload) >= 3 && p.Payload[0] == protocol.DanjiInventorySpace {
+			space2a2 = p.Payload
+		}
+	}
+	if len(space2a2) != 3+2*wireRowSize {
+		t.Fatalf("draw #2 missing Space 0x2a NOTI 14 coin sync, got len=%d", len(space2a2))
+	}
+	slot1Row2 := space2a2[3+wireRowSize : 3+2*wireRowSize]
+	if binary.LittleEndian.Uint16(slot1Row2[0:2]) != 1 || binary.LittleEndian.Uint32(slot1Row2[2:6]) != 0xffffffff {
+		t.Fatalf("draw #2 Space 0x2a slot 1 expected EmptySlotItem(1), got %x", slot1Row2[:10])
 	}
 	idx2 := int(int16(binary.LittleEndian.Uint16(noti2[2:4])))
 	if idx2 < 0 || idx2 >= len(ev4189Pool) || idx2 == idx1 {

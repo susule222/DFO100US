@@ -1059,6 +1059,18 @@ func finalizeBoosterPackets(
 		plan = append(plan, outboundPacket{"booster_open_ack", 1, 160, ack})
 	}
 	plan = append(plan, outboundPacket{"booster_inventory_restored", 0, 13, inv})
+	syncSpace2A := isAccountEventSpace2AItem(box)
+	for _, a := range awards {
+		if isAccountEventSpace2AItem(a.Template) {
+			syncSpace2A = true
+			break
+		}
+	}
+	if syncSpace2A {
+		if djUpd, djErr := danjiSpaceUpdatePayload(bag); djErr == nil {
+			plan = append(plan, outboundPacket{"booster_space2a_updated", 0, 14, djUpd})
+		}
+	}
 	if syncAvatars {
 		avInv, aerr := protocol.US224AvatarRestore(inventory.AvatarBagCapacity, bag.AvatarRows())
 		if aerr != nil {

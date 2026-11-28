@@ -1666,6 +1666,11 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 				return []outboundPacket{ev4189StatusPacket(st, -1)}, nil
 			}
 			out = append(out, matPkts...)
+			if bagAfterCoin, berr := inventory.ReadBag(w.role.State); berr == nil {
+				if djUpd, djErr := danjiSpaceUpdatePayload(bagAfterCoin); djErr == nil {
+					out = append(out, outboundPacket{"ev4189_space2a_updated", 0, 14, djUpd})
+				}
+			}
 
 			var rb [8]byte
 			_, _ = rand.Read(rb[:])

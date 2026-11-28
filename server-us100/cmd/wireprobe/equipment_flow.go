@@ -62,6 +62,13 @@ func (s *equipmentSession) handle(service *inventory.WearService, w *worldSessio
 			}
 			plan = append(plan, outboundPacket{"vault_dst_slots_updated", 0, 14, body})
 		}
+		if (r.SourceList == 0 || r.DestinationList == 0) && (isAccountEventSpace2AItem(r.SourceItem) || isAccountEventSpace2AItem(r.DestinationItem)) {
+			if bagAfter, berr := inventory.ReadBag(saved.State); berr == nil {
+				if djUpd, djErr := danjiSpaceUpdatePayload(bagAfter); djErr == nil {
+					plan = append(plan, outboundPacket{"vault_space2a_updated", 0, 14, djUpd})
+				}
+			}
+		}
 		return plan, nil
 	}
 	// CMD19 carries every bag move, not only equipment. A stack going onto

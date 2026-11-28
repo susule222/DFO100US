@@ -180,6 +180,10 @@ func danjiStatusOnEntry(store *storage.Store, account int64) ([]byte, error) {
 	return protocol.DanjiStatus(stack, 0, danjiAnimLevel(stack)), nil
 }
 
+func isAccountEventSpace2AItem(tpl uint32) bool {
+	return tpl == danjiPotTemplate || tpl == ev4189CoinItem || tpl == ev4189AltCoinItem
+}
+
 func danjiPotTotal(b inventory.Bag) uint32 {
 	var total uint64
 	for _, it := range b.Items {
@@ -193,8 +197,23 @@ func danjiPotTotal(b inventory.Bag) uint32 {
 	return uint32(total)
 }
 
-// danjiSpaceRestorePayload builds NOTI 13 for inventory space 0x2a (42), which
-// the DANJI UI queries for DANJI pots (590004385).
+func capsuleCoinTotal(b inventory.Bag) uint32 {
+	var total uint64
+	for _, it := range b.Items {
+		if it.Template == ev4189CoinItem || it.Template == ev4189AltCoinItem {
+			total += uint64(it.Amount)
+		}
+	}
+	if total > 0xffffffff {
+		return 0xffffffff
+	}
+	return uint32(total)
+}
+
+// danjiSpaceRestorePayload builds NOTI 13 for inventory space 0x2a (42, global
+// 0x149788e68, [stack in account inventory]), which both the DANJI UI
+// (590004385) and Event 4189 Neo Capsule Machine (590005793, 0x140242445 /
+// 0x140242e7a) query via GetItemCount(0x143b1e470).
 func danjiSpaceRestorePayload(state json.RawMessage) ([]byte, error) {
 	b, err := inventory.ReadBag(state)
 	if err != nil {
@@ -204,19 +223,25 @@ func danjiSpaceRestorePayload(state json.RawMessage) ([]byte, error) {
 	if n := danjiPotTotal(b); n > 0 {
 		rows = append(rows, protocol.OrdinaryItem(0, danjiPotTemplate, n))
 	}
+	if n := capsuleCoinTotal(b); n > 0 {
+		rows = append(rows, protocol.OrdinaryItem(1, ev4189CoinItem, n))
+	}
 	return protocol.US224DanjiInventory(rows)
 }
 
 // danjiSpaceUpdatePayload builds NOTI 14 for inventory space 0x2a (42) after
-// DANJI pot acquisition or consumption, clearing slot 0 when the count hits 0.
+// DANJI pot or Event 4189 capsule coin acquisition/consumption, clearing slot 0
+// or slot 1 when its count hits 0.
 func danjiSpaceUpdatePayload(b inventory.Bag) ([]byte, error) {
-	var row [protocol.CurrentItemRecordSize]byte
+	row0 := protocol.EmptySlotItem(0)
 	if n := danjiPotTotal(b); n > 0 {
-		row = protocol.OrdinaryItem(0, danjiPotTemplate, n)
-	} else {
-		row = protocol.EmptySlotItem(0)
+		row0 = protocol.OrdinaryItem(0, danjiPotTemplate, n)
 	}
-	return protocol.US224DanjiInventory([][protocol.CurrentItemRecordSize]byte{row})
+	row1 := protocol.EmptySlotItem(1)
+	if n := capsuleCoinTotal(b); n > 0 {
+		row1 = protocol.OrdinaryItem(1, ev4189CoinItem, n)
+	}
+	return protocol.US224DanjiInventory([][protocol.CurrentItemRecordSize]byte{row0, row1})
 }
 
 func cryptoRandUint32(bound uint32) uint32 {
