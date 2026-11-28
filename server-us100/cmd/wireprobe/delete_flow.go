@@ -36,7 +36,7 @@ func deleteInventoryItems(
 	if err != nil {
 		return role, nil, 0, 0x11, err
 	}
-	if req.Space != 0 && req.Space != 1 && req.Space != protocol.TalismanSpace {
+	if req.Space != 0 && req.Space != 1 && req.Space != protocol.CreatureSpace && req.Space != protocol.InsigniaSpace && req.Space != protocol.TalismanSpace {
 		return role, nil, req.Space, 0x11, fmt.Errorf("unsupported delete inventory space %d", req.Space)
 	}
 
@@ -50,11 +50,9 @@ func deleteInventoryItems(
 			return nil, nil, e
 		}
 		lockedSlots := make(map[uint16]bool)
-		if req.Space == 0 {
-			for _, lk := range b.LockedItemEntries(now) {
-				if lk.Space == 0 {
-					lockedSlots[lk.Slot] = true
-				}
+		for _, lk := range b.LockedItemEntries(now) {
+			if lk.Space == req.Space {
+				lockedSlots[lk.Slot] = true
 			}
 		}
 
@@ -116,6 +114,86 @@ func deleteInventoryItems(
 				if !removed {
 					return nil, nil, fmt.Errorf("avatar slot %d is empty", want.Slot)
 				}
+			case protocol.CreatureSpace:
+				removed := false
+				for i, cr := range b.Creatures {
+					if cr.Slot == want.Slot {
+						if want.Template != 0 && cr.Template != want.Template {
+							return nil, nil, fmt.Errorf("creature slot %d holds template %d, want %d", want.Slot, cr.Template, want.Template)
+						}
+						b.Creatures = append(b.Creatures[:i], b.Creatures[i+1:]...)
+						removed = true
+						break
+					}
+				}
+				if !removed {
+					for i, ca := range b.CreatureArtifacts {
+						if ca.Slot == want.Slot {
+							if want.Template != 0 && ca.Template != want.Template {
+								return nil, nil, fmt.Errorf("creature artifact slot %d holds template %d, want %d", want.Slot, ca.Template, want.Template)
+							}
+							b.CreatureArtifacts = append(b.CreatureArtifacts[:i], b.CreatureArtifacts[i+1:]...)
+							removed = true
+							break
+						}
+					}
+				}
+				if !removed {
+					for i, ci := range b.CreatureItems {
+						if ci.Slot == want.Slot {
+							if want.Template != 0 && ci.Template != want.Template {
+								return nil, nil, fmt.Errorf("creature item slot %d holds template %d, want %d", want.Slot, ci.Template, want.Template)
+							}
+							if ci.Amount < want.Count {
+								return nil, nil, fmt.Errorf("creature item slot %d has %d, cannot delete %d", want.Slot, ci.Amount, want.Count)
+							}
+							if ci.Amount == want.Count {
+								b.CreatureItems = append(b.CreatureItems[:i], b.CreatureItems[i+1:]...)
+							} else {
+								b.CreatureItems[i].Amount -= want.Count
+							}
+							removed = true
+							break
+						}
+					}
+				}
+				if !removed {
+					return nil, nil, fmt.Errorf("creature space slot %d is empty", want.Slot)
+				}
+			case protocol.InsigniaSpace:
+				removed := false
+				for i, ins := range b.Insignias {
+					if ins.Slot == want.Slot {
+						if want.Template != 0 && ins.Template != want.Template {
+							return nil, nil, fmt.Errorf("insignia slot %d holds template %d, want %d", want.Slot, ins.Template, want.Template)
+						}
+						b.Insignias = append(b.Insignias[:i], b.Insignias[i+1:]...)
+						removed = true
+						break
+					}
+				}
+				if !removed {
+					for i, gm := range b.Gems {
+						if gm.Slot == want.Slot {
+							if want.Template != 0 && gm.Template != want.Template {
+								return nil, nil, fmt.Errorf("gem slot %d holds template %d, want %d", want.Slot, gm.Template, want.Template)
+							}
+							if gm.Amount < want.Count {
+								return nil, nil, fmt.Errorf("gem slot %d has %d, cannot delete %d", want.Slot, gm.Amount, want.Count)
+							}
+							if gm.Amount == want.Count {
+								b.Gems = append(b.Gems[:i], b.Gems[i+1:]...)
+							} else {
+								b.Gems[i].Amount -= want.Count
+							}
+							removed = true
+							break
+						}
+					}
+				}
+				if !removed {
+					return nil, nil, fmt.Errorf("insignia/gem slot %d is empty", want.Slot)
+				}
 			case protocol.TalismanSpace:
 				removed := false
 				for i, tl := range b.Talismans {
@@ -133,6 +211,9 @@ func deleteInventoryItems(
 						if rn.Slot == want.Slot {
 							if want.Template != 0 && rn.Template != want.Template {
 								return nil, nil, fmt.Errorf("rune slot %d holds template %d, want %d", want.Slot, rn.Template, want.Template)
+							}
+							if rn.Amount < want.Count {
+								return nil, nil, fmt.Errorf("rune slot %d has %d, cannot delete %d", want.Slot, rn.Amount, want.Count)
 							}
 							if rn.Amount > want.Count {
 								b.Runes[i].Amount -= want.Count
@@ -188,6 +269,10 @@ func deleteInventoryItems(
 		invRestore, err = protocol.US224InventoryRestoreWithExpansion(bag.ExpandedSlots, bag.Rows())
 	case 1:
 		invRestore, err = protocol.US224AvatarRestore(inventory.AvatarBagCapacity, bag.AvatarRows())
+	case protocol.CreatureSpace:
+		invRestore, err = protocol.US224CreatureRestore(bag.CreatureRows())
+	case protocol.InsigniaSpace:
+		invRestore, err = protocol.US224InsigniaRestore(bag.InsigniaRows())
 	case protocol.TalismanSpace:
 		invRestore, err = protocol.US224TalismanRestore(bag.TalismanRows())
 	}
@@ -198,14 +283,19 @@ func deleteInventoryItems(
 	saved.WireID = role.WireID
 	plan := []outboundPacket{
 		{"delete_items_ack", 1, protocol.CmdDeleteItem, protocol.DeleteItemsSuccess(req.Space, deleted)},
-		{"delete_inventory_restored", 0, 13, invRestore},
+	}
+	if req.Space == protocol.CreatureSpace {
+		if entries := bag.CreatureInfoEntries(); len(entries) > 0 {
+			plan = append(plan, outboundPacket{"delete_creature_info_restored", 0, protocol.NotiCreatureInfo, protocol.CreatureInfoList(entries)})
+		}
+	}
+	plan = append(plan, outboundPacket{"delete_inventory_restored", 0, 13, invRestore})
+	if locks := bag.LockedItemEntries(now); len(locks) > 0 {
+		if lockBody, lockErr := protocol.ItemLockListNoti(locks); lockErr == nil {
+			plan = append(plan, outboundPacket{"item_locks_restored", 0, protocol.NotiItemLockList, lockBody})
+		}
 	}
 	if req.Space == 0 {
-		if locks := bag.LockedItemEntries(now); len(locks) > 0 {
-			if lockBody, lockErr := protocol.ItemLockListNoti(locks); lockErr == nil {
-				plan = append(plan, outboundPacket{"item_locks_restored", 0, protocol.NotiItemLockList, lockBody})
-			}
-		}
 		if djUpd, djErr := danjiSpaceUpdatePayload(bag); djErr == nil {
 			plan = append(plan, outboundPacket{"delete_space2a_updated", 0, 14, djUpd})
 		}

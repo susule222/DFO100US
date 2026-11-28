@@ -74,8 +74,65 @@ func (w *worldSession) finishQuest(r protocol.QuestSubmitRequest) ([]outboundPac
 			return nil, e
 		}
 		plan = append(plan, outboundPacket{"quest_inventory_committed", 0, 13, body})
+		var sync2A, syncAvatars, syncCreatures, syncInsignias, syncTalismans bool
+		for _, it := range result.Receipt.Items {
+			tpl := it.Template
+			if isAccountEventSpace2AItem(tpl) {
+				sync2A = true
+			}
+			if inventory.IsAvatarTemplate(tpl) {
+				syncAvatars = true
+			}
+			if inventory.IsCreatureTemplate(tpl) || inventory.IsCreatureArtifactTemplate(tpl) || inventory.IsCreatureStackableTemplate(tpl) {
+				syncCreatures = true
+			}
+			if inventory.IsInsigniaTemplate(tpl) || inventory.IsFlagGemTemplate(tpl) {
+				syncInsignias = true
+			}
+			if inventory.IsTalismanTemplate(tpl) || inventory.IsRuneTemplate(tpl) {
+				syncTalismans = true
+			}
+		}
+		if sync2A {
+			if djUpd, djErr := danjiSpaceUpdatePayload(bag); djErr == nil {
+				plan = append(plan, outboundPacket{"quest_space2a_updated", 0, 14, djUpd})
+			}
+		}
+		if syncAvatars {
+			if avInv, aerr := protocol.US224AvatarRestore(inventory.AvatarBagCapacity, bag.AvatarRows()); aerr == nil {
+				plan = append(plan, outboundPacket{"quest_avatars_committed", 0, 13, avInv})
+			}
+		}
+		if syncCreatures {
+			if entries := bag.CreatureInfoEntries(); len(entries) > 0 {
+				plan = append(plan, outboundPacket{"quest_creature_info_committed", 0, protocol.NotiCreatureInfo, protocol.CreatureInfoList(entries)})
+			}
+			if crInv, cerr := protocol.US224CreatureRestore(bag.CreatureRows()); cerr == nil {
+				plan = append(plan, outboundPacket{"quest_creatures_committed", 0, 13, crInv})
+			}
+		}
+		if syncInsignias {
+			if insInv, ierr := protocol.US224InsigniaRestore(bag.InsigniaRows()); ierr == nil {
+				plan = append(plan, outboundPacket{"quest_insignias_committed", 0, 13, insInv})
+			}
+		}
+		if syncTalismans {
+			if talInv, terr := protocol.US224TalismanRestore(bag.TalismanRows()); terr == nil {
+				plan = append(plan, outboundPacket{"quest_talismans_committed", 0, 13, talInv})
+			}
+		}
 	}
 	plan = append(plan, outboundPacket{"quest_experience", 0, 37, experience}, outboundPacket{"quest_triggers_updated", 0, 291, triggers}, outboundPacket{"completed_quests_updated", 0, 342, completed})
+	if result.Receipt.Awakening > 0 && w.characters != nil {
+		if skillsBody, serr := w.characters.EntrySkills(result.Role); serr == nil {
+			plan = append(plan, outboundPacket{"quest_awakening_skills_updated", 0, 19, skillsBody})
+		}
+		if w.activeDungeon == nil && !w.selectingDungeon && result.Role.WireID != 0 && result.Role.WireID != 0xffff && result.Role.Name != "" {
+			if appearanceBody, aerr := w.characters.EntryBasicProbe(result.Role, w.channelCtx); aerr == nil {
+				plan = append(plan, outboundPacket{"quest_awakening_appearance_updated", 0, 2, appearanceBody})
+			}
+		}
+	}
 	w.role, w.level = result.Role, experience[0]
 	available, e := w.availableQuestPayload(ctx)
 	if e != nil {

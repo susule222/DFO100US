@@ -52,7 +52,7 @@ func (s *disjointSession) handle(service *inventory.WearService, w *worldSession
 	if req.Space == 0 {
 		rows := make([][protocol.CurrentItemRecordSize]byte, 0, len(req.Items))
 		for _, it := range req.Items {
-			rows = append(rows, protocol.OrdinaryItem(it.Slot, 0, 0))
+			rows = append(rows, protocol.EmptySlotItem(it.Slot))
 		}
 		sort.Slice(rows, func(i, j int) bool {
 			return uint16(rows[i][0])|uint16(rows[i][1])<<8 < uint16(rows[j][0])|uint16(rows[j][1])<<8

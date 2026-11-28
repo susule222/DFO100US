@@ -705,6 +705,25 @@ func questIsEpic(d catalog.QuestDefinition) bool {
 	return false
 }
 
+func questAwakeningReward(d catalog.QuestDefinition) byte {
+	on := false
+	isAwak := false
+	for _, c := range d.Script.Cells {
+		if c.Type == 3 {
+			on = c.Text == "[reward type]"
+			continue
+		}
+		if on && c.Text == "[awakening type]" {
+			isAwak = true
+			break
+		}
+	}
+	if !isAwak || len(d.RewardCells) != 1 || d.RewardCells[0].Type != 0 || d.RewardCells[0].Value <= 0 || d.RewardCells[0].Value > 3 {
+		return 0
+	}
+	return byte(d.RewardCells[0].Value)
+}
+
 func questGrowMatches(d catalog.QuestDefinition, adv byte) bool {
 	on := false
 	for _, c := range d.Script.Cells {
@@ -741,6 +760,8 @@ func (s *Service) execQuest(atx *storage.AdminTx, role *storage.Character, op Ch
 	checksum := s.Quests.Catalog.Source.Checksum
 	affected := 0
 	var summary string
+	var updatedState json.RawMessage
+	relogHint := false
 
 	switch op.Op {
 	case "complete_objective":
@@ -835,6 +856,7 @@ func (s *Service) execQuest(atx *storage.AdminTx, role *storage.Character, op Ch
 				doneMap[q.ID] = true
 			}
 		}
+		idx := s.Quests.Index()
 		var ids []int
 		for id := range s.Quests.Catalog.Quests {
 			if id > 0 && id < 40000 {
@@ -842,6 +864,7 @@ func (s *Service) execQuest(atx *storage.AdminTx, role *storage.Character, op Ch
 			}
 		}
 		sort.Ints(ids)
+		initialAwak := state.Awakening
 		for _, rawID := range ids {
 			qid := uint16(rawID)
 			if doneMap[qid] {
@@ -851,7 +874,22 @@ func (s *Service) execQuest(atx *storage.AdminTx, role *storage.Character, op Ch
 			if !questIsEpic(d) || d.MinimumLevel > maxLv {
 				continue
 			}
-			if !questJobMatches(d, job) || !questGrowMatches(d, state.Advancement) {
+			en := idx.Entries[uint32(qid)]
+			if en != nil {
+				if !quest.CharacterEligible(en, job, state.Advancement, state.Awakening) {
+					continue
+				}
+				conflicted := false
+				for _, cid := range en.Links.Conflicts {
+					if doneMap[cid] {
+						conflicted = true
+						break
+					}
+				}
+				if conflicted {
+					continue
+				}
+			} else if !questJobMatches(d, job) || !questGrowMatches(d, state.Advancement) {
 				continue
 			}
 			_, model, err := quest.InitialProgress(d)
@@ -867,7 +905,19 @@ func (s *Service) execQuest(atx *storage.AdminTx, role *storage.Character, op Ch
 			}); err != nil {
 				return nil, nil, err
 			}
+			doneMap[qid] = true
+			if awak := questAwakeningReward(d); awak > state.Awakening {
+				state.Awakening = awak
+			}
 			affected++
+		}
+		if state.Awakening != initialAwak {
+			merged, err := mergeCharacterState(role.State, state)
+			if err != nil {
+				return nil, nil, err
+			}
+			updatedState = merged
+			relogHint = true
 		}
 		summary = fmt.Sprintf("已完成 Lv.%d 及以下主线任务 %d 个", maxLv, affected)
 
@@ -928,9 +978,10 @@ func (s *Service) execQuest(atx *storage.AdminTx, role *storage.Character, op Ch
 		CharacterID: role.ID,
 		Affected:    affected,
 		Summary:     summary,
+		RelogHint:   relogHint,
 	}
 	b, err := json.Marshal(rec)
-	return nil, b, err
+	return updatedState, b, err
 }
 
 func (s *Service) applyQuestFinishWithReward(ctx context.Context, op CharacterOp) (OpReceipt, bool, error) {

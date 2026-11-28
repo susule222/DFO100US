@@ -127,7 +127,7 @@ func (s *Service) ListWithFatigue(ctx context.Context, account int64, fatigue *F
 		if e = json.Unmarshal(c.State, &state); e != nil {
 			return nil, e
 		}
-		row := protocol.CharacterRow{Slot: uint16(slot), Name: c.Name, Profession: c.Profession, Advancement: state.Advancement, Level: state.Level}
+		row := protocol.CharacterRow{Slot: uint16(slot), Name: c.Name, Profession: c.Profession, Advancement: state.Advancement, Awakening: state.Awakening, Level: state.Level}
 		if fatigue != nil {
 			fp, err := fatigue.State(ctx, account, c.ID, now)
 			if err != nil {
@@ -282,6 +282,7 @@ func (s *Service) EntryBasicProbe(role storage.Character, channelContext [2]byte
 			Name:        role.Name,
 			Profession:  role.Profession,
 			Advancement: state.Advancement,
+			Awakening:   state.Awakening,
 			Level:       state.Level,
 			Equipment:   appearance,
 		},

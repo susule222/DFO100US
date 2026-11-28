@@ -135,7 +135,8 @@ func UserInfoBasicProbe(s EntryBasicProbe) ([]byte, error) {
 	//   u8 job ([tmp+0x08]),
 	//   u8 grow_packed (low 4 bits -> [tmp+0x0c] grow, bits 4..6 -> [tmp+0x10] second_grow),
 	//   u8 level ([tmp+0x18]), u8 ([tmp+0x314]), u8 ([tmp+0x20]).
-	p = append(p, r.Profession, r.Advancement&0x0f, r.Level, 0, 0)
+	growPacked := (r.Advancement & 0x0f) | ((r.Awakening & 0x07) << 4)
+	p = append(p, r.Profession, growPacked, r.Level, 0, 0)
 
 	var err error
 	p, err = appendAppearanceRowsV224(p, r.Equipment)

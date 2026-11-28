@@ -24,6 +24,16 @@ func matchesCharacterFilter(f CharacterFilter, job string, adv, awakening byte) 
 	return true
 }
 
+// CharacterEligible reports whether a character with the given job, advancement,
+// and awakening stage satisfies the quest's [target character], [non target character],
+// [job], and [grow type] filters.
+func CharacterEligible(en *Entry, job string, adv, awakening byte) bool {
+	if en == nil {
+		return false
+	}
+	return characterEligible(en, job, adv, awakening)
+}
+
 func characterEligible(en *Entry, job string, adv, awakening byte) bool {
 	if job == "" {
 		return false

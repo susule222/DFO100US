@@ -16,6 +16,7 @@ type FinishReceipt struct {
 	Quest      uint16                   `json:"quest"`
 	Experience uint32                   `json:"experience"`
 	Gold       uint32                   `json:"gold,omitempty"`
+	Awakening  byte                     `json:"awakening,omitempty"`
 	Source     string                   `json:"source"`
 	Model      string                   `json:"model"`
 	Items      []inventory.AwardReceipt `json:"items,omitempty"`
@@ -145,6 +146,7 @@ func (s *Service) Finish(ctx context.Context, role storage.Character, r protocol
 		if e != nil {
 			return nil, nil, e
 		}
+		var grantedAwakening byte
 		if awakeningReward > state.Awakening {
 			var doc map[string]json.RawMessage
 			if e := json.Unmarshal(saved.State, &doc); e != nil {
@@ -159,6 +161,7 @@ func (s *Service) Finish(ctx context.Context, role storage.Character, r protocol
 			if e != nil {
 				return nil, nil, e
 			}
+			grantedAwakening = awakeningReward
 		}
 		// Completion gold comes from the [gold reward table], not from the
 		// quest's own cells; it is credited to the wallet (award id 0) in the
@@ -183,7 +186,7 @@ func (s *Service) Finish(ctx context.Context, role storage.Character, r protocol
 			}
 			items = append(items, item)
 		}
-		receipt, e := json.Marshal(FinishReceipt{Quest: r.ID, Experience: gain, Gold: gold, Source: s.Catalog.Source.Checksum, Model: s.Progression.Rules.Model, Items: items, Consumed: consumed})
+		receipt, e := json.Marshal(FinishReceipt{Quest: r.ID, Experience: gain, Gold: gold, Awakening: grantedAwakening, Source: s.Catalog.Source.Checksum, Model: s.Progression.Rules.Model, Items: items, Consumed: consumed})
 		return saved.State, receipt, e
 	}, s.Index().Entries[uint32(r.ID)].Links)
 	if e != nil {

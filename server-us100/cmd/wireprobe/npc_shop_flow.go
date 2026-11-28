@@ -272,20 +272,22 @@ func countMaterialInBag(bag inventory.Bag, template uint32) uint32 {
 	return uint32(total)
 }
 
-func deductMaterialFromBag(bag inventory.Bag, template, need uint32) (inventory.Bag, uint32, bool) {
+func deductMaterialFromBag(bag inventory.Bag, template, need uint32) (inventory.Bag, uint32, []uint16, bool) {
 	if need == 0 {
-		return bag, countMaterialInBag(bag, template), true
+		return bag, countMaterialInBag(bag, template), nil, true
 	}
 	if countMaterialInBag(bag, template) < need {
-		return bag, 0, false
+		return bag, 0, nil, false
 	}
 	next := make([]inventory.BagItem, 0, len(bag.Items))
+	var emptied []uint16
 	remNeed := need
 	var remaining uint32
 	for _, it := range bag.Items {
 		if it.Template == template && remNeed > 0 {
 			if it.Amount <= remNeed {
 				remNeed -= it.Amount
+				emptied = append(emptied, it.Slot)
 				continue
 			}
 			it.Amount -= remNeed
@@ -297,11 +299,14 @@ func deductMaterialFromBag(bag inventory.Bag, template, need uint32) (inventory.
 		next = append(next, it)
 	}
 	bag.Items = next
-	return bag, remaining, true
+	return bag, remaining, emptied, true
 }
 
 func shopCatalogLootEntry(base catalog.LootCatalog, rules inventory.BagRules, id uint32, entry npcShopItemEntry, qty uint32) catalog.LootItem {
 	resolveType := func(t string) string {
+		if inventory.IsEmblemTemplate(id) {
+			return inventory.EmblemBagCategory
+		}
 		if t != "" {
 			if _, ok := rules.Slots[t]; ok {
 				return t
@@ -386,14 +391,15 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 
 	eventKey := fmt.Sprintf("npc_buy/%d/%x", w.role.ID, sha256.Sum256(rawFrame))
 	var (
-		refuseCode  uint16
-		boughtSpace byte
-		boughtSlot  uint16
-		matUpdates  []protocol.NPCShopMaterialUpdate
-		afterGold   uint32
-		afterRows   [][protocol.CurrentItemRecordSize]byte
-		boughtRow   [protocol.CurrentItemRecordSize]byte
-		spaceRows   [][protocol.CurrentItemRecordSize]byte
+		refuseCode      uint16
+		boughtSpace     byte
+		boughtSlot      uint16
+		matUpdates      []protocol.NPCShopMaterialUpdate
+		emptiedMatSlots []uint16
+		afterGold       uint32
+		afterRows       [][protocol.CurrentItemRecordSize]byte
+		boughtRow       [protocol.CurrentItemRecordSize]byte
+		spaceRows       [][protocol.CurrentItemRecordSize]byte
 	)
 
 	saved, applied, err := w.characters.Store.CommitCharacterEvent(ctx, w.account, w.role.ID, w.role.ConfigVersion, eventKey, "us100-npc-shop-buy-v1", func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
@@ -409,6 +415,7 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 		bag.Gold -= totalGold
 
 		matUpdates = matUpdates[:0]
+		emptiedMatSlots = emptiedMatSlots[:0]
 		// 1. Deduct fixed [need material] requirements.
 		for _, m := range entry.Materials {
 			need64 := uint64(m.Count) * uint64(req.Quantity)
@@ -417,12 +424,14 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 				return nil, nil, fmt.Errorf("material cost overflow")
 			}
 			var rem uint32
+			var emp []uint16
 			var ok bool
-			bag, rem, ok = deductMaterialFromBag(bag, m.ID, uint32(need64))
+			bag, rem, emp, ok = deductMaterialFromBag(bag, m.ID, uint32(need64))
 			if !ok {
 				refuseCode = 4
 				return nil, nil, fmt.Errorf("insufficient material %d: need %d", m.ID, need64)
 			}
+			emptiedMatSlots = append(emptiedMatSlots, emp...)
 			matUpdates = append(matUpdates, protocol.NPCShopMaterialUpdate{Template: m.ID, Remaining: rem})
 		}
 
@@ -443,7 +452,9 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 				}
 				if countMaterialInBag(bag, vm.ID) >= uint32(need64) {
 					var rem uint32
-					bag, rem, _ = deductMaterialFromBag(bag, vm.ID, uint32(need64))
+					var emp []uint16
+					bag, rem, emp, _ = deductMaterialFromBag(bag, vm.ID, uint32(need64))
+					emptiedMatSlots = append(emptiedMatSlots, emp...)
 					matUpdates = append(matUpdates, protocol.NPCShopMaterialUpdate{Template: vm.ID, Remaining: rem})
 					satisfied = true
 					break
@@ -464,6 +475,15 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 			return ids
 		}
 		switch {
+		case inventory.IsAvatarTemplate(req.ItemTemplate):
+			var added []uint16
+			bag, added, err = bag.AddAvatars(repeatIDs(req.ItemTemplate, req.Quantity))
+			if err != nil || len(added) == 0 {
+				refuseCode = 10
+				return nil, nil, fmt.Errorf("add bought avatar %d: %v", req.ItemTemplate, err)
+			}
+			boughtSpace, boughtSlot = 1, added[len(added)-1]
+			spaceRows = bag.AvatarRows()
 		case inventory.IsCreatureTemplate(req.ItemTemplate):
 			var added []uint16
 			bag, added, err = bag.AddCreatures(repeatIDs(req.ItemTemplate, req.Quantity))
@@ -610,10 +630,35 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 	out := []outboundPacket{
 		{Name: "npc_shop_buy_ack", Kind: 1, ID: protocol.CmdNPCShopBuy, Payload: ackPayload},
 	}
-	if upd, err := protocol.US224InventoryUpdate(afterRows); err == nil {
+	syncRows := append([][protocol.CurrentItemRecordSize]byte(nil), afterRows...)
+	if len(emptiedMatSlots) > 0 {
+		occupied := make(map[uint16]bool, len(syncRows))
+		for _, r := range syncRows {
+			occupied[binary.LittleEndian.Uint16(r[0:2])] = true
+		}
+		for _, s := range emptiedMatSlots {
+			if !occupied[s] {
+				syncRows = append(syncRows, protocol.EmptySlotItem(s))
+				occupied[s] = true
+			}
+		}
+		sort.Slice(syncRows, func(i, j int) bool {
+			return binary.LittleEndian.Uint16(syncRows[i][0:2]) < binary.LittleEndian.Uint16(syncRows[j][0:2])
+		})
+	}
+	if upd, err := protocol.US224InventoryUpdate(syncRows); err == nil {
 		out = append(out, outboundPacket{Name: "npc_shop_inventory_sync", Kind: 0, ID: 14, Payload: upd})
 	}
-	if isAccountEventSpace2AItem(req.ItemTemplate) {
+	syncSpace2A := isAccountEventSpace2AItem(req.ItemTemplate)
+	if !syncSpace2A {
+		for _, mu := range matUpdates {
+			if isAccountEventSpace2AItem(mu.Template) {
+				syncSpace2A = true
+				break
+			}
+		}
+	}
+	if syncSpace2A {
 		if afterBag, berr := inventory.ReadBag(saved.State); berr == nil {
 			if djUpd, djErr := danjiSpaceUpdatePayload(afterBag); djErr == nil {
 				out = append(out, outboundPacket{Name: "npc_shop_space2a_sync", Kind: 0, ID: 14, Payload: djUpd})

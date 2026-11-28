@@ -8,6 +8,7 @@ import (
 	"dfolan/internal/storage"
 	"encoding/json"
 	"fmt"
+	"time"
 )
 
 func sortInventory(
@@ -235,7 +236,11 @@ func sortInventoryWithVaults(
 	plan := []outboundPacket{
 		{"sort_inventory_restored", 0, 13, invRestore},
 	}
-	if locks := bag.LockedItemEntries(0); len(locks) > 0 {
+	if vaults != nil {
+		if lockBody, lockErr := itemLocksOnEntryWithVaults(ctx, saved, vaults); lockErr == nil && len(lockBody) > 0 {
+			plan = append(plan, outboundPacket{"item_locks_restored", 0, protocol.NotiItemLockList, lockBody})
+		}
+	} else if locks := bag.LockedItemEntries(time.Now().Unix()); len(locks) > 0 {
 		if lockBody, lockErr := protocol.ItemLockListNoti(locks); lockErr == nil {
 			plan = append(plan, outboundPacket{"item_locks_restored", 0, protocol.NotiItemLockList, lockBody})
 		}

@@ -356,4 +356,24 @@ func TestSeriaRoomWarpGateTransitions(t *testing.T) {
 	if err != nil || gotSame.X != 1768 || gotSame.Y != 263 || gotSame.Return != nil {
 		t.Fatalf("Flag=5 same-town warp snapped to Return instead of destination: %+v err=%v", gotSame, err)
 	}
+
+	// 6. Dedicated Seria's Room with a normal exit portal (e.g. 51/0 -> 51/1) under
+	//    RequirePortalProximity=false must still execute the Seria Warp Gate branch
+	//    (clear Return + clamp landing coords onto walkable bounds).
+	dedicatedSeria := storage.WorldPosition{
+		Town: 51, Area: 0, X: 545, Y: 290,
+		Return: &storage.WorldReturn{Town: 38, Area: 0, X: 561, Y: 234},
+	}
+	gotDedicated, err := noProx.Transition(100, dedicatedSeria, protocol.AreaChangeRequest{
+		Town: 51, Area: 1, X: 10, Y: 10, Flag: protocol.AreaChangeFlagSeriaWarp, PreviousTown: 51, PreviousArea: 0,
+	}, owner)
+	if err != nil {
+		t.Fatalf("dedicated Seria 51/0 -> 51/1 Flag=5 warp failed: %v", err)
+	}
+	if gotDedicated.Return != nil {
+		t.Fatalf("dedicated Seria Flag=5 warp did not clear Return: %+v", gotDedicated.Return)
+	}
+	if !Walkable(cat.Areas["51/1"], gotDedicated.X, gotDedicated.Y) {
+		t.Fatalf("dedicated Seria Flag=5 warp did not clamp onto walkable 51/1: %+v", gotDedicated)
+	}
 }

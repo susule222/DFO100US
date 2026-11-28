@@ -124,10 +124,10 @@ func (s *WearService) moveOrdinary(role storage.Character, r protocol.ItemMoveRe
 	if e != nil {
 		return nil, e
 	}
-	// Creature & Artifact move path (space 7 <-> space 3 slots 26..29, or within space 7).
+	// Creature & Artifact move path (space 7 <-> space 3 slots 26..29 & 32, or within space 7).
 	if r.SourceList == protocol.CreatureSpace || r.DestinationList == protocol.CreatureSpace ||
-		(r.SourceList == 3 && (r.SourceSlot == WornCreatureSlot || (r.SourceSlot >= WornArtifactSlotMin && r.SourceSlot <= WornArtifactSlotMax))) ||
-		(r.DestinationList == 3 && (r.DestinationSlot == WornCreatureSlot || (r.DestinationSlot >= WornArtifactSlotMin && r.DestinationSlot <= WornArtifactSlotMax))) {
+		(r.SourceList == 3 && (r.SourceSlot == WornCreatureSlot || r.SourceSlot == WornCreatureSkinSlot || (r.SourceSlot >= WornArtifactSlotMin && r.SourceSlot <= WornArtifactSlotMax))) ||
+		(r.DestinationList == 3 && (r.DestinationSlot == WornCreatureSlot || r.DestinationSlot == WornCreatureSkinSlot || (r.DestinationSlot >= WornArtifactSlotMin && r.DestinationSlot <= WornArtifactSlotMax))) {
 		if (r.SourceList != protocol.CreatureSpace && r.SourceList != 3) || (r.DestinationList != protocol.CreatureSpace && r.DestinationList != 3) {
 			return nil, fmt.Errorf("cannot move creature item into unrelated bag")
 		}
@@ -189,7 +189,7 @@ func (s *WearService) moveOrdinary(role storage.Character, r protocol.ItemMoveRe
 				if slot < WornArtifactSlotMin || slot > WornArtifactSlotMax {
 					return nil, fmt.Errorf("slot outside worn creature artifact slots")
 				}
-			} else if slot != WornCreatureSlot {
+			} else if slot != WornCreatureSlot && slot != WornCreatureSkinSlot {
 				return nil, fmt.Errorf("slot outside worn creature slot")
 			}
 			for _, v := range rows {
@@ -241,7 +241,7 @@ func (s *WearService) moveOrdinary(role storage.Character, r protocol.ItemMoveRe
 			// (e.g. right-clicking egg 500980049 sends CMD 19 Space 7 -> Space 3:26),
 			// and guarantee a non-zero CreatureID for NOTI 105 rendering.
 			if a != nil {
-				if r.DestinationList == 3 && r.DestinationSlot == WornCreatureSlot {
+				if r.DestinationList == 3 && (r.DestinationSlot == WornCreatureSlot || r.DestinationSlot == WornCreatureSkinSlot) {
 					if hatched := CreatureEggOutput(a.Template); hatched != 0 {
 						a.Template = hatched
 					}
@@ -251,7 +251,7 @@ func (s *WearService) moveOrdinary(role storage.Character, r protocol.ItemMoveRe
 				}
 			}
 			if z != nil {
-				if r.SourceList == 3 && r.SourceSlot == WornCreatureSlot {
+				if r.SourceList == 3 && (r.SourceSlot == WornCreatureSlot || r.SourceSlot == WornCreatureSkinSlot) {
 					if hatched := CreatureEggOutput(z.Template); hatched != 0 {
 						z.Template = hatched
 					}

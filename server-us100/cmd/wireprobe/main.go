@@ -1299,7 +1299,7 @@ func main() {
 						continue
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					saved, plan, code, err := openDanjiPot(ctx, characters.Store, developmentAccount, worldState.role, lootService.Catalog, lootService.BagRules, frame.Raw, plaintext, nil)
+					saved, plan, code, err := openDanjiPotWithFatigue(ctx, characters.Store, fatigueService, developmentAccount, worldState.role, lootService.Catalog, lootService.BagRules, frame.Raw, plaintext, nil)
 					cancel()
 					if err != nil {
 						event(map[string]any{"kind": "danji_open_refused", "character_id": selectedCharacterID, "code": code, "reason": err.Error()})

@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"dfolan/internal/catalog"
+	"dfolan/internal/character"
 	"dfolan/internal/db100"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/inventory"
@@ -341,6 +342,21 @@ func openDanjiPot(
 	plaintext []byte,
 	nextRand func(uint32) uint32,
 ) (storage.Character, []outboundPacket, uint16, error) {
+	return openDanjiPotWithFatigue(ctx, store, nil, account, role, src, rules, rawFrame, plaintext, nextRand)
+}
+
+func openDanjiPotWithFatigue(
+	ctx context.Context,
+	store *storage.Store,
+	fatigue *character.FatigueService,
+	account int64,
+	role storage.Character,
+	src catalog.LootCatalog,
+	rules inventory.BagRules,
+	rawFrame []byte,
+	plaintext []byte,
+	nextRand func(uint32) uint32,
+) (storage.Character, []outboundPacket, uint16, error) {
 	if nextRand == nil {
 		nextRand = cryptoRandUint32
 	}
@@ -535,7 +551,7 @@ func openDanjiPot(
 		for k := range contractDays {
 			changed[k] = true
 		}
-		if cpkts, cerr := buildContractRefreshPackets(ctx, store, nil, account, saved.ID, changed); cerr == nil {
+		if cpkts, cerr := buildContractRefreshPackets(ctx, store, fatigue, account, saved.ID, changed); cerr == nil {
 			plan = append(plan, cpkts...)
 		}
 	}

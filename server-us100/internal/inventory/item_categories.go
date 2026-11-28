@@ -37,10 +37,11 @@ const (
 	GemSlotStart        uint16 = 56 // 0x38..0x6f (56 slots)
 	GemSlotEnd          uint16 = 111
 
-	WornCreatureSlot    uint16 = 26 // 0x1a
-	WornArtifactSlotMin uint16 = 27 // 0x1b (red)
-	WornArtifactSlotMax uint16 = 29 // 0x1d (green)
-	WornInsigniaSlot    uint16 = 31 // 0x1f
+	WornCreatureSlot     uint16 = 26 // 0x1a
+	WornArtifactSlotMin  uint16 = 27 // 0x1b (red)
+	WornArtifactSlotMax  uint16 = 29 // 0x1d (green)
+	WornInsigniaSlot     uint16 = 31 // 0x1f
+	WornCreatureSkinSlot uint16 = 32 // 0x20 (creature skin)
 )
 
 // Zero-overlap ID bands verified across all 300k+ items in US100 Script.pvf.

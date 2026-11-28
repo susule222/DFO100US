@@ -107,9 +107,24 @@ func (s *Service) Transition(level byte, old storage.WorldPosition, r protocol.A
 		return old, errors.New("unknown source area")
 	}
 	adjacent := false
-	for _, p := range src.Portals {
-		if p.Town == r.Town && p.Area == r.Area && (!s.Rules.RequirePortalProximity || Contains(p.Bounds, old.X, old.Y, s.Rules.PortalMargin)) {
+	seriaWarp := false
+	// Seria's Room right-side Warp Gate ("传送阵", CMD 36 Flag == 5) teleports
+	// directly from any Seria's Room to any valid catalog destination whose
+	// level and quest requirements are satisfied. Check this BEFORE normal
+	// src.Portals so dedicated Seria's Rooms with exit portals (e.g. 51/0 -> 51/1)
+	// still honor Warp Gate proximity, clear Return, and clamp landing coords.
+	if isSeriaRoomArea(src) && r.Flag == protocol.AreaChangeFlagSeriaWarp {
+		if !s.Rules.RequirePortalProximity || nearSeriaWarpGate(src, old.X, old.Y, s.Rules.PortalMargin) {
 			adjacent = true
+			seriaWarp = true
+			next.Return = nil
+		}
+	}
+	if !seriaWarp {
+		for _, p := range src.Portals {
+			if p.Town == r.Town && p.Area == r.Area && (!s.Rules.RequirePortalProximity || Contains(p.Bounds, old.X, old.Y, s.Rules.PortalMargin)) {
+				adjacent = true
+			}
 		}
 	}
 	// A source Seria return warp targets the saved origin, never an arbitrary
@@ -130,17 +145,6 @@ func (s *Service) Transition(level byte, old storage.WorldPosition, r protocol.A
 			// walkable geometry. Restore this character's validated saved
 			// origin instead. Destination/portal ownership is still checked.
 			next.X, next.Y = old.Return.X, old.Return.Y
-			next.Return = nil
-		}
-	}
-	// Seria's Room right-side Warp Gate ("传送阵", CMD 36 Flag == 5) teleports
-	// directly from any Seria's Room to any valid catalog destination whose
-	// level and quest requirements are satisfied.
-	seriaWarp := false
-	if !adjacent && isSeriaRoomArea(src) && r.Flag == protocol.AreaChangeFlagSeriaWarp {
-		if !s.Rules.RequirePortalProximity || nearSeriaWarpGate(src, old.X, old.Y, s.Rules.PortalMargin) {
-			adjacent = true
-			seriaWarp = true
 			next.Return = nil
 		}
 	}

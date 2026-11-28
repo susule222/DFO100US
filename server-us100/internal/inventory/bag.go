@@ -206,7 +206,7 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 	for idx := range b.Worn {
 		i := b.Worn[idx]
 		validOrdinary := i.Slot >= 12 && i.Slot <= 25
-		validCreature := i.Slot == WornCreatureSlot || (i.Slot >= WornArtifactSlotMin && i.Slot <= WornArtifactSlotMax)
+		validCreature := i.Slot == WornCreatureSlot || i.Slot == WornCreatureSkinSlot || (i.Slot >= WornArtifactSlotMin && i.Slot <= WornArtifactSlotMax)
 		validInsignia := i.Slot == WornInsigniaSlot
 		validTalisman := i.Slot >= WornTalismanSlotMin && i.Slot <= WornTalismanSlotMax
 		if (!validOrdinary && !validCreature && !validInsignia && !validTalisman) || i.Template == 0 || seen[i.Slot] {
@@ -215,7 +215,7 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		if validTalisman && b.Worn[idx].RuneSockets == [3]byte{} {
 			b.Worn[idx].RuneSockets = DefaultTalismanRuneSockets
 		}
-		if i.Slot == WornCreatureSlot {
+		if i.Slot == WornCreatureSlot || i.Slot == WornCreatureSkinSlot {
 			if hatched := CreatureEggOutput(b.Worn[idx].Template); hatched != 0 {
 				b.Worn[idx].Template = hatched
 			}
@@ -555,8 +555,12 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 	return b, nil
 }
 
+func isWornCreatureLikeSlot(slot uint16) bool {
+	return slot == WornCreatureSlot || slot == WornCreatureSkinSlot
+}
+
 // ensureCreatureIDs deterministically assigns unique non-zero CreatureIDs to
-// every creature in Space 3 slot 26 and Space 7 (0..159). US100's creature
+// every creature in Space 3 slot 26/32 and Space 7 (0..159). US100's creature
 // renderer (0x14400b150) reads ItemExtra+0x00 (decoded from raw[6:10]) and looks
 // it up in the NOTI 105 CreatureMap (0x1497cf930); ID 0 causes the sprite to be
 // skipped completely.
@@ -564,7 +568,7 @@ func (b *Bag) ensureCreatureIDs() {
 	used := map[uint32]bool{}
 	var maxID uint32
 	for _, w := range b.Worn {
-		if w.Slot == WornCreatureSlot && w.CreatureID != 0 {
+		if isWornCreatureLikeSlot(w.Slot) && w.CreatureID != 0 {
 			used[w.CreatureID] = true
 			if w.CreatureID > maxID {
 				maxID = w.CreatureID
@@ -590,7 +594,7 @@ func (b *Bag) ensureCreatureIDs() {
 		return maxID
 	}
 	for idx := range b.Worn {
-		if b.Worn[idx].Slot != WornCreatureSlot {
+		if !isWornCreatureLikeSlot(b.Worn[idx].Slot) {
 			continue
 		}
 		id := b.Worn[idx].CreatureID
@@ -620,7 +624,7 @@ func (b *Bag) ensureCreatureIDs() {
 func (b Bag) nextCreatureID() uint32 {
 	var maxID uint32
 	for _, w := range b.Worn {
-		if w.Slot == WornCreatureSlot && w.CreatureID > maxID {
+		if isWornCreatureLikeSlot(w.Slot) && w.CreatureID > maxID {
 			maxID = w.CreatureID
 		}
 	}
@@ -633,7 +637,7 @@ func (b Bag) nextCreatureID() uint32 {
 }
 
 // CreatureInfoEntries collects NOTI 105 metadata entries for every creature
-// owned by the character (both Space 3 worn slot 26 and Space 7 bag 0..159).
+// owned by the character (both Space 3 worn slots 26/32 and Space 7 bag 0..159).
 func (b Bag) CreatureInfoEntries() []protocol.CreatureInfoEntry {
 	seen := map[uint32]bool{}
 	var out []protocol.CreatureInfoEntry
@@ -649,7 +653,7 @@ func (b Bag) CreatureInfoEntries() []protocol.CreatureInfoEntry {
 		})
 	}
 	for _, w := range b.Worn {
-		if w.Slot == WornCreatureSlot {
+		if isWornCreatureLikeSlot(w.Slot) {
 			add(w.CreatureID)
 		}
 	}

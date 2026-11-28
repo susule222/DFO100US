@@ -105,6 +105,7 @@ type CharacterRow struct {
 	Name             string
 	Profession       byte
 	Advancement      byte
+	Awakening        byte
 	Level            byte
 	Equipment        []Equipment
 	FatigueRemaining uint16
