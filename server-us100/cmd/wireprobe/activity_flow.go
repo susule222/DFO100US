@@ -105,6 +105,13 @@ func buildActiveEventsPayload(pol events.Policy, now time.Time) ([]byte, error) 
 			"Open DANJI Pots for rare rewards.",
 			"Stack milestones grant bonus items.",
 			"Status: Active on server"),
+		// Event 4189 (0x105d): Neo: Awakened Ones Capsule Machine. Activates Dawn
+		// Seria (NPC 500000209 in map/common/(r)gate_seria.map, [open visible event] 4189)
+		// and registers NOTI 2338 (0x922) without adding an unlocalized calendar row.
+		{
+			EventID:   protocol.EventIDCapsuleDraw,
+			HasDetail: false,
+		},
 	}
 	if pol.ExpEventEnabled && pol.ExpMultiplier > 1.0 {
 		entries = append(entries, makeEntry(

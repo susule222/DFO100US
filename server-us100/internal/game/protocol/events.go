@@ -17,7 +17,10 @@ import (
 //   - NOTI 2161 (0x871, 0x14048c000): Event 619 Time Guide Stone Daily Check state (20 bytes)
 //   - NOTI 2215 (0x8a7, 0x140422af0): Event 515 Everyday Connect Attendance state (11 bytes)
 //   - NOTI 2222 (0x8ae, 0x140421120): Event 520 Reverse Hot Time state (12 bytes)
+//   - NOTI 2338 (0x922, 0x1401f3e80): Event 4189 Neo Capsule Machine state (72 bytes)
 const (
+	EventIDCapsuleDraw uint16 = 4189 // 0x105d: Neo: Awakened Ones Capsule Machine (Dawn Seria NPC 500000209)
+
 	CmdUseStackableAction uint16 = 507 // 0x1fb: special [action type] stackable use (0x143a01190)
 	CmdRequestEventGift   uint16 = 643 // 0x283: CMDPACKET_REQUEST_EVENT_GIFT (0x142fae080 / 0x142fad4e0)
 	CmdEventAction        uint16 = 680
@@ -36,6 +39,7 @@ const (
 	NotiEv515EverydayConnect uint16 = 2215
 	NotiEv520ReverseHotTime  uint16 = 2222
 	NotiEventGiftReset       uint16 = 2272 // 0x8e0: full reset + load of event gift states (0x142fad6c0)
+	NotiEv4189CapsuleDraw    uint16 = 2338 // 0x922: Event 4189 CapsuleDrawEvent state (0x1401f3e80)
 )
 
 // EventInitParam is one 50-byte entry inside NOTI 108 Part 2
@@ -459,5 +463,28 @@ func Ev500SoulAnvilStatusWithResonance(accumCount uint32, slots [3]Ev500SlotStat
 	p[47] = res.Slot
 	binary.LittleEndian.PutUint32(p[48:52], uint32(len(nameBytes)))
 	copy(p[52:52+len(nameBytes)], nameBytes)
+	return p
+}
+
+// Ev4189CapsuleDrawStatus encodes NOTI 2338 (0x922, 72 bytes, handler 0x1401f3e80):
+//   - [0..1]:   i16 reserved/season header ([obj+0x10], 0)
+//   - [2..3]:   i16 drawnIndex ([obj+0x12]: -1 on sync/reset -> Refresh+UpdateWindow;
+//               0..49 on draw -> triggers capsule drop/upgrade/open animation + result panel)
+//   - [4..7]:   u32 reserved ([obj+0x14], 0)
+//   - [8..11]:  u32 drawnCount ([obj+0x18]: remainCount = poolSize - drawnCount,
+//               reset_btn enabled iff drawnCount > 0 at 0x14012fdb0)
+//   - [12..71]: 60 bytes of ASCII '0' (0x30, available) / '1' (0x31, already drawn)
+//               for slots 0..59 ([obj+0x1c..+0x57], checked at 0x1401f49ad & 0x1401f4a46)
+func Ev4189CapsuleDrawStatus(drawnIndex int16, drawnCount uint32, drawnSlots [60]bool) []byte {
+	p := make([]byte, 72)
+	binary.LittleEndian.PutUint16(p[2:4], uint16(drawnIndex))
+	binary.LittleEndian.PutUint32(p[8:12], drawnCount)
+	for i := 0; i < 60; i++ {
+		if drawnSlots[i] {
+			p[12+i] = '1'
+		} else {
+			p[12+i] = '0'
+		}
+	}
 	return p
 }

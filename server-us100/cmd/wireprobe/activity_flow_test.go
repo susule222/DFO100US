@@ -235,7 +235,7 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 		}
 		cnt := int(binary.LittleEndian.Uint16(evBytes[0:2]))
 		off := 2
-		var saw388, saw131 bool
+		var saw388, saw131, saw4189 bool
 		for i := 0; i < cnt; i++ {
 			evID := binary.LittleEndian.Uint16(evBytes[off : off+2])
 			off += 2
@@ -247,6 +247,8 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 					saw388 = true
 				case eventIDMileageShop:
 					saw131 = true
+				case protocol.EventIDCapsuleDraw:
+					saw4189 = true
 				default:
 					t.Fatalf("unexpected non-detail entry %d eventID=%d", i, evID)
 				}
@@ -277,6 +279,9 @@ func TestActiveEventsCalendarHUDAndLiveActivation(t *testing.T) {
 		}
 		if !saw388 {
 			t.Fatalf("expected companion Event 388 in NOTI 108 when SeriaWelcomeEnabled is true")
+		}
+		if !saw4189 {
+			t.Fatalf("expected Event 4189 (Neo Capsule Machine) in NOTI 108")
 		}
 		if !saw131 {
 			t.Fatalf("expected companion Event 131 (Mileage Shop & checkout rebate) in NOTI 108 when Mileage.Enabled is true")

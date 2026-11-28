@@ -104,6 +104,18 @@ type persistedEventUIState struct {
 	Ev392DailyClaimed    bool    `json:"ev392_daily_claimed,omitempty"`
 	Ev392StepCompleted   [4]byte `json:"ev392_step_completed,omitempty"` // cumulative completions per mission 1..4
 	Ev392StepClaimed     [4]byte `json:"ev392_step_claimed,omitempty"`   // repeatable bonus claims 0..2 per mission 1..4
+
+	// Event 4189: Neo Capsule Machine (Live/Else/Univ/2023/0221_Neo_Machine/Neo_Machine.cos)
+	Ev4189DrawnMask  uint64 `json:"ev4189_drawn_mask,omitempty"`  // bit i (0..49) = slot i drawn
+	Ev4189TotalDraws uint32 `json:"ev4189_total_draws,omitempty"` // monotonic draw counter for idempotent keys
+	Ev4189ResetCount uint32 `json:"ev4189_reset_count,omitempty"` // monotonic reset counter
+}
+
+type ev4189PoolEntry struct {
+	Rarity   uint32
+	Template uint32
+	Count    uint32
+	Weight   uint32
 }
 
 type eventRewardItem struct {
@@ -273,11 +285,69 @@ var (
 	// [step bonus mission info] 1..4: repeatable step rewards (reqPerClaim, maxClaims=2)
 	ev392StepReqPerClaim = [4]byte{3, 4, 3, 4}
 	ev392StepMaxClaims   = byte(2)
-	ev392StepRewards     = [4]eventRewardItem{
+	ev392StepRewards = [4]eventRewardItem{
 		{50031686, 1},
 		{50031687, 1},
 		{50031688, 1},
 		{50031689, 1},
+	}
+
+	// Event 4189: Neo: Awakened Ones Capsule Machine
+	// Exact [need item index] and 50-slot [reward table] from US100 Script.pvf
+	// Live/Else/Univ/2023/0221_Neo_Machine/Neo_Machine.cos.
+	ev4189CoinItem    uint32 = 590005793 // Neo:觉醒胶囊机硬币 (cerashop)
+	ev4189AltCoinItem uint32 = 590005891 // Neo:觉醒胶囊机硬币 (webshop fallback)
+	ev4189Pool               = [50]ev4189PoolEntry{
+		{1, 590005979, 1, 10000}, // 0
+		{1, 590005979, 2, 10000}, // 1
+		{1, 590005979, 2, 10000}, // 2
+		{1, 590005979, 2, 10000}, // 3
+		{1, 590005981, 1, 10000}, // 4
+		{1, 590005981, 1, 10000}, // 5
+		{1, 590005981, 1, 10000}, // 6
+		{1, 590005986, 1, 10000}, // 7
+		{1, 590005986, 1, 10000}, // 8
+		{1, 590005986, 1, 10000}, // 9
+		{1, 590005906, 1, 10000}, // 10
+		{1, 590005808, 1, 10000}, // 11
+		{2, 590005979, 3, 10000}, // 12
+		{2, 590005979, 3, 10000}, // 13
+		{2, 590005982, 1, 10000}, // 14
+		{2, 590005982, 1, 10000}, // 15
+		{2, 590005982, 1, 10000}, // 16
+		{2, 590005983, 1, 10000}, // 17
+		{2, 590005983, 1, 10000}, // 18
+		{2, 590005983, 1, 10000}, // 19
+		{2, 590005987, 1, 10000}, // 20
+		{2, 590005987, 1, 10000}, // 21
+		{2, 590005987, 1, 10000}, // 22
+		{2, 590005906, 3, 10000}, // 23
+		{2, 590005906, 5, 10000}, // 24
+		{2, 590005808, 3, 10000}, // 25
+		{2, 590005808, 5, 10000}, // 26
+		{2, 590005979, 5, 1000},  // 27
+		{2, 590005979, 5, 1000},  // 28
+		{2, 590005979, 6, 1000},  // 29
+		{3, 590005984, 1, 10000}, // 30
+		{3, 590005984, 1, 10000}, // 31
+		{3, 590005980, 1, 1000},  // 32
+		{3, 590005988, 1, 1000},  // 33
+		{3, 590005988, 1, 1000},  // 34
+		{3, 590005988, 1, 1000},  // 35
+		{3, 590005988, 1, 1000},  // 36
+		{3, 590005992, 1, 100},   // 37
+		{3, 590005992, 1, 100},   // 38
+		{4, 590005985, 1, 10000}, // 39
+		{4, 590005985, 1, 10000}, // 40
+		{4, 590005980, 2, 100},   // 41
+		{4, 590005991, 1, 100},   // 42
+		{4, 590005993, 1, 100},   // 43
+		{4, 590005993, 1, 100},   // 44
+		{4, 590005995, 1, 100},   // 45
+		{4, 590005994, 1, 100},   // 46
+		{4, 590005994, 1, 100},   // 47
+		{5, 590005998, 1, 100},   // 48
+		{5, 590005996, 1, 100},   // 49
 	}
 )
 
@@ -520,6 +590,21 @@ func ev392StatusPacket(st persistedEventUIState) outboundPacket {
 	}
 }
 
+func ev4189StatusPacket(st persistedEventUIState, drawnIndex int16) outboundPacket {
+	var slots [60]bool
+	var drawnCount uint32
+	for i := 0; i < len(ev4189Pool); i++ {
+		if (st.Ev4189DrawnMask & (uint64(1) << i)) != 0 {
+			slots[i] = true
+			drawnCount++
+		}
+	}
+	return outboundPacket{
+		"event_4189_capsule_draw_status", 0, protocol.NotiEv4189CapsuleDraw,
+		protocol.Ev4189CapsuleDrawStatus(drawnIndex, drawnCount, slots),
+	}
+}
+
 func ev602Packet(st persistedEventUIState) []byte {
 	savedIdx := st.Ev602SavedIdx
 	if st.Ev602SavedItem == 0 {
@@ -646,6 +731,9 @@ func (w *worldSession) interactiveEventInitPackets(pol events.Policy, now time.T
 	if pol.DailyChallenge.Enabled {
 		out = append(out, ev392StatusPacket(st))
 	}
+	// Always sync Event 4189 (Neo Capsule Machine) so Dawn Seria's window 0x563
+	// renders the player's persisted pool state immediately on open.
+	out = append(out, ev4189StatusPacket(st, -1))
 	return out
 }
 
@@ -1542,6 +1630,80 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 
 		default:
 			return []outboundPacket{{"event_392_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
+		}
+
+	case uint32(protocol.EventIDCapsuleDraw): // 4189: Neo Capsule Machine (CMD 681 @ 0x1401f4a70)
+		action := arg(0)
+		switch action {
+		case 1: // Draw 1 capsule from remaining undrawn pool slots
+			var avail []int
+			var totalWeight uint64
+			for i, entry := range ev4189Pool {
+				if (st.Ev4189DrawnMask & (uint64(1) << i)) == 0 {
+					avail = append(avail, i)
+					w := uint64(entry.Weight)
+					if w == 0 {
+						w = 1
+					}
+					totalWeight += w
+				}
+			}
+			if len(avail) == 0 || totalWeight == 0 {
+				return []outboundPacket{ev4189StatusPacket(st, -1)}, nil
+			}
+			coinKey := fmt.Sprintf("ev4189_coin:%d", st.Ev4189TotalDraws+1)
+			matPkts, paid, cerr := w.consumeBagMaterial(ctx, coinKey, "us100-ev4189-coin-v1", ev4189CoinItem, 1)
+			if cerr != nil {
+				return nil, cerr
+			}
+			if !paid {
+				matPkts, paid, cerr = w.consumeBagMaterial(ctx, coinKey, "us100-ev4189-coin-v1", ev4189AltCoinItem, 1)
+				if cerr != nil {
+					return nil, cerr
+				}
+			}
+			if !paid {
+				return []outboundPacket{ev4189StatusPacket(st, -1)}, nil
+			}
+			out = append(out, matPkts...)
+
+			var rb [8]byte
+			_, _ = rand.Read(rb[:])
+			roll := binary.LittleEndian.Uint64(rb[:]) % totalWeight
+			picked := avail[0]
+			var acc uint64
+			for _, idx := range avail {
+				w := uint64(ev4189Pool[idx].Weight)
+				if w == 0 {
+					w = 1
+				}
+				acc += w
+				if roll < acc {
+					picked = idx
+					break
+				}
+			}
+
+			st.Ev4189DrawnMask |= uint64(1) << picked
+			st.Ev4189TotalDraws++
+			_ = w.saveEventUIState(st)
+
+			entry := ev4189Pool[picked]
+			rewKey := fmt.Sprintf("ev4189_draw:%d:%d", st.Ev4189TotalDraws, picked)
+			if err := grantItem(rewKey, "us100-ev4189-reward-v1", eventRewardItem{Template: entry.Template, Count: entry.Count}); err != nil {
+				return nil, err
+			}
+			out = append(out, ev4189StatusPacket(st, int16(picked)))
+			return out, nil
+
+		case 2: // Reset capsule machine pool back to all 50 available
+			st.Ev4189DrawnMask = 0
+			st.Ev4189ResetCount++
+			_ = w.saveEventUIState(st)
+			return []outboundPacket{ev4189StatusPacket(st, -1)}, nil
+
+		default: // Query / state refresh
+			return []outboundPacket{ev4189StatusPacket(st, -1)}, nil
 		}
 
 	default:
