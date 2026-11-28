@@ -140,6 +140,9 @@ func stackableSlotType(src catalog.LootCatalog, tpl uint32) string {
 	if existing, ok := src.Items[tpl]; ok && existing.Kind == "stackable" && existing.StackableType != "" {
 		return existing.StackableType
 	}
+	if inventory.IsEmblemTemplate(tpl) {
+		return inventory.EmblemBagCategory
+	}
 	switch tpl {
 	case 10327281, 10327282, 10327283, 10327286, 590006231, 590006232:
 		return "[material]"

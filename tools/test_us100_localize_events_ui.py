@@ -160,8 +160,43 @@ class TestEventUILocalizer(unittest.TestCase):
                 restored = loc.rollback_all(packs, backup, allow_while_running=True)
                 self.assertEqual(restored, [npk_name])
                 self.assertEqual(atlas.digest(packs / npk_name), orig_sha)
+
+                # Verify apply_staged_if_pending applies modified build when DFO is not running
+                orig_running = loc.is_dfo_running
+                try:
+                    loc.is_dfo_running = lambda: False
+                    msg = loc.apply_staged_if_pending(packs, build, backup)
+                    self.assertIsNotNone(msg)
+                    self.assertIn("1 staged", msg)
+                    self.assertNotEqual(atlas.digest(packs / npk_name), orig_sha)
+                    self.assertIsNone(loc.apply_staged_if_pending(packs, build, backup))
+                finally:
+                    loc.is_dfo_running = orig_running
             finally:
                 loc.build_localization_plan = orig_builder
+
+    def test_mining_complete_badges_preserve_ribbon_and_clear_green_edges(self) -> None:
+        # #20: transparent 57x15 green badge must clear border pixels completely
+        f20 = Image.new("RGBA", (57, 15), (0, 255, 0, 255))
+        out20 = loc._patch_512_mining_20(f20)
+        self.assertEqual(out20.getpixel((0, 0))[3], 0)
+        self.assertEqual(out20.getpixel((56, 14))[3], 0)
+
+        # #21: 73x34 tilted white ribbon must keep opaque white body & orange right tab
+        f21 = Image.new("RGBA", (73, 34), (0, 0, 0, 0))
+        for x in range(3, 60):
+            for y in range(6, 22):
+                f21.putpixel((x, y), (235, 235, 235, 255))
+        for x in range(61, 68):
+            for y in range(4, 20):
+                f21.putpixel((x, y), (226, 108, 66, 255))
+        out21 = loc._patch_512_mining_21(f21)
+        # White ribbon interior remains opaque (not erased to transparent)
+        self.assertEqual(out21.getpixel((10, 14))[3], 255)
+        # Orange tab on right remains intact
+        self.assertEqual(out21.getpixel((64, 10)), (226, 108, 66, 255))
+        # Transparent exterior stays transparent
+        self.assertEqual(out21.getpixel((0, 0))[3], 0)
 
 
 if __name__ == "__main__":

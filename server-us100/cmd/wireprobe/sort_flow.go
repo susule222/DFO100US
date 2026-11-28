@@ -28,7 +28,7 @@ func sortInventory(
 	moveMap := make(map[uint16]uint16, len(req.Pairs))
 	destSeen := make(map[uint16]bool, len(req.Pairs))
 	for _, pair := range req.Pairs {
-		if req.Space == 0 && (pair.From < 9 || pair.To < 9 || pair.From > 288 || pair.To > 288) {
+		if req.Space == 0 && (pair.From < 9 || pair.To < 9 || pair.From > inventory.EmblemSlotEnd || pair.To > inventory.EmblemSlotEnd) {
 			return role, nil, req.Space, fmt.Errorf("sort slot out of ordinary bag range: %d->%d", pair.From, pair.To)
 		}
 		if req.Space == 1 && (pair.From >= inventory.AvatarBagCapacity || pair.To >= inventory.AvatarBagCapacity) {

@@ -1294,6 +1294,70 @@ def _patch_512_mining_2(im: Image.Image) -> Image.Image:
     return im
 
 
+def _patch_512_mining_20(im: Image.Image) -> Image.Image:
+    # dungeonmining_evnet.img #20 (57x15): transparent green "Complete" badge on mined nodes
+    return patch_rect(
+        im,
+        (0, 0, im.width, im.height),
+        "已完成",
+        bg_mode="clear",
+        max_size=13,
+        min_size=9,
+        fill=(131, 244, 96, 255),
+        stroke_fill=(14, 24, 10, 255),
+        stroke_width=1,
+        bold=True,
+    )
+
+
+def _patch_512_mining_21(im: Image.Image) -> Image.Image:
+    # dungeonmining_evnet.img #21 (73x34): tilted white paper ribbon with orange right stripe
+    # and drop shadow, overlaid on completed weekly missions to cover the pickaxe reward.
+    out = im.copy().convert("RGBA")
+    arr = np.asarray(out)
+    white_mask = (
+        (arr[:, :, 3] > 230)
+        & (arr[:, :, 0] > 210)
+        & (arr[:, :, 1] > 210)
+        & (arr[:, :, 2] > 210)
+    )
+    if white_mask.any():
+        med = np.median(arr[white_mask], axis=0).astype(int)
+        paper_color = (int(med[0]), int(med[1]), int(med[2]), 255)
+    else:
+        paper_color = (235, 235, 235, 255)
+
+    # Erase only the brown "Complete" text strictly inside the tilted white ribbon interior,
+    # preserving 100% of the outer slanted edges, orange tab on the right, and drop shadow.
+    px = out.load()
+    w, h = out.size
+    for x in range(2, min(w, 62)):
+        y_top = 9.0 - 0.12 * (x - 5)
+        y_bot = 27.0 - 0.12 * (x - 5)
+        for y in range(max(0, int(round(y_top + 1.5))), min(h, int(round(y_bot - 1.0)))):
+            if x >= 58.0 + 0.12 * y:
+                continue
+            r, g, b, a = px[x, y]
+            # Keep any orange right-tab pixel untouched
+            if a > 200 and not (r > 170 and (r - b) > 70):
+                px[x, y] = paper_color
+
+    # Render crisp dark-brown "已完成" rotated +6.8° CCW to match the native ribbon tilt
+    text_layer = Image.new("RGBA", out.size, (0, 0, 0, 0))
+    draw_fitted_text(
+        text_layer,
+        (6, 6, 56, 24),
+        "已完成",
+        max_size=14,
+        min_size=10,
+        fill=(82, 56, 45, 255),
+        bold=True,
+    )
+    rotated = text_layer.rotate(6.8, resample=Image.Resampling.BICUBIC, center=(31, 15))
+    out.alpha_composite(rotated)
+    return out
+
+
 def _patch_512_mining_cal_0(im: Image.Image) -> Image.Image:
     # dungeonmining_calendar.img #0 (278x389)
     patch_rect(
@@ -1646,14 +1710,14 @@ def build_localization_plan() -> dict[str, dict[str, dict[int, Callable[[Image.I
     """Return nested mapping: npk_filename -> img_member_name -> {frame_idx: patch_fn}."""
     lialab_ev_patchers: dict[int, Callable[[Image.Image], Image.Image]] = {
         0: _patch_602_lialab_ev_0,
-        1: make_button_patcher("探索范围", fill=(180, 242, 255, 255), max_size=12, keep_left=4, keep_right=4, keep_top=3, keep_bottom=3),
+        1: make_button_patcher("探索范围", fill=(180, 242, 255, 255), max_size=12, keep_left=2, keep_right=2, keep_top=2, keep_bottom=2, bg_mode="solid", bg_color=(0, 0, 0, 255)),
         **button_group(range(2, 6), "探索", fill=(230, 250, 255, 255), max_size=14),
         **button_group(range(6, 10), "保存", fill=(230, 250, 255, 255), max_size=13),
         **button_group(range(10, 14), "排除", fill=(230, 250, 255, 255), max_size=13),
         **button_group(range(14, 18), "跨界", fill=(230, 250, 255, 255), max_size=13),
         **button_group(range(18, 22), "领取", fill=(230, 250, 255, 255), max_size=13),
-        25: make_button_patcher("排除", fill=(255, 210, 210, 255), max_size=12, keep_left=3, keep_right=3, keep_top=3, keep_bottom=3),
-        26: make_button_patcher("保存", fill=(210, 255, 220, 255), max_size=12, keep_left=3, keep_right=3, keep_top=3, keep_bottom=3),
+        25: make_button_patcher("排除", fill=(255, 210, 210, 255), max_size=12, keep_left=1, keep_right=1, keep_top=3, keep_bottom=3),
+        26: make_button_patcher("保存", fill=(210, 255, 220, 255), max_size=12, keep_left=1, keep_right=1, keep_top=3, keep_bottom=3),
     }
 
     return {
@@ -1783,10 +1847,10 @@ def build_localization_plan() -> dict[str, dict[str, dict[int, Callable[[Image.I
             "sprite/live/event/kor/2021/1014_dungeonmining/dungeonmining_evnet.img": {
                 1: _patch_512_mining_1,
                 2: _patch_512_mining_2,
-                **button_group(range(12, 16), "挖矿", fill=(255, 244, 210, 255), max_size=11, keep_left=2, keep_right=2, keep_top=2, keep_bottom=2),
-                **button_group(range(16, 20), "开采", fill=(255, 244, 210, 255), max_size=12, keep_left=3, keep_right=3, keep_top=2, keep_bottom=2),
-                20: make_button_patcher("已完成", fill=(255, 242, 150, 255), max_size=12, keep_left=3, keep_right=3, keep_top=3, keep_bottom=3),
-                21: make_button_patcher("已完成", fill=(255, 242, 150, 255), max_size=12, keep_left=3, keep_right=3, keep_top=3, keep_bottom=3),
+                **button_group(range(12, 16), "挖矿", fill=(255, 244, 210, 255), max_size=12, keep_left=4, keep_right=4, keep_top=3, keep_bottom=5),
+                **button_group(range(16, 20), "开采", fill=(255, 244, 210, 255), max_size=13, keep_left=4, keep_right=4, keep_top=3, keep_bottom=5),
+                20: _patch_512_mining_20,
+                21: _patch_512_mining_21,
             },
             "sprite/live/event/kor/2021/1014_dungeonmining/dungeonmining_calendar.img": {
                 0: _patch_512_mining_cal_0,
@@ -1963,6 +2027,54 @@ def install_all(
         manifest.setdefault(rep.npk_name, {})["localized_sha256"] = rep.sha256
     manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
     return reports
+
+
+def apply_staged_if_pending(
+    packs_dir: Path = DEFAULT_CLIENT_PACKS,
+    build_dir: Path = DEFAULT_BUILD_DIR,
+    backup_dir: Path = DEFAULT_BACKUP_DIR,
+) -> str | None:
+    """Install any staged localized NPKs from `build_dir` whose SHA-256 differs from live `packs_dir`."""
+    if not build_dir.is_dir() or not packs_dir.is_dir():
+        return None
+    plan = build_localization_plan()
+    staged_list = [npk for npk in plan if (build_dir / npk).is_file()]
+    if not staged_list:
+        return None
+    pending: list[tuple[str, Path, Path, str]] = []
+    for npk_name in staged_list:
+        src = build_dir / npk_name
+        dst = packs_dir / npk_name
+        if not dst.is_file():
+            continue
+        src_sha = atlas.digest(src)
+        if atlas.digest(dst) != src_sha:
+            pending.append((npk_name, src, dst, src_sha))
+    if not pending:
+        return None
+    if is_dfo_running():
+        return None
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    manifest_path = backup_dir / "manifest.json"
+    manifest: dict[str, dict[str, str]] = (
+        json.loads(manifest_path.read_text(encoding="utf-8"))
+        if manifest_path.is_file()
+        else {}
+    )
+    for npk_name, src, dst, src_sha in pending:
+        bak = backup_dir / npk_name
+        if not bak.is_file():
+            shutil.copy2(dst, bak)
+            manifest[npk_name] = {
+                "original_sha256": atlas.digest(bak),
+                "installed_from": str(dst),
+            }
+        shutil.copy2(src, dst)
+        if atlas.digest(dst) != src_sha:
+            raise IOError(f"SHA-256 verification failed applying staged {dst}")
+        manifest.setdefault(npk_name, {})["localized_sha256"] = src_sha
+    manifest_path.write_text(json.dumps(manifest, indent=2, ensure_ascii=False), encoding="utf-8")
+    return f"applied {len(pending)} staged localized event UI NPK(s)"
 
 
 def rollback_all(packs_dir: Path, backup_dir: Path, allow_while_running: bool = False) -> list[str]:

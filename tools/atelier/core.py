@@ -1039,6 +1039,11 @@ def login(server_only=False, account=None):
             _fec.apply_staged_if_pending()
         except Exception:
             pass
+        try:
+            import fix_seria_event_npcs as _fsn
+            _fsn.apply_staged_if_pending()
+        except Exception:
+            pass
         from game_fonts import ORIGINAL
         directory=pre.client_exe().parent/'Fonts'
         missing=[n for n in ORIGINAL if not (directory/n).is_file()]

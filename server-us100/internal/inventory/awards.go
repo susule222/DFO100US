@@ -29,6 +29,20 @@ func (a *Awarder) Grant(raw json.RawMessage, id, amount uint32) (json.RawMessage
 		var slot uint16
 		b, slot, e = b.Add(a.Catalog, a.Rules, id, amount)
 		r.Slots = []uint16{slot}
+	} else if IsEmblemTemplate(id) {
+		limit := uint32(1000)
+		if amount > limit {
+			limit = amount
+		}
+		local := catalog.LootCatalog{
+			Source: a.Catalog.Source,
+			Items: map[uint32]catalog.LootItem{
+				id: {ID: id, Kind: "stackable", StackableType: EmblemBagCategory, StackLimit: limit},
+			},
+		}
+		var slot uint16
+		b, slot, e = b.Add(local, a.Rules, id, amount)
+		r.Slots = []uint16{slot}
 	} else if IsTalismanTemplate(id) || (a.Equipment != nil && a.Equipment.IsTalisman(id)) {
 		if amount == 0 || amount > uint32(TalismanSlotCount) {
 			return nil, r, fmt.Errorf("invalid talisman award")

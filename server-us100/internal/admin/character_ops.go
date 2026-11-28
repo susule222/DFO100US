@@ -554,7 +554,7 @@ func (s *Service) execBag(role *storage.Character, op CharacterOp) (json.RawMess
 			affected = len(bag.Equipment)
 			bag.Equipment = nil
 			summary = fmt.Sprintf("已清空装备栏 (%d 件)", affected)
-		case "throw", "material", "quest", "expert", "quick":
+		case "throw", "material", "quest", "expert", "emblem", "quick":
 			var rng [2]uint16
 			switch op.Category {
 			case "throw":
@@ -565,6 +565,8 @@ func (s *Service) execBag(role *storage.Character, op CharacterOp) (json.RawMess
 				rng = rules.Slots["[quest]"]
 			case "expert":
 				rng = rules.Slots["[material expert job]"]
+			case "emblem":
+				rng = rules.Slots[inventory.EmblemBagCategory]
 			case "quick":
 				rng = rules.QuickSlots
 			}
@@ -612,6 +614,7 @@ func (s *Service) execBag(role *storage.Character, op CharacterOp) (json.RawMess
 			rules.Slots["[material]"],
 			rules.Slots["[quest]"],
 			rules.Slots["[material expert job]"],
+			rules.Slots[inventory.EmblemBagCategory],
 		}
 		compacted := append([]inventory.BagItem(nil), quick...)
 		for _, rng := range ranges {

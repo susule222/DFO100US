@@ -113,6 +113,20 @@ def main():
             print(applied_msg, flush=True)
     except Exception as exc:
         print('warning: staged event detail UI fix skipped: %s' % exc, flush=True)
+    try:
+        import us100_localize_events_ui as _leu
+        applied_msg = _leu.apply_staged_if_pending()
+        if applied_msg:
+            print(applied_msg, flush=True)
+    except Exception as exc:
+        print('warning: staged event UI localization skipped: %s' % exc, flush=True)
+    try:
+        import fix_seria_event_npcs as _fsn
+        applied_msg = _fsn.apply_staged_if_pending()
+        if applied_msg:
+            print(applied_msg, flush=True)
+    except Exception as exc:
+        print('warning: staged Seria event NPCs fix skipped: %s' % exc, flush=True)
     exe = preflight.client_exe()
     if mode == '3':
         if not _listening(ch_host, ch_port):

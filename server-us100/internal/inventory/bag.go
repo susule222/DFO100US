@@ -277,6 +277,54 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 			b.Equipment = keptEquip
 		}
 	}
+	// Auto-migrate any [avatar emblem] items previously placed outside the
+	// Emblem tab (Space 0 slots 289..360) into free Emblem tab slots.
+	if len(b.Items) > 0 {
+		var keptItems []BagItem
+		var migratedEmblems []BagItem
+		occupiedSpace0 := make(map[uint16]bool, len(b.Items)+len(b.Equipment))
+		for _, eq := range b.Equipment {
+			occupiedSpace0[eq.Slot] = true
+		}
+		for _, it := range b.Items {
+			if IsEmblemTemplate(it.Template) && (it.Slot < EmblemSlotStart || it.Slot > EmblemSlotEnd) {
+				migratedEmblems = append(migratedEmblems, it)
+			} else {
+				keptItems = append(keptItems, it)
+				occupiedSpace0[it.Slot] = true
+			}
+		}
+		if len(migratedEmblems) > 0 {
+			sort.Slice(migratedEmblems, func(i, j int) bool { return migratedEmblems[i].Slot < migratedEmblems[j].Slot })
+			for _, em := range migratedEmblems {
+				placed := false
+				// Try merging into an existing emblem stack in 289..360 first.
+				for i := range keptItems {
+					cur := &keptItems[i]
+					if cur.Template == em.Template && cur.Slot >= EmblemSlotStart && cur.Slot <= EmblemSlotEnd && uint64(cur.Amount)+uint64(em.Amount) <= 1000 {
+						cur.Amount += em.Amount
+						placed = true
+						break
+					}
+				}
+				if !placed {
+					for slot := EmblemSlotStart; slot <= EmblemSlotEnd; slot++ {
+						if !occupiedSpace0[slot] {
+							occupiedSpace0[slot] = true
+							em.Slot = slot
+							keptItems = append(keptItems, em)
+							placed = true
+							break
+						}
+					}
+				}
+				if !placed {
+					keptItems = append(keptItems, em)
+				}
+			}
+			b.Items = keptItems
+		}
+	}
 	return b, nil
 }
 func SaveBag(state json.RawMessage, b Bag) (json.RawMessage, error) {
@@ -512,6 +560,9 @@ func (b Bag) Add(c catalog.LootCatalog, r BagRules, id, amount uint32) (Bag, uin
 		return b, 0, fmt.Errorf("unsupported source item")
 	}
 	category := item.StackableType
+	if IsEmblemTemplate(id) && r.Slots[EmblemBagCategory][0] != 0 {
+		category = EmblemBagCategory
+	}
 	if target, ok := r.SlotAliases[category]; ok {
 		category = target
 	}

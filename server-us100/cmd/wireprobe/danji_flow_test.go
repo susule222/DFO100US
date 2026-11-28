@@ -67,6 +67,7 @@ func setupDanjiTestStore(t *testing.T, pots uint32) (*storage.Store, int64, stor
 			"[throw]":               {65, 120},
 			"[material]":            {121, 176},
 			"[material expert job]": {233, 288},
+			"[avatar emblem]":       {289, 360},
 		},
 		MissingStackLimit: 1000,
 	}
@@ -450,10 +451,20 @@ func TestBoosterBoxesAndConsumables(t *testing.T) {
 		t.Fatalf("expected 10327283 x100 in [material] tab, bag=%+v", b.Items)
 	}
 
-	// 5) CMD 160: open random emblem booster 590006265 -> first emblem 590004703 x1
+	// 5) CMD 160: open random emblem booster 590006265 -> first emblem 590004703 x1 in Emblem tab (289..360)
 	saved, _, _, award, qty, _, err = openBoosterBox(ctx, store, nil, lootSvc, acc, saved, []byte("open-68"), makeOpen160(68, 1), zeroRand)
 	if err != nil || award != 590004703 || qty != 1 {
 		t.Fatalf("open 590006265 failed: award=%d qty=%d err=%v", award, qty, err)
+	}
+	b, _ = inventory.ReadBag(saved.State)
+	emblemOK := false
+	for _, it := range b.Items {
+		if it.Template == 590004703 && it.Amount == 1 && it.Slot >= inventory.EmblemSlotStart && it.Slot <= inventory.EmblemSlotEnd {
+			emblemOK = true
+		}
+	}
+	if !emblemOK {
+		t.Fatalf("expected emblem 590004703 in emblem tab (289..360), bag=%+v", b.Items)
 	}
 
 	// 6) CMD 160: open selection box 590704452 choosing 590704453 -> x3

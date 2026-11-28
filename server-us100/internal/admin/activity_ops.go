@@ -48,10 +48,14 @@ func (s *Service) deliverActivityItem(bag inventory.Bag, tpl, qty uint32) (inven
 	if qty > limit {
 		limit = qty
 	}
+	st := "[throw]"
+	if inventory.IsEmblemTemplate(tpl) {
+		st = inventory.EmblemBagCategory
+	}
 	local := catalog.LootCatalog{
 		Source: s.Awarder.Catalog.Source,
 		Items: map[uint32]catalog.LootItem{
-			tpl: {ID: tpl, Kind: "stackable", StackableType: "[throw]", StackLimit: limit},
+			tpl: {ID: tpl, Kind: "stackable", StackableType: st, StackLimit: limit},
 		},
 	}
 	next, _, err := bag.Add(local, s.Awarder.Rules, tpl, qty)

@@ -118,6 +118,8 @@ def bag_section_label(slot, list_kind):
         return '任务道具'
     if 233 <= slot <= 288:
         return '副职业材料'
+    if 289 <= slot <= 360:
+        return '徽章栏'
     return '其他'
 
 
