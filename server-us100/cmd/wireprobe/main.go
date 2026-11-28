@@ -1307,6 +1307,28 @@ func main() {
 					}
 					continue
 				}
+				if frame.Type == 1 && frame.ID == protocol.CmdRecoverStamina {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					plan, code, err := worldState.handleRecoverStamina(ctx, frame.Raw)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "stamina_recovery_refused", "character_id": selectedCharacterID, "code": code, "reason": err.Error()})
+						if sendPayload(1, protocol.CmdRecoverStamina, protocol.StaminaRecoveryRefused(code)) != nil {
+							return
+						}
+						continue
+					}
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
 				if frame.Type == 1 && (frame.ID == protocol.CmdEventAction || frame.ID == protocol.CmdEventQuery) {
 					if !verified || !bootstrapped || characters == nil || worldState == nil || lootService == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
 						continue
@@ -3074,6 +3096,14 @@ func main() {
 						if evInit := worldState.interactiveEventInitPackets(events.LoadBestEffort(eventsPath), nowEv); len(evInit) > 0 {
 							packets = append(packets, evInit...)
 						}
+					}
+					if savedStamina, hasStamina := readCharacterStamina(role.State); hasStamina {
+						packets = append(packets, outboundPacket{
+							"stamina_restored",
+							0,
+							protocol.NotiStaminaSync,
+							protocol.StaminaSync(savedStamina),
+						})
 					}
 					prepared, e := preparePackets(keys, packets)
 					if e != nil {

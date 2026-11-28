@@ -14,7 +14,7 @@ func observedGameRequest(id uint16) bool {
 	switch id {
 	case 21, 22, 80, 102, 198, 204, 205, 267, 268, 269, 270, 305, 306, 309, 331, 507, 643, 680, 681, 705, 706, 707, 1200, 1201, 1417, 1438, 1551, 1564, 1565, 2038: // NPC shops, upgrade/purify/grimoire, creature egg hatch, account vault, membership claims, item actions, event gifts/actions/queries, Customize, inventory locks, seen cinematics, story digest, and Skin Storage (emoticon, mold, equip, keywords): verify every occurrence
 		return true
-	case 0, 1, 2, 3, 4, 5, 6, 7, 8, 15, 16, 18, 19, 26, 28, 29, 31, 32, 33, 34, 35, 36, 37, 39, 42, 43, 44, 45, 46, 69, 70, 71, 72, 117, 132, 143, 191, 217, 433, 475, 623, 627, 637, 684, 848, 1301, 1554:
+	case 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 15, 16, 18, 19, 26, 28, 29, 31, 32, 33, 34, 35, 36, 37, 39, 42, 43, 44, 45, 46, 69, 70, 71, 72, 117, 132, 143, 191, 217, 433, 475, 623, 627, 637, 684, 848, 1301, 1554:
 		return true
 	}
 	return false
