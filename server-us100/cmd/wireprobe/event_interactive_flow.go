@@ -96,6 +96,14 @@ type persistedEventUIState struct {
 	Ev500RewardMask    uint32                       `json:"ev500_reward_mask,omitempty"`
 	Ev500DailyClaimDay string                       `json:"ev500_daily_claim_day,omitempty"`
 	Ev500Resonance     protocol.Ev500ResonanceState `json:"ev500_resonance,omitempty"`
+
+	// Event 392: Daily DFO Planner / Daily Select Mission (event/dailyselectmissionevent.evt)
+	Ev392LastDay         string  `json:"ev392_last_day,omitempty"`
+	Ev392SelectedMission byte    `json:"ev392_selected_mission,omitempty"` // 0=unselected, 1..4
+	Ev392Progress        byte    `json:"ev392_progress,omitempty"`         // today's selected mission progress
+	Ev392DailyClaimed    bool    `json:"ev392_daily_claimed,omitempty"`
+	Ev392StepCompleted   [4]byte `json:"ev392_step_completed,omitempty"` // cumulative completions per mission 1..4
+	Ev392StepClaimed     [4]byte `json:"ev392_step_claimed,omitempty"`   // repeatable bonus claims 0..2 per mission 1..4
 }
 
 type eventRewardItem struct {
@@ -252,6 +260,25 @@ var (
 	// [upgrade stone synchronize info] from UpgradableStoneEventScript.evt:
 	// resonance count (0..9+) -> 50060799 Soul Stone cost.
 	ev500SyncCosts = []uint32{0, 10, 20, 30, 60, 120, 240, 480, 960, 2000}
+
+	// Event 392 (event/dailyselectmissionevent.evt):
+	// [daily mission info] 1..4: level up (1), proper dungeon clear (4), equip growth (1), daily limit mission (1)
+	ev392DailyTargets = [4]byte{1, 4, 1, 1}
+	ev392DailyRewards = [4]eventRewardItem{
+		{50031682, 1},
+		{50031683, 1},
+		{50031684, 1},
+		{50031685, 1},
+	}
+	// [step bonus mission info] 1..4: repeatable step rewards (reqPerClaim, maxClaims=2)
+	ev392StepReqPerClaim = [4]byte{3, 4, 3, 4}
+	ev392StepMaxClaims   = byte(2)
+	ev392StepRewards     = [4]eventRewardItem{
+		{50031686, 1},
+		{50031687, 1},
+		{50031688, 1},
+		{50031689, 1},
+	}
 )
 
 func eventUIStateKey(account int64) string {
@@ -443,6 +470,14 @@ func (w *worldSession) loadEventUIState(now time.Time) persistedEventUIState {
 		}
 	}
 
+	// Event 392: daily selected mission resets each calendar day; cumulative step counts persist.
+	if st.Ev392LastDay != day {
+		st.Ev392LastDay = day
+		st.Ev392SelectedMission = 0
+		st.Ev392Progress = 0
+		st.Ev392DailyClaimed = false
+	}
+
 	// Advance real online elapsed time since the previous tick.
 	w.advanceOnlineEventTime(&st, now)
 	return st
@@ -468,6 +503,20 @@ func ev500StatusPacket(st persistedEventUIState) outboundPacket {
 	return outboundPacket{
 		"event_500_soul_anvil_status", 0, protocol.NotiEv500SoulAnvil,
 		protocol.Ev500SoulAnvilStatusWithResonance(st.Ev500AccumCount, st.Ev500Slots, st.Ev500RewardMask, st.Ev500Resonance),
+	}
+}
+
+func ev392StatusPacket(st persistedEventUIState) outboundPacket {
+	steps := make([]protocol.Ev392OneDayPlanStep, 4)
+	for i := 0; i < 4; i++ {
+		steps[i] = protocol.Ev392OneDayPlanStep{
+			Completed: st.Ev392StepCompleted[i],
+			Claimed:   st.Ev392StepClaimed[i],
+		}
+	}
+	return outboundPacket{
+		"event_392_onedayplan_status", 0, protocol.NotiEv392OneDayPlan,
+		protocol.Ev392OneDayPlanStatus(1, int8(st.Ev392SelectedMission), int8(st.Ev392Progress), st.Ev392DailyClaimed, steps),
 	}
 }
 
@@ -593,6 +642,9 @@ func (w *worldSession) interactiveEventInitPackets(pol events.Policy, now time.T
 				}),
 			},
 		)
+	}
+	if pol.DailyChallenge.Enabled {
+		out = append(out, ev392StatusPacket(st))
 	}
 	return out
 }
@@ -764,10 +816,52 @@ func (w *worldSession) onInteractiveEventClear(now time.Time) []outboundPacket {
 			ev602Packet(st),
 		})
 	}
+	if pol.DailyChallenge.Enabled && st.Ev392SelectedMission >= 1 && st.Ev392SelectedMission <= 4 && !st.Ev392DailyClaimed {
+		mIdx := st.Ev392SelectedMission - 1
+		target := ev392DailyTargets[mIdx]
+		if st.Ev392Progress < target {
+			shouldInc := false
+			switch st.Ev392SelectedMission {
+			case 1: // level up (also credited on dungeon clear for max-level characters)
+				var lvlState struct {
+					Level int `json:"level"`
+				}
+				_ = json.Unmarshal(w.role.State, &lvlState)
+				shouldInc = lvlState.Level >= 100
+			case 2: // proper dungeon clear (4 clears)
+				shouldInc = true
+			case 4: // daily limit mission clear (1 clear)
+				shouldInc = true
+			}
+			if shouldInc {
+				st.Ev392Progress++
+				changed = true
+				out = append(out, ev392StatusPacket(st))
+			}
+		}
+	}
 	if changed {
 		_ = w.saveEventUIState(st)
 	}
 	return out
+}
+
+// onInteractiveEventEquipUpgrade advances Event 392 Mission 3 (equip growth) when
+// the player upgrades/reinforces equipment.
+func (w *worldSession) onInteractiveEventEquipUpgrade(now time.Time) []outboundPacket {
+	if w == nil || w.account == 0 {
+		return nil
+	}
+	if !w.eventPolicy().DailyChallenge.Enabled {
+		return nil
+	}
+	st := w.loadEventUIState(now)
+	if st.Ev392SelectedMission != 3 || st.Ev392DailyClaimed || st.Ev392Progress >= ev392DailyTargets[2] {
+		return nil
+	}
+	st.Ev392Progress++
+	_ = w.saveEventUIState(st)
+	return []outboundPacket{ev392StatusPacket(st)}
 }
 
 // handleEventCommand processes client CMD 680 (0x2a8 action/claim) and CMD 681
@@ -1361,6 +1455,94 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 			ev500StatusPacket(st),
 		)
 		return out, nil
+
+	case uint32(eventIDDailyChallenge): // 392: Daily DFO Planner / Daily Select Mission (Window 0x29f)
+		action := arg(0)
+		targetIdx := arg(1)
+		if cmdID == protocol.CmdEventQuery {
+			// CMD 681 (0x1414449b2 / 0x141444e1b): args = [1, missionIdx (1..4)] -> select today's daily mission
+			if action != 1 || targetIdx < 1 || targetIdx > 4 {
+				return []outboundPacket{{"event_392_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
+			}
+			if st.Ev392DailyClaimed || (st.Ev392SelectedMission != 0 && st.Ev392SelectedMission != byte(targetIdx)) {
+				return []outboundPacket{
+					{"event_392_already_selected", 1, cmdID, protocol.EventActionRefused(2, req.EventID)},
+					ev392StatusPacket(st),
+				}, nil
+			}
+			st.Ev392SelectedMission = byte(targetIdx)
+			_ = w.saveEventUIState(st)
+			var ackParams [10]uint32
+			ackParams[0] = action
+			ackParams[1] = targetIdx
+			return []outboundPacket{
+				{"event_392_select_ack", 1, protocol.CmdEventQuery, protocol.EventActionSuccess(req.EventID, ackParams)},
+				ev392StatusPacket(st),
+			}, nil
+		}
+		// CMD 680:
+		//   action=1 (0x1414444d5): args = [1, missionIdx (1..4)] -> claim today's completed daily mission reward
+		//   action=4 (0x141444616) / action=2 (0x141444586): args = [4, stepIdx0 (0..3)] -> claim repeatable step bonus
+		switch action {
+		case 1:
+			if targetIdx < 1 || targetIdx > 4 {
+				return []outboundPacket{{"event_392_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
+			}
+			mIdx := targetIdx - 1
+			if st.Ev392SelectedMission != byte(targetIdx) || st.Ev392DailyClaimed || st.Ev392Progress < ev392DailyTargets[mIdx] {
+				return []outboundPacket{
+					{"event_392_daily_not_ready", 1, cmdID, protocol.EventActionRefused(2, req.EventID)},
+					ev392StatusPacket(st),
+				}, nil
+			}
+			key := fmt.Sprintf("ev392_daily:%s:%d", day, targetIdx)
+			if err := grantItem(key, "us100-ev392-daily-v1", ev392DailyRewards[mIdx]); err != nil {
+				return nil, err
+			}
+			st.Ev392DailyClaimed = true
+			if st.Ev392StepCompleted[mIdx] < 255 {
+				st.Ev392StepCompleted[mIdx]++
+			}
+			_ = w.saveEventUIState(st)
+			var ackParams [10]uint32
+			ackParams[0] = action
+			ackParams[1] = targetIdx
+			out = append(out,
+				outboundPacket{"event_392_daily_ack", 1, protocol.CmdEventAction, protocol.EventActionSuccess(req.EventID, ackParams)},
+				ev392StatusPacket(st),
+			)
+			return out, nil
+
+		case 2, 4:
+			if targetIdx >= 4 {
+				return []outboundPacket{{"event_392_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
+			}
+			claimed := st.Ev392StepClaimed[targetIdx]
+			need := (claimed + 1) * ev392StepReqPerClaim[targetIdx]
+			if claimed >= ev392StepMaxClaims || st.Ev392StepCompleted[targetIdx] < need {
+				return []outboundPacket{
+					{"event_392_step_not_ready", 1, cmdID, protocol.EventActionRefused(2, req.EventID)},
+					ev392StatusPacket(st),
+				}, nil
+			}
+			key := fmt.Sprintf("ev392_step:%d:%d", targetIdx, claimed+1)
+			if err := grantItem(key, "us100-ev392-step-v1", ev392StepRewards[targetIdx]); err != nil {
+				return nil, err
+			}
+			st.Ev392StepClaimed[targetIdx]++
+			_ = w.saveEventUIState(st)
+			var ackParams [10]uint32
+			ackParams[0] = action
+			ackParams[1] = targetIdx
+			out = append(out,
+				outboundPacket{"event_392_step_ack", 1, protocol.CmdEventAction, protocol.EventActionSuccess(req.EventID, ackParams)},
+				ev392StatusPacket(st),
+			)
+			return out, nil
+
+		default:
+			return []outboundPacket{{"event_392_refused", 1, cmdID, protocol.EventActionRefused(2, req.EventID)}}, nil
+		}
 
 	default:
 		var empty [10]uint32

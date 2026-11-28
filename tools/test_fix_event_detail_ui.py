@@ -76,6 +76,32 @@ class FixEventDetailUITest(unittest.TestCase):
         self.assertFalse(stats2['changed'])
         self.assertEqual([fed._token_key(t) for t in patched], [fed._token_key(t) for t in patched2])
 
+    def test_patch_informationbuttoninfo_repairs_event_306_and_is_idempotent(self):
+        orig = [
+            {'type': 3, 'text': '[info]'},
+            {'type': 3, 'text': '[id]'}, {'type': 0, 'value': 110},
+            {'type': 3, 'text': '[event]'}, {'type': 0, 'value': 306},
+            {'type': 3, 'text': '[link popupwindow type]'}, {'type': 6, 'text': 'free cash pcroom'}, {'type': 0, 'value': 0}, {'type': 0, 'value': 0},
+            {'type': 3, 'text': '[tooltip]'}, {'type': 6, 'text': 'enable'}, {'type': 8, 'reference': '<20::us100_act_tooltip_306>'},
+            {'type': 3, 'text': '[/info]'},
+            {'type': 3, 'text': '[info]'},
+            {'type': 3, 'text': '[id]'}, {'type': 0, 'value': 204},
+            {'type': 3, 'text': '[event]'}, {'type': 0, 'value': 392},
+            {'type': 3, 'text': '[link popupwindow type]'}, {'type': 6, 'text': 'daily select mission window'}, {'type': 0, 'value': 0}, {'type': 0, 'value': 0},
+            {'type': 3, 'text': '[/info]'},
+        ]
+        patched, stats = fed.patch_informationbuttoninfo_tokens(orig)
+        self.assertTrue(stats['changed'])
+        self.assertEqual(stats['blocks'], 2)
+        self.assertEqual(stats['patched_buttons'], [{'id': 110, 'event': 306, 'popup': 'design popup window'}])
+        script = fed.render_evt_script(patched)
+        self.assertIn('`design popup window`', script)
+        self.assertNotIn('free cash pcroom', script)
+        self.assertIn('`daily select mission window`', script)
+        patched2, stats2 = fed.patch_informationbuttoninfo_tokens(patched)
+        self.assertFalse(stats2['changed'])
+        self.assertEqual([fed._token_key(t) for t in patched], [fed._token_key(t) for t in patched2])
+
 
 if __name__ == '__main__':
     unittest.main()

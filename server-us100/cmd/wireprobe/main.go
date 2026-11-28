@@ -1460,6 +1460,7 @@ func main() {
 						continue
 					}
 					worldState.role = saved
+					plan = append(plan, worldState.onInteractiveEventEquipUpgrade(time.Now())...)
 					for _, p := range plan {
 						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
 							return

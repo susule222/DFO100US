@@ -59,4 +59,7 @@ func TestEventProtocolWireLayouts(t *testing.T) {
 	if n := Ev602RiaCubeLabStatus(Ev602CubeLabState{SavedItemIdx: 2, PickedIndices: []byte{0, 2}, TransferredMask: 1, EnergyPoints: 100, CurrentItemIdx: -1}); len(n) != 52 || n[2] != 2 || n[3] != 2 || n[4] != 0 || n[5] != 2 || binary.LittleEndian.Uint32(n[0x1c:0x20]) != 1 || binary.LittleEndian.Uint32(n[0x2c:0x30]) != 100 {
 		t.Fatalf("unexpected NOTI 1949: len=%d hex=%x", len(n), n)
 	}
+	if n := Ev392OneDayPlanStatus(1, 2, 3, false, []Ev392OneDayPlanStep{{Completed: 1, Claimed: 0}, {Completed: 4, Claimed: 1}, {Completed: 0, Claimed: 0}, {Completed: 0, Claimed: 0}}); len(n) != 14 || n[0] != 1 || n[1] != 2 || n[2] != 3 || n[3] != 0 || n[4] != 0 || n[5] != 4 || n[8] != 4 || n[9] != 1 {
+		t.Fatalf("unexpected NOTI 1789: len=%d hex=%x", len(n), n)
+	}
 }

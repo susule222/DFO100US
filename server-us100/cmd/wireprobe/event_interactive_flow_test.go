@@ -455,4 +455,72 @@ func TestInteractiveEventStepByStepProgressionAndClaims(t *testing.T) {
 	if stonesAfter-stonesBefore != 40 {
 		t.Fatalf("Ev500 high-tier dungeon clear Soul Stone drop = +%d, want +40", stonesAfter-stonesBefore)
 	}
+
+	// 11. Event 392 (Daily DFO Planner / Window 0x29f):
+	//     - Init emits NOTI 1789 (unlocking Ev392UI::OnOpen readiness flags)
+	//     - Claiming before selecting or clearing is refused
+	//     - CMD 681 [1, 2] selects Mission 2 (proper dungeon clear, target 4)
+	//     - Clearing 3 dungeons is not enough (refused); 4th clear unlocks daily reward 50031683
+	//     - Step bonus 1 (req 4 completions) remains refused after 1 completion, and succeeds once 4 completions are reached
+	var gotNoti1789Init bool
+	for _, p := range initPkts {
+		if p.ID == protocol.NotiEv392OneDayPlan && len(p.Payload) == 14 && p.Payload[1] == 0 && p.Payload[5] == 4 {
+			gotNoti1789Init = true
+		}
+	}
+	if !gotNoti1789Init {
+		t.Fatalf("interactiveEventInitPackets must emit NOTI 1789 (len=14) when DailyChallenge.Enabled")
+	}
+	if early392, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(392, 1, 2), t45m); err != nil || early392[0].Name != "event_392_daily_not_ready" {
+		t.Fatalf("Ev392 daily claim before selecting/clearing must be refused, got %+v err=%v", early392, err)
+	}
+	selPkts, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(392, 1, 2), t45m)
+	if err != nil {
+		t.Fatalf("Ev392 CMD 681 select mission 2 failed: %v", err)
+	}
+	var got392Selected bool
+	for _, p := range selPkts {
+		if p.ID == protocol.NotiEv392OneDayPlan && len(p.Payload) == 14 && p.Payload[1] == 2 && p.Payload[2] == 0 {
+			got392Selected = true
+		}
+	}
+	if !got392Selected {
+		t.Fatalf("Ev392 select mission 2 should emit NOTI 1789 with selected=2, progress=0")
+	}
+	for i := 0; i < 3; i++ {
+		w.onInteractiveEventClear(t45m)
+	}
+	if early392_3, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(392, 1, 2), t45m); err != nil || early392_3[0].Name != "event_392_daily_not_ready" {
+		t.Fatalf("Ev392 mission 2 at 3/4 clears must still be refused, got %+v err=%v", early392_3, err)
+	}
+	w.onInteractiveEventClear(t45m)
+	claim392, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(392, 1, 2), t45m)
+	if err != nil {
+		t.Fatalf("Ev392 mission 2 daily claim at 4/4 clears failed: %v", err)
+	}
+	var got392DailyNoti bool
+	for _, p := range claim392 {
+		if p.ID == protocol.NotiEv392OneDayPlan && len(p.Payload) == 14 && p.Payload[3] == 1 && p.Payload[8] == 1 {
+			got392DailyNoti = true
+		}
+	}
+	if !got392DailyNoti {
+		t.Fatalf("Ev392 daily claim should set dailyClaimed=1 and step[1].completed=1 in NOTI 1789")
+	}
+	if stepEarly, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(392, 4, 1), t45m); err != nil || stepEarly[0].Name != "event_392_step_not_ready" {
+		t.Fatalf("Ev392 step bonus 1 at 1/4 completions must be refused, got %+v err=%v", stepEarly, err)
+	}
+	bagAfter392, err := inventory.ReadBag(w.role.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var has392Reward bool
+	for _, it := range bagAfter392.Items {
+		if it.Template == 50031683 && it.Amount >= 1 {
+			has392Reward = true
+		}
+	}
+	if !has392Reward {
+		t.Fatalf("Ev392 daily claim should grant reward 50031683")
+	}
 }

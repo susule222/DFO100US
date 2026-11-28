@@ -48,7 +48,18 @@ from mod_workshop import _ensure_merger_binary, rewrap_inner_to_client_pvf  # no
 EVT_ENTRY = 'event/eventlistwindow.evt'
 STR_ENTRY = 'string/event.uv.str'
 XUI_ENTRY = 'ui/event/eventlistpopupwindow/eventdesignwindow.xui'
-TARGET_ENTRIES = (EVT_ENTRY, STR_ENTRY, XUI_ENTRY)
+INFO_BTN_ENTRY = 'ui/event/informationbuttoninfo.evn'
+TARGET_ENTRIES = (EVT_ENTRY, STR_ENTRY, XUI_ENTRY, INFO_BTN_ENTRY)
+
+# HUD button popup overrides in ui/event/informationbuttoninfo.evn:
+# Event 306 (btn=110, 网吧特权活动) originally links 'free cash pcroom', which was
+# removed from US100's StringToPopupWindowID (0x14383d800), leaving window_id=0.
+# Mapping it to 'design popup window' (0x14383e55c -> 0x14384abf4 -> 0x244
+# EventDesignWindow) lets generic click handler 0x14379b240 open our localized
+# Event 306 detail card cleanly on click.
+INFO_BTN_POPUP_OVERRIDES: dict[tuple[int, int], str] = {
+    (110, 306): 'design popup window',
+}
 
 STAGE_DIR = ROOT / 'runtime' / 'event-detail-ui-fix'
 STAGE_MANIFEST = STAGE_DIR / 'pending.json'
@@ -468,6 +479,50 @@ def patch_eventlistwindow_tokens(tokens: list[dict]) -> tuple[list[dict], dict]:
     return out, stats
 
 
+def patch_informationbuttoninfo_tokens(tokens: list[dict]) -> tuple[list[dict], dict]:
+    """Idempotently repair broken [link popupwindow type] mappings in informationbuttoninfo.evn."""
+    out: list[dict] = []
+    stats = {
+        'blocks': 0,
+        'patched_buttons': [],
+        'changed': False,
+    }
+    i = 0
+    n = len(tokens)
+    while i < n:
+        tok = tokens[i]
+        if tok.get('type') == 3 and tok.get('text') == '[info]':
+            end = i + 1
+            while end < n and not (tokens[end].get('type') == 3 and tokens[end].get('text') == '[/info]'):
+                end += 1
+            if end >= n:
+                raise ValueError(f'unterminated [info] block at token {i}')
+            block = [dict(t) for t in tokens[i:end + 1]]
+            stats['blocks'] += 1
+            btn_id = None
+            ev_id = None
+            for k in range(len(block) - 1):
+                if block[k].get('type') == 3 and block[k].get('text') == '[id]' and block[k + 1].get('type') == 0:
+                    btn_id = int(block[k + 1]['value'])
+                elif block[k].get('type') == 3 and block[k].get('text') == '[event]' and block[k + 1].get('type') == 0:
+                    ev_id = int(block[k + 1]['value'])
+            override = INFO_BTN_POPUP_OVERRIDES.get((btn_id, ev_id)) if (btn_id is not None and ev_id is not None) else None
+            if override is not None:
+                for k in range(len(block) - 1):
+                    if block[k].get('type') == 3 and block[k].get('text') == '[link popupwindow type]' and block[k + 1].get('type') == 6:
+                        if block[k + 1].get('text') != override:
+                            block[k + 1] = {'type': 6, 'text': override}
+                            stats['changed'] = True
+                            stats['patched_buttons'].append({'id': btn_id, 'event': ev_id, 'popup': override})
+                        break
+            out.extend(block)
+            i = end + 1
+            continue
+        out.append(tok)
+        i += 1
+    return out, stats
+
+
 def render_evt_script(tokens: list[dict]) -> str:
     parts: list[str] = []
     for tok in tokens:
@@ -568,12 +623,14 @@ def _extract_entries(inner_pvf: Path, out_dir: Path) -> dict[str, Path]:
     evt_tokens = out_dir / f'00-{Path(EVT_ENTRY).name}.tokens.json'
     str_bin = out_dir / f'01-{Path(STR_ENTRY).name}.bin'
     xui_bin = out_dir / f'02-{Path(XUI_ENTRY).name}.bin'
-    if not evt_tokens.is_file() or not str_bin.is_file() or not xui_bin.is_file():
+    info_btn_tokens = out_dir / f'03-{Path(INFO_BTN_ENTRY).name}.tokens.json'
+    if not evt_tokens.is_file() or not str_bin.is_file() or not xui_bin.is_file() or not info_btn_tokens.is_file():
         raise FileNotFoundError(f'未在 PVF 中找到目标文件：{TARGET_ENTRIES}')
     return {
         'evt_tokens': evt_tokens,
         'str_bin': str_bin,
         'xui_bin': xui_bin,
+        'info_btn_tokens': info_btn_tokens,
     }
 
 
@@ -648,9 +705,11 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
         orig_str_raw = extracted['str_bin'].read_bytes()
         orig_str_kv = _parse_str_table_utf16(orig_str_raw)
         orig_xui_raw = extracted['xui_bin'].read_bytes()
+        orig_info_btn_tokens = json.loads(extracted['info_btn_tokens'].read_text(encoding='utf-8'))
 
         patched_evt_tokens, evt_stats = patch_eventlistwindow_tokens(orig_evt_tokens)
         patched_xui_bytes, xui_stats = patch_eventdesignwindow_xui_bytes(orig_xui_raw)
+        patched_info_btn_tokens, info_btn_stats = patch_informationbuttoninfo_tokens(orig_info_btn_tokens)
         str_needs_update = (
             not orig_str_raw.endswith(b'\x00\x00\x00\x00')
             or '\x00' in orig_str_raw[:-4].decode('utf-16-le')
@@ -662,23 +721,29 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
             or '\x00' in orig_xui_raw[:-2].decode('utf-16-le')
         )
 
-        if not evt_stats['changed'] and not str_needs_update and not xui_needs_update and inner_override is None:
-            return {'status': 'already_fixed', 'sha256': before_sha, 'evt_stats': evt_stats, 'xui_stats': xui_stats}
+        if not evt_stats['changed'] and not str_needs_update and not xui_needs_update and not info_btn_stats['changed'] and inner_override is None:
+            return {'status': 'already_fixed', 'sha256': before_sha, 'evt_stats': evt_stats, 'xui_stats': xui_stats, 'info_btn_stats': info_btn_stats}
 
-        evt_src = tmp / 'eventlistwindow.evt'
-        evt_src.write_text(render_evt_script(patched_evt_tokens), encoding='utf-8')
+        layers = []
+        if evt_stats['changed'] or inner_override is not None:
+            evt_src = tmp / 'eventlistwindow.evt'
+            evt_src.write_text(render_evt_script(patched_evt_tokens), encoding='utf-8')
+            layers.append({'path': EVT_ENTRY, 'source': str(evt_src), 'mod_id': 'event-detail-ui-fix', 'priority': 0})
 
-        str_src = tmp / 'event.uv.str'
-        str_src.write_text(render_event_str_overlay(), encoding='utf-8')
+        if str_needs_update or inner_override is not None:
+            str_src = tmp / 'event.uv.str'
+            str_src.write_text(render_event_str_overlay(), encoding='utf-8')
+            layers.append({'path': STR_ENTRY, 'source': str(str_src), 'mod_id': 'event-detail-ui-fix', 'priority': 1})
 
-        xui_src = tmp / 'eventdesignwindow.xui'
-        xui_src.write_bytes(patched_xui_bytes)
+        if xui_needs_update:
+            xui_src = tmp / 'eventdesignwindow.xui'
+            xui_src.write_bytes(patched_xui_bytes)
+            layers.append({'path': XUI_ENTRY, 'source': str(xui_src), 'mod_id': 'event-detail-ui-fix', 'priority': 2})
 
-        layers = [
-            {'path': EVT_ENTRY, 'source': str(evt_src), 'mod_id': 'event-detail-ui-fix', 'priority': 0},
-            {'path': STR_ENTRY, 'source': str(str_src), 'mod_id': 'event-detail-ui-fix', 'priority': 1},
-            {'path': XUI_ENTRY, 'source': str(xui_src), 'mod_id': 'event-detail-ui-fix', 'priority': 2},
-        ]
+        if info_btn_stats['changed'] or inner_override is not None:
+            info_btn_src = tmp / 'informationbuttoninfo.evn'
+            info_btn_src.write_text(render_evt_script(patched_info_btn_tokens), encoding='utf-8')
+            layers.append({'path': INFO_BTN_ENTRY, 'source': str(info_btn_src), 'mod_id': 'event-detail-ui-fix', 'priority': 3})
         plan_file = tmp / 'plan.json'
         plan_file.write_text(json.dumps({'layers': layers}, ensure_ascii=False), encoding='utf-8')
         merged_inner = tmp / 'merged.inner.pvf'
@@ -726,12 +791,21 @@ def build_and_apply(stage_only: bool = False, inner_override: Path | None = None
             raise RuntimeError(f'合并后 {XUI_ENTRY} 回读校验失败')
         ET.fromstring(v_xui_text.rstrip('\x00').lstrip('\ufeff'))
 
+        v_info_btn_tokens = json.loads(verified['info_btn_tokens'].read_text(encoding='utf-8'))
+        if len(v_info_btn_tokens) != len(patched_info_btn_tokens):
+            raise RuntimeError(f'合并后 {INFO_BTN_ENTRY} token 数不匹配：{len(v_info_btn_tokens)} != {len(patched_info_btn_tokens)}')
+        _, recheck_info_btn = patch_informationbuttoninfo_tokens(v_info_btn_tokens)
+        if recheck_info_btn['changed']:
+            raise RuntimeError(f'合并后 {INFO_BTN_ENTRY} 回读校验失败：{recheck_info_btn}')
+
         stats = {
             'preserved_entries': evt_stats['preserved_entries'],
             'upserted_events': len(US100_EVENT_DETAILS),
             'verified_evt_tokens': len(v_evt_tokens),
             'verified_str_keys': len(v_str_kv),
             'xui_bg_patched': xui_stats['bg_patched'],
+            'info_btn_tokens': len(v_info_btn_tokens),
+            'info_btn_patched': info_btn_stats['patched_buttons'],
         }
 
         staged_pvf = STAGE_DIR / 'Script.pvf'
