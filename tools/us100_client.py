@@ -121,13 +121,6 @@ def main():
     except Exception as exc:
         print('warning: staged event UI localization skipped: %s' % exc, flush=True)
     try:
-        import us100_localize_events_ui as _leu
-        applied_msg = _leu.apply_staged_if_pending()
-        if applied_msg:
-            print(applied_msg, flush=True)
-    except Exception as exc:
-        print('warning: staged event UI localization skipped: %s' % exc, flush=True)
-    try:
         import fix_seria_event_npcs as _fsn
         applied_msg = _fsn.apply_staged_if_pending()
         if applied_msg:
