@@ -18,7 +18,10 @@ const CollectItems = "collect-items-v1"
 const ClearDungeon = "clear-dungeon-v1"
 const ClearNamedQuest = "completed-quest-v1"
 const HuntMonster = "confirmed-target-kills-v1"
+const HuntEnemy = "hunt-enemy-v1"
 const MirkwoodSceneObject = "mirkwood-scene-object-trigger-v1"
+const QuestionClientGated = "question-client-gated-v1"
+const UseItemClientGated = "use-item-client-gated-v1"
 
 func collection(d catalog.QuestDefinition) []ItemNeed {
 	c := d.ObjectiveCells
@@ -44,23 +47,35 @@ func collection(d catalog.QuestDefinition) []ItemNeed {
 // other shape remains unimplemented rather than guessed.
 type RangeObjective struct {
 	Town, Area uint32
+	NPC        uint32
 	X, Y, W, H int32
 }
 
 func ReachRange(d catalog.QuestDefinition) (RangeObjective, bool) {
 	c := d.ObjectiveCells
-	if len(d.Pending) != 0 || d.Kind != "[reach the range]" || len(c) != 6 {
+	if len(d.Pending) != 0 || d.Kind != "[reach the range]" {
+		return RangeObjective{}, false
+	}
+	if len(c) == 3 {
+		for _, t := range c {
+			if t.Type != 0 || t.Value <= 0 {
+				return RangeObjective{}, false
+			}
+		}
+		return RangeObjective{NPC: uint32(c[0].Value), W: c[1].Value, H: c[2].Value}, true
+	}
+	if len(c) != 6 {
 		return RangeObjective{}, false
 	}
 	for _, t := range c {
-		if t.Type != 0 || t.Value < 0 {
+		if t.Type != 0 {
 			return RangeObjective{}, false
 		}
 	}
-	if c[0].Value == 0 || c[4].Value <= 0 || c[5].Value <= 0 {
+	if c[0].Value <= 0 || c[1].Value < 0 || c[4].Value <= 0 || c[5].Value <= 0 {
 		return RangeObjective{}, false
 	}
-	return RangeObjective{uint32(c[0].Value), uint32(c[1].Value), c[2].Value, c[3].Value, c[4].Value, c[5].Value}, true
+	return RangeObjective{Town: uint32(c[0].Value), Area: uint32(c[1].Value), X: c[2].Value, Y: c[3].Value, W: c[4].Value, H: c[5].Value}, true
 }
 
 func (r RangeObjective) Contains(p storage.WorldPosition) bool {
@@ -109,8 +124,8 @@ func InitialProgress(d catalog.QuestDefinition) (uint32, string, error) {
 		c := d.ObjectiveCells
 		switch d.Kind {
 		case "[hunt enemy]":
-			// US100 quest 3157 is a passive scene object, NOT three monster
-			// kills. Do not enable other five-cell layouts by analogy.
+			// US100 quest 3157 is a passive scene object with a dedicated Mirkwood
+			// scene-object ledger. Keep its exact model unchanged.
 			if d.ID == 3157 && d.Script.SHA256 == "bb60af65355bcfdbb69c094ceca59e11f8f503e45d81f63278564b2189862bd1" && len(c) == 5 {
 				for i, want := range []int32{3, -1, 13099, 3, 1} {
 					if c[i].Type != 0 || c[i].Value != want {
@@ -119,9 +134,44 @@ func InitialProgress(d catalog.QuestDefinition) (uint32, string, error) {
 				}
 				return 1, MirkwoodSceneObject, nil
 			}
+			// General [hunt enemy] consists of 5-cell tuples:
+			// (dungeonID, minDifficulty, targetID, targetType[1..3], count).
+			if len(c) >= 5 && len(c)%5 == 0 {
+				var total uint32
+				valid := true
+				for i := 0; i < len(c); i += 5 {
+					if c[i].Type != 0 || c[i].Value <= 0 ||
+						c[i+1].Type != 0 || c[i+1].Value < -1 || c[i+1].Value > 5 ||
+						c[i+2].Type != 0 || c[i+2].Value <= 0 ||
+						c[i+3].Type != 0 || c[i+3].Value < 1 || c[i+3].Value > 3 ||
+						c[i+4].Type != 0 || c[i+4].Value <= 0 {
+						valid = false
+						break
+					}
+					total += uint32(c[i+4].Value)
+				}
+				if valid && total > 0 {
+					return total, HuntEnemy, nil
+				}
+			}
 		case "[hunt monster]":
-			if len(c) == 4 && c[0].Type == 0 && c[0].Value > 0 && c[1].Type == 0 && c[1].Value >= -1 && c[1].Value <= 5 && c[2].Type == 0 && c[2].Value > 0 && c[3].Type == 0 && c[3].Value > 0 {
-				return uint32(c[3].Value), HuntMonster, nil
+			// Repeated 4-cell tuples: (dungeonID, minDifficulty, monsterTemplateOrWildcard, count).
+			if len(c) >= 4 && len(c)%4 == 0 {
+				var total uint32
+				valid := true
+				for i := 0; i < len(c); i += 4 {
+					if c[i].Type != 0 || c[i].Value <= 0 ||
+						c[i+1].Type != 0 || c[i+1].Value < -1 || c[i+1].Value > 5 ||
+						c[i+2].Type != 0 || c[i+2].Value == 0 ||
+						c[i+3].Type != 0 || c[i+3].Value <= 0 {
+						valid = false
+						break
+					}
+					total += uint32(c[i+3].Value)
+				}
+				if valid && total > 0 {
+					return total, HuntMonster, nil
+				}
 			}
 		case "[seeking]":
 			if len(collection(d)) > 0 {
@@ -130,6 +180,10 @@ func InitialProgress(d catalog.QuestDefinition) (uint32, string, error) {
 		case "[clear a dungeon]":
 			if len(c) == 2 && c[0].Type == 0 && c[0].Value > 0 && c[1].Type == 0 && c[1].Value == -1 {
 				return 1, ClearDungeon, nil
+			}
+		case "[clear dungeon index]":
+			if len(c) == 2 && c[0].Type == 0 && c[0].Value > 0 && c[1].Type == 0 && c[1].Value > 0 {
+				return uint32(c[1].Value), ClearDungeon, nil
 			}
 		case "[condition under clear]":
 			sub := cells(d.Script.Cells, "[sub type]")
@@ -143,13 +197,18 @@ func InitialProgress(d catalog.QuestDefinition) (uint32, string, error) {
 					return uint32(c[2].Value), ClearDungeon, nil
 				}
 			}
+			if len(sub) == 1 && sub[0].Type == 0 && sub[0].Value == 11 && len(c) == 3 &&
+				c[0].Type == 0 && c[0].Value > 0 && c[1].Type == 0 && c[1].Value >= -1 && c[1].Value <= 5 &&
+				c[2].Type == 0 {
+				return 1, ClearDungeon, nil
+			}
 		case "[clear quest]":
 			if len(c) == 1 && c[0].Type == 0 && c[0].Value > 0 && c[0].Value < 40000 {
 				return 1, ClearNamedQuest, nil
 			}
 		case "[quest clear]":
 			sub := cells(d.Script.Cells, "[sub type]")
-			if len(c) == 2 && len(sub) == 1 && sub[0].Type == 0 && sub[0].Value == 2 {
+			if len(c) >= 1 && len(sub) == 1 && sub[0].Type == 0 && sub[0].Value == 2 {
 				for _, ref := range c {
 					if ref.Type != 0 || ref.Value <= 0 || ref.Value >= 40000 {
 						return 0, "", fmt.Errorf("unsupported child quest identity")
@@ -157,12 +216,24 @@ func InitialProgress(d catalog.QuestDefinition) (uint32, string, error) {
 				}
 				return 1, ClearNamedQuest, nil
 			}
+		case "[question]":
+			if len(c) == 1 && c[0].Type == 0 && c[0].Value > 0 {
+				return 0, QuestionClientGated, nil
+			}
+		case "[use item]":
+			sub := cells(d.Script.Cells, "[sub type]")
+			if len(sub) == 1 && sub[0].Type == 0 && sub[0].Value == 1 && len(c) == 3 &&
+				c[0].Type == 0 && c[1].Type == 0 && c[1].Value > 0 && c[2].Type == 0 && c[2].Value > 0 {
+				return 0, UseItemClientGated, nil
+			}
 		}
 	}
 	if len(d.Pending) == 0 && d.Kind == "[meet npc]" && len(d.ObjectiveCells) == 1 && d.ObjectiveCells[0].Type == 0 && d.ObjectiveCells[0].Value > 0 {
 		return 1, SingleMeetNPC, nil
 	}
-	if len(d.Pending) == 0 && d.Kind == "[clear map]" && len(d.ObjectiveCells) == 1 && d.ObjectiveCells[0].Type == 0 && d.ObjectiveCells[0].Value > 0 {
+	if len(d.Pending) == 0 && d.Kind == "[clear map]" &&
+		(len(d.ObjectiveCells) == 1 || (len(d.ObjectiveCells) == 2 && d.ObjectiveCells[1].Type == 0 && d.ObjectiveCells[1].Value >= -1 && d.ObjectiveCells[1].Value <= 5)) &&
+		d.ObjectiveCells[0].Type == 0 && d.ObjectiveCells[0].Value > 0 {
 		return 1, SingleClearMap, nil
 	}
 	if _, ok := ReachRange(d); ok {

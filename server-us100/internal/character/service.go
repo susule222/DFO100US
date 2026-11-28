@@ -26,6 +26,7 @@ type State struct {
 	TechniquePoints [2]uint16          `json:"technique_points,omitempty"`
 	CurrencySlot2   uint32             `json:"currency_slot2,omitempty"`
 	Advancement     byte               `json:"advancement"`
+	Awakening       byte               `json:"awakening,omitempty"`
 	Attributes      map[string]float32 `json:"attributes"`
 	InitialSkills   []int32            `json:"initial_skill_cells"`
 	// Only ranks bought above the natural level using an active Tactician contract.

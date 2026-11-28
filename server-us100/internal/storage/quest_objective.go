@@ -27,6 +27,9 @@ func (s *Store) CreditQuestKill(ctx context.Context, account, characterID int64,
 		return false, fmt.Errorf("invalid quest kill evidence")
 	}
 	key := fmt.Sprintf("%s/%d", clearKey(characterID, run, room), entity)
+	if model != "" && model != "confirmed-target-kills-v1" {
+		key += "/" + model
+	}
 	changed := false
 	err = s.db.Mutate(func(tx *db100.Tx) error {
 		role, ok, e := charRowTx(tx, account, characterID, false)

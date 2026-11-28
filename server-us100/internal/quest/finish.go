@@ -97,7 +97,11 @@ func (s *Service) Finish(ctx context.Context, role storage.Character, r protocol
 		reward := d.RewardCells
 		kind := cells(d.Script.Cells, "[reward type]")
 		percent := len(kind) == 1 && kind[0].Text == "[percent exp]"
+		var awakeningReward byte
 		if percent {
+			reward = nil
+		} else if len(kind) == 1 && kind[0].Text == "[awakening type]" && len(d.RewardCells) == 1 && d.RewardCells[0].Type == 0 && d.RewardCells[0].Value > 0 {
+			awakeningReward = byte(d.RewardCells[0].Value)
 			reward = nil
 		}
 		awards, e := progression.ItemRewards(reward, current.Profession, state.Advancement)
@@ -140,6 +144,21 @@ func (s *Service) Finish(ctx context.Context, role storage.Character, r protocol
 		saved, _, e := s.Progression.ApplyGain(current, uint64(gain))
 		if e != nil {
 			return nil, nil, e
+		}
+		if awakeningReward > state.Awakening {
+			var doc map[string]json.RawMessage
+			if e := json.Unmarshal(saved.State, &doc); e != nil {
+				return nil, nil, e
+			}
+			rawAwak, e := json.Marshal(awakeningReward)
+			if e != nil {
+				return nil, nil, e
+			}
+			doc["awakening"] = rawAwak
+			saved.State, e = json.Marshal(doc)
+			if e != nil {
+				return nil, nil, e
+			}
 		}
 		// Completion gold comes from the [gold reward table], not from the
 		// quest's own cells; it is credited to the wallet (award id 0) in the

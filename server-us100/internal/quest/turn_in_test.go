@@ -27,6 +27,10 @@ func TestConditionalClearRequiresKnownShape(t *testing.T) {
 		t.Fatalf("counted dungeon: %d %s %v", n, model, err)
 	}
 	d.Script.Cells[1].Value = 11
+	if n, model, err := InitialProgress(d); n != 1 || model != ClearDungeon || err != nil {
+		t.Fatalf("sub-type 11 dungeon clear: %d %s %v", n, model, err)
+	}
+	d.Script.Cells[1].Value = 99
 	if _, _, e := InitialProgress(d); e == nil {
 		t.Fatal("unknown clear condition accepted")
 	}

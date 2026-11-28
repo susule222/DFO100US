@@ -8,6 +8,86 @@ import (
 	"fmt"
 )
 
+func matchesCharacterFilter(f CharacterFilter, job string, adv, awakening byte) bool {
+	if f.Job != "[all]" && f.Job != job {
+		return false
+	}
+	if f.Grow >= 0 && f.Grow != int32(adv) {
+		return false
+	}
+	if f.Awakening == 0 && awakening != 0 {
+		return false
+	}
+	if f.Awakening > 0 && int32(awakening) < f.Awakening {
+		return false
+	}
+	return true
+}
+
+func characterEligible(en *Entry, job string, adv, awakening byte) bool {
+	if job == "" {
+		return false
+	}
+	if len(en.TargetCharacters) > 0 {
+		matched := false
+		for _, f := range en.TargetCharacters {
+			if matchesCharacterFilter(f, job, adv, awakening) {
+				matched = true
+				break
+			}
+		}
+		if !matched {
+			return false
+		}
+	} else {
+		allowed := len(en.Jobs) == 0
+		for _, j := range en.Jobs {
+			if j == "[all]" || j == job {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return false
+		}
+	}
+	for _, f := range en.NonTargetCharacters {
+		if matchesCharacterFilter(f, job, adv, awakening) {
+			return false
+		}
+	}
+	for _, g := range en.GrowTypes {
+		if g >= 0 && g != int32(adv) {
+			return false
+		}
+	}
+	return true
+}
+
+func prerequisitesSatisfied(en *Entry, status map[uint32]string) bool {
+	if len(en.PrerequisiteGroups) > 0 {
+		for _, group := range en.PrerequisiteGroups {
+			allDone := true
+			for _, p := range group {
+				if status[p] != "completed" {
+					allDone = false
+					break
+				}
+			}
+			if allDone {
+				return true
+			}
+		}
+		return false
+	}
+	for _, p := range en.Prerequisites {
+		if status[p] != "completed" {
+			return false
+		}
+	}
+	return true
+}
+
 func (s *Service) Available(ctx context.Context, role storage.Character) ([]uint32, error) {
 	var state character.State
 	if e := json.Unmarshal(role.State, &state); e != nil {
@@ -48,23 +128,16 @@ func (s *Service) Available(ctx context.Context, role storage.Character) ([]uint
 		if uint32(state.Level) < en.MinimumLevel || uint32(state.Level) > en.MaximumLevel {
 			continue
 		}
-		allowed := job != "" && len(en.Jobs) == 0
-		for _, j := range en.Jobs {
-			allowed = allowed || j == "[all]" || j == job
+		if !characterEligible(en, job, state.Advancement, state.Awakening) {
+			continue
 		}
-		for _, p := range en.Prerequisites {
-			if status[p] != "completed" {
-				allowed = false
-			}
+		if !prerequisitesSatisfied(en, status) {
+			continue
 		}
-		for _, g := range en.GrowTypes {
-			if g >= 0 && g != int32(state.Advancement) {
-				allowed = false
-			}
+		if en.PreAnswerQuest != 0 && (status[en.PreAnswerQuest] != "completed" || en.PreAnswerChoice != 0) {
+			continue
 		}
-		if allowed {
-			ids = append(ids, id)
-		}
+		ids = append(ids, id)
 	}
 	return ids, nil
 }

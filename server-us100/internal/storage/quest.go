@@ -34,8 +34,10 @@ func questKey(id int64, qid uint16) string { return idKey(id) + "/" + strconv.It
 func (s *Store) MigrateQuests(ctx context.Context) error { return nil }
 
 type QuestLinks struct {
-	Parent    uint16
-	Conflicts []uint16
+	Parent             uint16
+	Conflicts          []uint16
+	AcceptConflicts    []uint16
+	PrerequisiteGroups [][]uint32
 }
 
 func (l QuestLinks) Allows(status func(uint16) string) bool {
@@ -44,6 +46,11 @@ func (l QuestLinks) Allows(status func(uint16) string) bool {
 	}
 	for _, conflict := range l.Conflicts {
 		if status(conflict) != "" {
+			return false
+		}
+	}
+	for _, conflict := range l.AcceptConflicts {
+		if status(conflict) == "accepted" {
 			return false
 		}
 	}
@@ -115,14 +122,50 @@ func (s *Store) AcceptQuest(ctx context.Context, account, characterID int64, qid
 			}
 			return nil
 		}
-		for _, pre := range prerequisites {
-			var prior questRow
-			ok, e := tx.Get("character_quests", questKey(characterID, uint16(pre)), &prior)
-			if e != nil {
-				return e
+		var prereqGroups [][]uint32
+		for _, l := range links {
+			if len(l.PrerequisiteGroups) > 0 {
+				prereqGroups = l.PrerequisiteGroups
+				break
 			}
-			if !ok || prior.Status != "completed" {
-				return fmt.Errorf("prerequisite %d incomplete", pre)
+		}
+		if len(prereqGroups) > 0 {
+			groupSatisfied := false
+			var firstMissing uint32
+			for _, group := range prereqGroups {
+				allDone := true
+				for _, pre := range group {
+					var prior questRow
+					ok, e := tx.Get("character_quests", questKey(characterID, uint16(pre)), &prior)
+					if e != nil {
+						return e
+					}
+					if !ok || prior.Status != "completed" {
+						allDone = false
+						if firstMissing == 0 {
+							firstMissing = pre
+						}
+						break
+					}
+				}
+				if allDone {
+					groupSatisfied = true
+					break
+				}
+			}
+			if !groupSatisfied {
+				return fmt.Errorf("prerequisite %d incomplete", firstMissing)
+			}
+		} else {
+			for _, pre := range prerequisites {
+				var prior questRow
+				ok, e := tx.Get("character_quests", questKey(characterID, uint16(pre)), &prior)
+				if e != nil {
+					return e
+				}
+				if !ok || prior.Status != "completed" {
+					return fmt.Errorf("prerequisite %d incomplete", pre)
+				}
 			}
 		}
 		rec := questRow{CharacterID: characterID, QuestID: int(qid), Status: "accepted", Progress: int64(initial), ConfigVersion: version, ProgressModel: model, AcceptedAt: nowStamp()}

@@ -69,7 +69,27 @@ func (s *Service) refreshObjectives(ctx context.Context, role storage.Character,
 		case SingleMeetNPC:
 			satisfied = nearNPC(en.NPC, at, locate)
 		case SingleReachRange:
-			satisfied = inTown && en.Range.Contains(at)
+			if inTown {
+				if en.Range.NPC != 0 {
+					if locate != nil {
+						if p, ok := locate(en.Range.NPC); ok {
+							dx := int(at.X) - int(p[0])
+							if dx < 0 {
+								dx = -dx
+							}
+							dy := int(at.Y) - int(p[1])
+							if dy < 0 {
+								dy = -dy
+							}
+							rx := max(int(en.Range.W), ProximityRadius)
+							ry := max(int(en.Range.H), ProximityRadius)
+							satisfied = dx <= rx && dy <= ry
+						}
+					}
+				} else {
+					satisfied = en.Range.Contains(at)
+				}
+			}
 		case ClearNamedQuest:
 			satisfied = true
 			for _, ref := range s.Catalog.Quests[uint32(q.ID)].ObjectiveCells {
