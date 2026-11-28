@@ -222,12 +222,12 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		}
 		seen[i.Slot] = true
 	}
-	seen = map[uint16]bool{}
+	seenAvatar := map[uint16]bool{}
 	for _, i := range b.Avatars {
-		if i.Slot >= AvatarBagCapacity || i.Template == 0 || seen[i.Slot] {
+		if i.Slot >= AvatarBagCapacity || i.Template == 0 || seenAvatar[i.Slot] {
 			return b, fmt.Errorf("invalid saved avatar item")
 		}
-		seen[i.Slot] = true
+		seenAvatar[i.Slot] = true
 	}
 	seen = map[uint16]bool{}
 	for _, i := range b.WornAvatars {
@@ -285,14 +285,16 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		}
 		seen[i.Slot] = true
 	}
-	// Auto-migrate any specialized equipment (Talismans, Creatures, Creature Artifacts,
-	// Insignias) previously placed in the ordinary Equipment tab (space 0) into their
-	// native spaces (0x2b, 7, 0x25).
+	// Auto-migrate any specialized equipment (Avatars/Auras, Talismans, Creatures,
+	// Creature Artifacts, Insignias) previously placed in the ordinary Equipment
+	// tab (space 0) into their native spaces (1, 0x2b, 7, 0x25).
 	if len(b.Equipment) > 0 {
 		var keptEquip []BagEquipment
-		var migTal, migCre, migArt, migIns []BagEquipment
+		var migAv, migTal, migCre, migArt, migIns []BagEquipment
 		for _, eq := range b.Equipment {
 			switch {
+			case IsAvatarTemplate(eq.Template):
+				migAv = append(migAv, eq)
 			case IsTalismanTemplate(eq.Template):
 				migTal = append(migTal, eq)
 			case IsCreatureTemplate(eq.Template):
@@ -330,6 +332,7 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 				}
 			}
 		}
+		placeEquip(migAv, &b.Avatars, seenAvatar, 0, AvatarBagCapacity-1, false)
 		placeEquip(migTal, &b.Talismans, seen, 0, TalismanSlotCount-1, true)
 		placeEquip(migCre, &b.Creatures, seenCreature, CreatureSlotStart, CreatureSlotEnd, false)
 		placeEquip(migArt, &b.CreatureArtifacts, seenCreature, ArtifactSlotStart, ArtifactSlotEnd, false)
@@ -337,12 +340,12 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		b.Equipment = keptEquip
 	}
 	// Auto-migrate any specialized items previously placed in Space 0 stackable tabs
-	// (Creatures/Eggs, Artifacts, Creature Consumables, Insignias, Flag Gems, Runes,
-	// misaligned Emblems, and ordinary equipment/titles from older booster catalogs)
-	// into their native spaces/tabs.
+	// (Avatars/Auras, Talismans, Creatures/Eggs, Artifacts, Creature Consumables,
+	// Insignias, Flag Gems, Runes, misaligned Emblems, and ordinary equipment/titles
+	// from older booster catalogs) into their native spaces/tabs.
 	if len(b.Items) > 0 {
 		var keptItems []BagItem
-		var migCre, migArt, migIns, migOrdEq []BagItem
+		var migAv, migTal, migCre, migArt, migIns, migOrdEq []BagItem
 		var migCreStk, migGems, migRunes, migratedEmblems []BagItem
 		occupiedSpace0 := make(map[uint16]bool, len(b.Items)+len(b.Equipment))
 		for _, eq := range b.Equipment {
@@ -350,6 +353,10 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		}
 		for _, it := range b.Items {
 			switch {
+			case IsAvatarTemplate(it.Template):
+				migAv = append(migAv, it)
+			case IsTalismanTemplate(it.Template):
+				migTal = append(migTal, it)
 			case IsCreatureTemplate(it.Template):
 				migCre = append(migCre, it)
 			case IsCreatureArtifactTemplate(it.Template):
@@ -462,6 +469,16 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 				}
 			}
 		}
+		placeItemAsEquip(migAv, &b.Avatars, seenAvatar, 0, AvatarBagCapacity-1)
+		if len(migTal) > 0 {
+			before := len(b.Talismans)
+			placeItemAsEquip(migTal, &b.Talismans, seen, 0, TalismanSlotCount-1)
+			for i := before; i < len(b.Talismans); i++ {
+				if b.Talismans[i].RuneSockets == [3]byte{} {
+					b.Talismans[i].RuneSockets = DefaultTalismanRuneSockets
+				}
+			}
+		}
 		placeItemAsEquip(migCre, &b.Creatures, seenCreature, CreatureSlotStart, CreatureSlotEnd)
 		placeItemAsEquip(migArt, &b.CreatureArtifacts, seenCreature, ArtifactSlotStart, ArtifactSlotEnd)
 		placeItemAsEquip(migIns, &b.Insignias, seenInsignia, InsigniaSlotStart, InsigniaSlotEnd)
@@ -472,6 +489,7 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 				if count == 0 {
 					count = 1
 				}
+				dur := OrdinaryEquipmentDurability(it.Template)
 				rem := uint32(0)
 				for c := uint32(0); c < count; c++ {
 					placed := false
@@ -481,7 +499,7 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 							b.Equipment = append(b.Equipment, BagEquipment{
 								Slot:       slot,
 								Template:   it.Template,
-								Durability: 35,
+								Durability: dur,
 								SortLocked: it.SortLocked,
 								ItemLock:   it.ItemLock,
 								UnlockAt:   it.UnlockAt,

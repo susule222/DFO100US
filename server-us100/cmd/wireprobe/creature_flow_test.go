@@ -471,3 +471,177 @@ func TestCreatureRenderNoti105AutoHatchAndBoosterTitleMigration(t *testing.T) {
 		t.Fatalf("expected title %d from box 590005789 in Equipment (9..64), got equip=%+v items=%+v", awardTpl, bagAfterBox.Equipment, bagAfterBox.Items)
 	}
 }
+
+func TestBoosterMisclassifiedAuraTitleAndStackableRouting(t *testing.T) {
+	ctx := context.Background()
+	c, err := catalog.LoadLoot("../../configs/us100/loot.generated.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r, err := inventory.LoadBagRules("../../configs/us100/rules.bag.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bc, err := catalog.LoadBoosters("../../configs/us100/boosters.generated.json.gz")
+	if err != nil {
+		t.Fatal(err)
+	}
+	chars, err := catalog.LoadCharacters("../../configs/us100/characters.generated.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	eqCat, err := inventory.LoadEquipmentCatalog("../../configs/us100/equipment.generated.json", r.Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	wearRules, err := inventory.LoadWearRules("../../configs/us100/rules.wear.json", r.Source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	registerInventoryLookups(bc, eqCat)
+	defer func() {
+		inventory.RegisterCreatureEggLookup(nil)
+		inventory.RegisterOrdinaryEquipmentLookup(nil)
+		inventory.RegisterOrdinaryEquipmentDurabilityLookup(nil)
+	}()
+
+	path := filepath.Join(t.TempDir(), "aura_title_mig.db")
+	store, err := storage.Open(ctx, storage.Config{DBPath: path, SkipSeed: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	// Seed Char 48 state reproducing the exact reported screenshot:
+	// - Space 0 slot 78: misplaced Title 500330547 (先驱者的觉悟 - 风振)
+	// - Space 0 slot 79: misplaced Aura Avatar 501590378 (自我觉醒气息)
+	// - Space 0 slot 9:  Title 100331477 (第一皇冠, absent from equipment.generated.json)
+	// - Space 0 slot 80: Aura Random Box 590005788
+	// - Space 0 slot 81: Dye Box 10000079 (stackable dyes inside [equipment] tag)
+	// - Space 0 slot 82: Creature Rename Card Box 50006524 (stackable inside [creature] tag)
+	err = store.Database().Mutate(func(tx *db100.Tx) error {
+		return tx.Put("characters", "48", map[string]any{
+			"id": 48, "account_id": 42, "wire_id": 1, "name": "AuraHero", "profession": 0,
+			"config_version": r.Source,
+			"state": map[string]any{
+				"level": 100,
+				"inventory": inventory.Bag{
+					Version: "ordinary-bag-v1",
+					Equipment: []inventory.BagEquipment{
+						{Slot: 9, Template: 100331477, Durability: 0},
+					},
+					Items: []inventory.BagItem{
+						{Slot: 78, Template: 500330547, Amount: 1},
+						{Slot: 79, Template: 501590378, Amount: 1},
+						{Slot: 80, Template: 590005788, Amount: 1},
+						{Slot: 81, Template: 10000079, Amount: 1},
+						{Slot: 82, Template: 50006524, Amount: 1},
+					},
+				},
+			},
+		})
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	role, err := store.LiveCharacter(42, 48)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. ReadBag auto-migrates Aura 501590378 -> Space 1 Avatars (data=0 permanent)
+	//    and Title 500330547 -> Space 0 Equipment (9..64, durability=0).
+	bag, err := inventory.ReadBag(role.State)
+	if err != nil {
+		t.Fatalf("ReadBag failed: %v", err)
+	}
+	if len(bag.Avatars) != 1 || bag.Avatars[0].Template != 501590378 || bag.Avatars[0].Durability != 0 {
+		t.Fatalf("expected migrated Aura 501590378 in Space 1 Avatars with Durability=0, got %+v", bag.Avatars)
+	}
+	auraRow := inventory.EquipmentRow(bag.Avatars[0])
+	if expireData := binary.LittleEndian.Uint32(auraRow[6:10]); expireData != 0 {
+		t.Fatalf("expected permanent Aura row data=0 (not expired), got %d", expireData)
+	}
+	var titleSlot uint16
+	for _, eq := range bag.Equipment {
+		if eq.Template == 500330547 {
+			titleSlot = eq.Slot
+			if eq.Durability != 0 {
+				t.Fatalf("expected Title 500330547 durability=0, got %d", eq.Durability)
+			}
+		}
+	}
+	if titleSlot < 9 || titleSlot > 64 {
+		t.Fatalf("expected migrated Title 500330547 in Equipment 9..64, got equip=%+v items=%+v", bag.Equipment, bag.Items)
+	}
+	for _, it := range bag.Items {
+		if it.Template == 501590378 || it.Template == 500330547 {
+			t.Fatalf("misclassified item %d still present in bag.Items: %+v", it.Template, bag.Items)
+		}
+	}
+
+	w := &worldSession{
+		account:    42,
+		role:       role,
+		characters: &character.Service{Store: store, Equipment: eqCat},
+		loot:       &loot.Service{Store: store, Catalog: c, BagRules: r, Equipment: eqCat, Boosters: bc},
+	}
+	wearSvc := &inventory.WearService{
+		Store:       store,
+		Catalog:     eqCat,
+		Professions: chars,
+		BagRules:    r,
+		Rules:       wearRules,
+	}
+	var eqSess equipmentSession
+
+	// 2. Equip Aura 501590378 from Space 1 -> Space 3 slot 9 (Aura slot).
+	if _, err := eqSess.handle(wearSvc, w, encodeCMD19(1, bag.Avatars[0].Slot, 501590378, 3, 9, 0), []byte("eq-aura-501590378")); err != nil {
+		t.Fatalf("equip migrated Aura 501590378 failed: %v", err)
+	}
+	// 3. Equip Title 500330547 from migrated Equipment slot -> Space 3 slot 13, then swap with Title 100331477.
+	if _, err := eqSess.handle(wearSvc, w, encodeCMD19(0, titleSlot, 500330547, 3, 13, 0), []byte("eq-title-500330547")); err != nil {
+		t.Fatalf("equip migrated Title 500330547 failed: %v", err)
+	}
+	if _, err := eqSess.handle(wearSvc, w, encodeCMD19(0, 9, 100331477, 3, 13, 500330547), []byte("swap-title-100331477")); err != nil {
+		t.Fatalf("equip booster-absent Title 100331477 failed: %v", err)
+	}
+
+	// 4. Open Aura Random Box 590005788 -> goes directly into Space 1 Avatars!
+	openBox := func(slot uint16, tag string) (storage.Character, uint32) {
+		cmd := make([]byte, 8)
+		binary.LittleEndian.PutUint16(cmd[0:2], slot)
+		binary.LittleEndian.PutUint16(cmd[2:4], 1)
+		saved, _, _, tpl, _, applied, err := openBoosterBox(ctx, store, nil, w.loot, 42, w.role, []byte(tag), cmd, func(n uint32) uint32 { return 0 })
+		if err != nil || !applied {
+			t.Fatalf("openBoosterBox(slot=%d) failed: err=%v applied=%v", slot, err, applied)
+		}
+		w.role = saved
+		return saved, tpl
+	}
+	saved, auraAward := openBox(80, "open-aura-box-590005788")
+	bagAfter, _ := inventory.ReadBag(saved.State)
+	if len(bagAfter.Avatars) != 1 || bagAfter.Avatars[0].Template != auraAward {
+		t.Fatalf("expected Aura %d from box 590005788 in Space 1 Avatars, got avatars=%+v items=%+v", auraAward, bagAfter.Avatars, bagAfter.Items)
+	}
+
+	// 5. Open Dye Box 10000079 -> stackable dye stays in Space 0 Consumable Items (65..120), NOT Equipment!
+	saved, dyeAward := openBox(81, "open-dye-box-10000079")
+	bagAfter, _ = inventory.ReadBag(saved.State)
+	foundDyeInConsumable := false
+	for _, it := range bagAfter.Items {
+		if it.Template == dyeAward && it.Slot >= 65 && it.Slot <= 120 {
+			foundDyeInConsumable = true
+		}
+	}
+	if !foundDyeInConsumable {
+		t.Fatalf("expected Dye %d from box 10000079 in Consumable (65..120), got items=%+v equip=%+v", dyeAward, bagAfter.Items, bagAfter.Equipment)
+	}
+
+	// 6. Open Creature Rename Card Box 50006524 -> stackable 25 goes to Space 7 CreatureItems (216..271), NOT Creatures!
+	saved, cardAward := openBox(82, "open-creature-card-50006524")
+	bagAfter, _ = inventory.ReadBag(saved.State)
+	if len(bagAfter.CreatureItems) != 1 || bagAfter.CreatureItems[0].Template != cardAward || bagAfter.CreatureItems[0].Slot < inventory.CreatureItemSlotStart {
+		t.Fatalf("expected Creature Rename Card %d in Space 7 CreatureItems (216..271), got creatureItems=%+v creatures=%+v", cardAward, bagAfter.CreatureItems, bagAfter.Creatures)
+	}
+}

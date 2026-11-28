@@ -541,7 +541,7 @@ func openBoosterBox(
 	var bagAwards []boosterAward
 	for _, a := range awards {
 		switch {
-		case a.Avatar:
+		case a.Avatar || inventory.IsAvatarTemplate(a.Template):
 			for i := uint32(0); i < a.Quantity; i++ {
 				avatarIDs = append(avatarIDs, a.Template)
 			}
@@ -653,11 +653,7 @@ func openBoosterBox(
 						continue
 					}
 				}
-				dur := a.Durability
-				if dur == 0 {
-					dur = 35
-				}
-				b, _, e = b.AddRawEquipment(eqSlots, a.Template, dur, a.Quantity)
+				b, _, e = b.AddRawEquipment(eqSlots, a.Template, a.Durability, a.Quantity)
 				if e != nil {
 					return nil, nil, e
 				}
@@ -708,6 +704,7 @@ func catalogToBoosterAward(a catalog.BoosterAward, mult uint32) boosterAward {
 	if q == 0 {
 		q = 1
 	}
+	isAv := a.Kind == "a" || inventory.IsAvatarTemplate(a.Template)
 	isTal := a.Kind == "t" || inventory.IsTalismanTemplate(a.Template)
 	isCre := a.Kind == "c" || inventory.IsCreatureTemplate(a.Template)
 	isArt := a.Kind == "ca" || inventory.IsCreatureArtifactTemplate(a.Template)
@@ -718,7 +715,7 @@ func catalogToBoosterAward(a catalog.BoosterAward, mult uint32) boosterAward {
 	return boosterAward{
 		Template:         a.Template,
 		Quantity:         q * mult,
-		Avatar:           a.Kind == "a",
+		Avatar:           isAv,
 		Creature:         isCre && !isArt,
 		CreatureArtifact: isArt,
 		CreatureItem:     isCreItem,
@@ -726,7 +723,7 @@ func catalogToBoosterAward(a catalog.BoosterAward, mult uint32) boosterAward {
 		Gem:              isGem,
 		Talisman:         isTal,
 		Rune:             isRune,
-		Equipment:        a.Kind == "e" && !isTal && !isCre && !isArt && !isIns,
+		Equipment:        a.Kind == "e" && !isAv && !isTal && !isCre && !isArt && !isIns,
 		StackableType:    a.StackableType,
 		Durability:       a.Durability,
 	}

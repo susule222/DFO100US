@@ -210,8 +210,9 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 		lower := strings.ToLower(p)
 		isAv := strings.Contains(lower, "/avatar/") || strings.Contains(lower, "avatar/")
 		isTal := strings.Contains(lower, "/talisman/") || strings.Contains(lower, "talisman/")
-		var isCreature, isArtifact, isFlag bool
+		var isCreature, isArtifact, isFlag, noDurability bool
 		var dur uint16 = 35
+		hasDur := false
 		if s, err := ResolveScript(a, p); err == nil {
 			if tc := sectionCells(s.Cells, "[equipment type]"); len(tc) > 0 {
 				eqType := strings.ToLower(tc[0].Text)
@@ -226,13 +227,16 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 					isArtifact = true
 				case eqType == "[flag]":
 					isFlag = true
+				case eqType == "[title name]" || eqType == "[amulet]" || eqType == "[wrist]" || eqType == "[ring]" || eqType == "[support]" || eqType == "[magic stone]" || eqType == "[earring]" || eqType == "[support weapon]":
+					noDurability = true
 				}
 			}
-			if dc := sectionCells(s.Cells, "[durability]"); len(dc) > 0 && dc[0].Type == 0 && dc[0].Value > 0 && dc[0].Value <= 65535 {
+			if dc := sectionCells(s.Cells, "[durability]"); len(dc) > 0 && dc[0].Type == 0 && dc[0].Value >= 0 && dc[0].Value <= 65535 {
 				dur = uint16(dc[0].Value)
+				hasDur = true
 			}
 		}
-		if isAv || isTal || isCreature || isArtifact || isFlag {
+		if isAv || isTal || isCreature || isArtifact || isFlag || (noDurability && !hasDur) {
 			dur = 0
 		}
 		m := boosterEquipMeta{
@@ -325,7 +329,7 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 		cat.TypeCounts[stType]++
 
 		if hasSel {
-			box := parseBoosterSelection(s.Cells, eqPaths, classifyEquip)
+			box := parseBoosterSelection(s.Cells, eqPaths, stkPaths, classifyEquip)
 			if len(box.Categories) > 0 {
 				cat.Boxes[id] = box
 				cat.BoxTagStats["sel"]++
@@ -333,7 +337,7 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 			continue
 		}
 		if hasBst {
-			box := parseBoosterInfo(s.Cells, eqPaths, classifyEquip)
+			box := parseBoosterInfo(s.Cells, eqPaths, stkPaths, classifyEquip)
 			if len(box.Groups) > 0 {
 				cat.Boxes[id] = box
 				cat.BoxTagStats["bst"]++
@@ -341,7 +345,7 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 			continue
 		}
 		if hasPkg {
-			box := parsePackageData(s.Cells, eqPaths, classifyEquip)
+			box := parsePackageData(s.Cells, eqPaths, stkPaths, classifyEquip)
 			if len(box.Groups) > 0 {
 				cat.Boxes[id] = box
 				cat.BoxTagStats["pkg"]++
@@ -440,7 +444,30 @@ func (m boosterEquipMeta) applyToAward(aw *BoosterAward) {
 	}
 }
 
-func parseBoosterSelection(cells []pvf.Token, eqPaths map[uint32]string, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
+// classifyAward resolves the authoritative PVF kind of a reward template.
+// US100 list/equipment.lst and list/stackable.lst have zero ID overlap, whereas
+// box tags ([avatar], [equipment], [creature], [etc], [cera], [stackable]) often
+// mix categories (e.g., dyes/sub-boxes under [equipment]/[avatar], or auras/titles
+// under [etc]). Always trust the PVF index over the box sub-tag when present.
+func classifyAward(aw *BoosterAward, fallbackKind string, eqPaths, stkPaths map[uint32]string, classifyEquip func(uint32) boosterEquipMeta) {
+	if _, isEq := eqPaths[aw.Template]; isEq {
+		classifyEquip(aw.Template).applyToAward(aw)
+		return
+	}
+	if _, isStk := stkPaths[aw.Template]; isStk {
+		aw.Kind = ""
+		aw.Durability = 0
+		return
+	}
+	switch fallbackKind {
+	case "a", "c":
+		aw.Kind = fallbackKind
+	case "e":
+		classifyEquip(aw.Template).applyToAward(aw)
+	}
+}
+
+func parseBoosterSelection(cells []pvf.Token, eqPaths, stkPaths map[uint32]string, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
 	selNum := 1
 	if sn := sectionCells(cells, "[booster selection num]"); len(sn) > 0 && sn[0].Type == 0 {
 		selNum = int(sn[0].Value)
@@ -481,7 +508,9 @@ func parseBoosterSelection(cells []pvf.Token, eqPaths map[uint32]string, classif
 					if nums[i+1] > 0 {
 						q = uint32(nums[i+1])
 					}
-					items = append(items, BoosterAward{Template: uint32(nums[i]), Quantity: q, Kind: "a"})
+					aw := BoosterAward{Template: uint32(nums[i]), Quantity: q}
+					classifyAward(&aw, "a", eqPaths, stkPaths, classifyEquip)
+					items = append(items, aw)
 				}
 			}
 		}
@@ -501,9 +530,8 @@ func parseBoosterSelection(cells []pvf.Token, eqPaths map[uint32]string, classif
 					if nums[i+1] > 0 {
 						q = uint32(nums[i+1])
 					}
-					em := classifyEquip(tpl)
 					aw := BoosterAward{Template: tpl, Quantity: q}
-					em.applyToAward(&aw)
+					classifyAward(&aw, "e", eqPaths, stkPaths, classifyEquip)
 					items = append(items, aw)
 				}
 			}
@@ -522,10 +550,7 @@ func parseBoosterSelection(cells []pvf.Token, eqPaths map[uint32]string, classif
 							q = uint32(nums[i+1])
 						}
 						aw := BoosterAward{Template: tpl, Quantity: q}
-						if _, isEq := eqPaths[tpl]; isEq {
-							em := classifyEquip(tpl)
-							em.applyToAward(&aw)
-						}
+						classifyAward(&aw, "", eqPaths, stkPaths, classifyEquip)
 						items = append(items, aw)
 					}
 				}
@@ -544,7 +569,9 @@ func parseBoosterSelection(cells []pvf.Token, eqPaths map[uint32]string, classif
 					if nums[i+1] > 0 {
 						q = uint32(nums[i+1])
 					}
-					items = append(items, BoosterAward{Template: uint32(nums[i]), Quantity: q, Kind: "c"})
+					aw := BoosterAward{Template: uint32(nums[i]), Quantity: q}
+					classifyAward(&aw, "c", eqPaths, stkPaths, classifyEquip)
+					items = append(items, aw)
 				}
 			}
 		}
@@ -555,7 +582,7 @@ func parseBoosterSelection(cells []pvf.Token, eqPaths map[uint32]string, classif
 	return BoosterBox{Mode: "sel", SelectNum: selNum, Categories: cats}
 }
 
-func parseBoosterInfo(cells []pvf.Token, eqPaths map[uint32]string, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
+func parseBoosterInfo(cells []pvf.Token, eqPaths, stkPaths map[uint32]string, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
 	blocks := extractSubBlocks(cells, "[booster info]")
 	if len(blocks) == 0 {
 		return BoosterBox{}
@@ -599,27 +626,16 @@ func parseBoosterInfo(cells []pvf.Token, eqPaths map[uint32]string, classifyEqui
 						Quantity: uint32(qty),
 						Weight:   uint32(weight),
 					}
+					fallback := ""
 					switch tag {
 					case "[avatar]":
-						aw.Kind = "a"
+						fallback = "a"
 					case "[equipment]":
-						em := classifyEquip(aw.Template)
-						em.applyToAward(&aw)
+						fallback = "e"
 					case "[creature]":
-						em := classifyEquip(aw.Template)
-						if em.isArtifact {
-							aw.Kind = "ca"
-						} else {
-							aw.Kind = "c"
-						}
-					default:
-						// Many US100 [booster info] boxes place titles, weapons, armors,
-						// avatars, talismans, insignias, or creatures under [etc]/[cera].
-						if _, isEq := eqPaths[aw.Template]; isEq {
-							em := classifyEquip(aw.Template)
-							em.applyToAward(&aw)
-						}
+						fallback = "c"
 					}
+					classifyAward(&aw, fallback, eqPaths, stkPaths, classifyEquip)
 					entries = append(entries, aw)
 				}
 				if len(entries) > 0 {
@@ -633,7 +649,7 @@ func parseBoosterInfo(cells []pvf.Token, eqPaths map[uint32]string, classifyEqui
 	return BoosterBox{Mode: "bst", Groups: groups}
 }
 
-func parsePackageData(cells []pvf.Token, eqPaths map[uint32]string, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
+func parsePackageData(cells []pvf.Token, eqPaths, stkPaths map[uint32]string, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
 	blocks := extractSubBlocks(cells, "[package data]")
 	if len(blocks) == 0 {
 		return BoosterBox{}
@@ -652,10 +668,7 @@ func parsePackageData(cells []pvf.Token, eqPaths map[uint32]string, classifyEqui
 			}
 			id := uint32(tpl)
 			aw := BoosterAward{Template: id, Quantity: uint32(qty), Weight: 1000}
-			if _, isEq := eqPaths[id]; isEq {
-				em := classifyEquip(id)
-				em.applyToAward(&aw)
-			}
+			classifyAward(&aw, "", eqPaths, stkPaths, classifyEquip)
 			groups = append(groups, []BoosterAward{aw})
 		}
 	}

@@ -109,20 +109,20 @@ func registerInventoryLookups(bc *catalog.BoosterCatalog, eq *inventory.Equipmen
 			return eggs[id]
 		})
 	}
-	ordEq := map[uint32]bool{}
+	ordEq := map[uint32]uint16{}
 	if bc != nil {
 		for _, box := range bc.Boxes {
 			for _, grp := range box.Groups {
 				for _, aw := range grp {
 					if aw.Kind == "e" {
-						ordEq[aw.Template] = true
+						ordEq[aw.Template] = aw.Durability
 					}
 				}
 			}
 			for _, items := range box.Categories {
 				for _, aw := range items {
 					if aw.Kind == "e" {
-						ordEq[aw.Template] = true
+						ordEq[aw.Template] = aw.Durability
 					}
 				}
 			}
@@ -133,7 +133,19 @@ func registerInventoryLookups(bc *catalog.BoosterCatalog, eq *inventory.Equipmen
 			if eq != nil && eq.Has(id) {
 				return true
 			}
-			return ordEq[id]
+			if _, ok := ordEq[id]; ok {
+				return true
+			}
+			return inventory.IsOrdinaryEquipmentTemplate(id)
+		})
+		inventory.RegisterOrdinaryEquipmentDurabilityLookup(func(id uint32) (uint16, bool) {
+			if eq != nil {
+				if d, err := eq.Reward(id); err == nil {
+					return d, true
+				}
+			}
+			d, ok := ordEq[id]
+			return d, ok
 		})
 	}
 }
