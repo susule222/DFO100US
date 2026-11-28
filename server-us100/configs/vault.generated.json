@@ -1,10 +1,26 @@
 {
   "source_sha256": "fda6c33f2a155124a4262f3e7cd6f7a18d4e2191e5f147aec5754716afe5aa7c",
   "source": "DFO.exe",
-  "native": "14008e7c0 -> 14ef57670 tier0 capacity; NOTI13 kind2",
+  "native": "0x140057760 -> 0x14a25ca00 17-tier personal vault table; NOTI13 space 2/0x2d/0x0c; NOTI66 subType 1/22",
   "initial_slots": 8,
   "verified_slots": [
-    8
+    8,
+    24,
+    40,
+    56,
+    72,
+    88,
+    104,
+    120,
+    136,
+    152,
+    168,
+    184,
+    200,
+    216,
+    232,
+    248,
+    264
   ],
-  "policy": "Only the lowest native tier is imported. Upgrade and item transfer handlers are not enabled."
+  "policy": "All 17 native personal vault capacity tiers (8..264, step +16) verified from DFO_unpacked.exe 0x140057760."
 }

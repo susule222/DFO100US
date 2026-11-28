@@ -997,7 +997,7 @@ func main() {
 		var equipmentState equipmentSession
 		var disjointState disjointSession
 		if worldService != nil {
-			worldState = &worldSession{service: worldService, account: developmentAccount, flags: townPolicy.Flags, dungeons: dungeonCatalog, tutorials: tutorialRoutes, tutorialDungeons: tutorialDungeons, professions: characters.Catalog, fatigue: fatigueService, characters: characters, quests: questService, progression: progressionService, loot: lootService, soloPartyBootstrap: *soloPartyBootstrap, channelCtx: channelCtx, gateSet: gateSet, eventsPath: eventsPath}
+			worldState = &worldSession{service: worldService, account: developmentAccount, flags: townPolicy.Flags, dungeons: dungeonCatalog, tutorials: tutorialRoutes, tutorialDungeons: tutorialDungeons, professions: characters.Catalog, fatigue: fatigueService, characters: characters, vaults: vaultService, quests: questService, progression: progressionService, loot: lootService, soloPartyBootstrap: *soloPartyBootstrap, channelCtx: channelCtx, gateSet: gateSet, eventsPath: eventsPath}
 		}
 		var writeMu sync.Mutex
 		sendPayloadRaw := func(kind byte, id uint16, payload []byte) error {
@@ -1262,6 +1262,48 @@ func main() {
 					}
 					continue
 				}
+				if frame.Type == 1 && frame.ID == protocol.CmdNPCShopBuybackList {
+					continue
+				}
+				if frame.Type == 1 && frame.ID == protocol.CmdNPCShopLimits {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					plan, npcID, err := worldState.handleNPCShopLimits(plaintext, time.Now())
+					if err != nil {
+						event(map[string]any{"kind": "npc_shop_limits_refused", "character_id": selectedCharacterID, "reason": err.Error()})
+						continue
+					}
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID, "npc_id": npcID})
+					}
+					continue
+				}
+				if frame.Type == 1 && frame.ID == protocol.CmdNPCShopBuy {
+					if !verified || !bootstrapped || characters == nil || worldState == nil || lootService == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
+						continue
+					}
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					plan, code, err := worldState.handleNPCShopBuy(ctx, wearService, frame.Raw, plaintext, time.Now())
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "npc_shop_buy_refused", "character_id": selectedCharacterID, "code": code, "reason": err.Error()})
+						if sendPayload(1, protocol.CmdNPCShopBuy, protocol.NPCShopBuyRefused(code)) != nil {
+							return
+						}
+						continue
+					}
+					for _, p := range plan {
+						if sendPayload(p.Kind, p.ID, p.Payload) != nil {
+							return
+						}
+						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
+					}
+					continue
+				}
 				if frame.Type == 1 && (frame.ID == protocol.CmdEventAction || frame.ID == protocol.CmdEventQuery) {
 					if !verified || !bootstrapped || characters == nil || worldState == nil || lootService == nil || selectedCharacterID == 0 || worldState.role.ID != selectedCharacterID || worldState.role.AccountID != developmentAccount {
 						continue
@@ -1464,6 +1506,28 @@ func main() {
 						}
 						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID})
 					}
+					continue
+				}
+				if frame.Type == 1 && (frame.ID == protocol.CmdOpenAccountVault || frame.ID == protocol.CmdUpgradeAccountVault) && bootstrapped && verified && characters != nil && vaultService != nil && worldState != nil && worldState.role.ID == selectedCharacterID {
+					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+					av, err := vaultService.UpgradeAccount(ctx, developmentAccount, 0)
+					cancel()
+					if err != nil {
+						event(map[string]any{"kind": "account_vault_upgrade_refused", "id": frame.ID, "character_id": selectedCharacterID, "reason": err.Error()})
+						if sendPayload(1, frame.ID, protocol.Refusal(15)) != nil {
+							return
+						}
+						continue
+					}
+					if avPayload, encErr := protocol.EmptyAccountVault(av.Slots, av.Gold); encErr == nil {
+						if sendPayload(0, 13, avPayload) != nil {
+							return
+						}
+					}
+					if sendPayload(1, frame.ID, protocol.AccountVaultAckSuccess()) != nil {
+						return
+					}
+					event(map[string]any{"kind": "account_vault_upgraded", "id": frame.ID, "character_id": selectedCharacterID, "slots": av.Slots})
 					continue
 				}
 				if frame.Type != 1 {
@@ -1713,6 +1777,25 @@ func main() {
 							return
 						}
 						event(map[string]any{"kind": "inventory_expanded", "id": 66, "character_id": selectedCharacterID, "expanded_slots": bag.ExpandedSlots})
+					}
+					if vaultService != nil {
+						for _, l := range lines {
+							if vkind, vtarget, ok := vaultUpgradeTarget(l.Template); ok {
+								vctx, vcancel := context.WithTimeout(context.Background(), 5*time.Second)
+								vpkts, verr := applyVaultUpgrade(vctx, vaultService, developmentAccount, latest, vkind, vtarget, applied)
+								vcancel()
+								if verr != nil {
+									event(map[string]any{"kind": "shop_vault_upgrade_error", "product": l.Product, "template": l.Template, "reason": verr.Error()})
+									continue
+								}
+								for _, vp := range vpkts {
+									if sendPayload(vp.Kind, vp.ID, vp.Payload) != nil {
+										return
+									}
+									event(map[string]any{"kind": vp.Name, "id": vp.ID, "character_id": selectedCharacterID, "product": l.Product, "template": l.Template})
+								}
+							}
+						}
 					}
 					changed := map[byte]bool{}
 					for _, l := range lines {
@@ -2434,9 +2517,11 @@ func main() {
 					var statProbe []byte
 					var statResend []byte
 					var vaultPayload []byte
+					var vault2Payload []byte
+					var accountVaultPayload []byte
 					if vaultService != nil {
 						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-						vaultPayload, e = vaultService.Bootstrap(ctx, role)
+						vaultPayload, vault2Payload, accountVaultPayload, e = vaultService.BootstrapAll(ctx, role)
 						cancel()
 						if e != nil {
 							event(map[string]any{"kind": "vault_entry_rejected", "error": e.Error()})
@@ -2595,7 +2680,7 @@ func main() {
 							continue
 						}
 					}
-					plan := entryPayloads{Select: payload, Basic: basic, Addition: addition, Stat: statProbe, StatResend: statResend, Vault: vaultPayload, UserArea: userArea, Area: areaPayload, Fatigue: fatiguePayload, AccountOptions: accountOptionsPayload}
+					plan := entryPayloads{Select: payload, Basic: basic, Addition: addition, Stat: statProbe, StatResend: statResend, Vault: vaultPayload, Vault2: vault2Payload, AccountVault: accountVaultPayload, UserArea: userArea, Area: areaPayload, Fatigue: fatiguePayload, AccountOptions: accountOptionsPayload}
 					if characters != nil {
 						ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 						migratedRole, accountMats, matErr := inventory.MigrateBagCubes(ctx, characters.Store, role)

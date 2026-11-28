@@ -30,6 +30,7 @@ type worldSession struct {
 	inTutorial         bool
 	fatigue            *character.FatigueService
 	characters         *character.Service
+	vaults             *inventory.VaultService
 	quests             *quest.Service
 	progression        *character.ProgressionService
 	loot               *loot.Service

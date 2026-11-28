@@ -81,6 +81,91 @@ func inventoryExpandTarget(template uint32) (uint16, bool) {
 	return 0, false
 }
 
+const (
+	vaultUpgradeSafe1   byte = 1 // Personal Safe I (space 0x02, NOTI 66 subType 1)
+	vaultUpgradeSafe2   byte = 2 // Personal Safe II (space 0x2d, NOTI 66 subType 22)
+	vaultUpgradeAccount byte = 3 // Account Vault (space 0x0c, NOTI 13 space 0x0c)
+)
+
+// vaultUpgradeTarget maps US100 Safe I, Safe II, and Account Vault upgrade
+// templates to (kind, targetSlots, ok). Verified from DFO_unpacked.exe
+// 0x142a3f200..0x142a3f644 (Safe I/II) and PVF etc/accountcargo.etc.
+// targetSlots == 0 means "advance by one tier".
+func vaultUpgradeTarget(template uint32) (byte, uint16, bool) {
+	// Personal Safe I cash shop & event kits (8 -> 24 -> 40 -> ... -> 264)
+	switch template {
+	case 50, 110: // safe_upgradekit.stk (prod 3000129), safe_upgradekitsilver.stk
+		return vaultUpgradeSafe1, 24, true
+	case 57, 68: // safe_upgradekit2.stk (prod 3000130), safe_upgradekitgold.stk
+		return vaultUpgradeSafe1, 40, true
+	case 58: // safe_upgradekit3.stk (prod 3000131)
+		return vaultUpgradeSafe1, 56, true
+	case 59: // safe_upgradekit4.stk (prod 3000132)
+		return vaultUpgradeSafe1, 72, true
+	case 60: // safe_upgradekit5.stk (prod 3000133)
+		return vaultUpgradeSafe1, 88, true
+	case 61: // safe_upgradekit6.stk (prod 3000134)
+		return vaultUpgradeSafe1, 104, true
+	case 62: // safe_upgradekit7.stk (prod 3000135)
+		return vaultUpgradeSafe1, 120, true
+	case 2660235: // safe_upgradekit8.stk (prod 3000136)
+		return vaultUpgradeSafe1, 136, true
+	case 2660236: // safe_upgradekit9.stk (prod 3000137)
+		return vaultUpgradeSafe1, 152, true
+	case 10098631: // prod 3001227
+		return vaultUpgradeSafe1, 168, true
+	case 10098632: // prod 3001228
+		return vaultUpgradeSafe1, 184, true
+	case 10098633: // prod 3001229
+		return vaultUpgradeSafe1, 200, true
+	case 10304724: // prod 3001693
+		return vaultUpgradeSafe1, 216, true
+	case 10304725: // prod 3001694
+		return vaultUpgradeSafe1, 232, true
+	case 10304726: // prod 3001695
+		return vaultUpgradeSafe1, 248, true
+	case 10304727: // prod 3001696
+		return vaultUpgradeSafe1, 264, true
+	// Event Safe I next-tier kits ([action type] [upgrade cargo])
+	case 50002236, 50007176, 50020608, 50021124, 50021185, 50021252,
+		50021670, 50021948, 50022587, 50023500, 50023669, 50023851,
+		50024367, 50050400:
+		return vaultUpgradeSafe1, 0, true
+	// Event one-shot max Personal Safe I kits (oneshotvault.stk)
+	case 50040978, 50041642, 590005096, 590005110, 590700258,
+		590701112, 590701708, 590701759, 590703171, 590703312, 590704002:
+		return vaultUpgradeSafe1, inventory.MaxPersonalVaultSlots, true
+	}
+
+	// Personal Safe II (0x142a3f4ab..0x142a3f514: 10333724 unlock, 10333160..10333174 tiers 1..15)
+	if template == 10333724 {
+		return vaultUpgradeSafe2, 8, true
+	}
+	if template >= 10333160 && template <= 10333174 {
+		tier := uint16(template-10333160) + 1
+		return vaultUpgradeSafe2, 8 + tier*16, true
+	}
+
+	// Account Vault (etc/accountcargo.etc: 8..240 in steps of 8)
+	if template == 10000659 {
+		return vaultUpgradeAccount, 8, true
+	}
+	if template >= 10000660 && template <= 10000668 {
+		return vaultUpgradeAccount, 16 + uint16(template-10000660)*8, true
+	}
+	if template >= 10098634 && template <= 10098643 {
+		return vaultUpgradeAccount, 88 + uint16(template-10098634)*8, true
+	}
+	if template >= 10304728 && template <= 10304737 {
+		return vaultUpgradeAccount, 168 + uint16(template-10304728)*8, true
+	}
+	switch template {
+	case 50021125, 50021666, 590703176: // event account vault upgrade tickets
+		return vaultUpgradeAccount, 0, true
+	}
+	return 0, 0, false
+}
+
 func premiumDelivery(src catalog.LootCatalog, r inventory.BagRules) storage.CartDeliver {
 	return func(c storage.Character, lines []storage.CartLine) (json.RawMessage, json.RawMessage, error) {
 		if c.ConfigVersion != "53ed298dbd69f43e28cbe4b3fa09a4c77d02eaf31d579e27e9477663c924fe69" || c.ConfigVersion != src.Source.Checksum || r.Source != c.ConfigVersion {
@@ -103,6 +188,9 @@ func premiumDelivery(src catalog.LootCatalog, r inventory.BagRules) storage.Cart
 			if _, ok := inventoryExpandTarget(l.Template); ok {
 				continue
 			}
+			if _, _, ok := vaultUpgradeTarget(l.Template); ok {
+				continue
+			}
 			qty := l.Quantity
 			if qty == 0 {
 				qty = 1
@@ -117,7 +205,7 @@ func premiumDelivery(src catalog.LootCatalog, r inventory.BagRules) storage.Cart
 				}
 				local.Items[l.Template] = existing
 			} else {
-				local.Items[l.Template] = catalog.LootItem{ID: l.Template, Kind: "stackable", StackableType: "[throw]", StackLimit: limit}
+				local.Items[l.Template] = catalog.LootItem{ID: l.Template, Kind: "stackable", StackableType: stackableSlotType(src, l.Template), StackLimit: limit}
 			}
 		}
 		if total > uint64(b.Gold) {
@@ -136,6 +224,10 @@ func premiumDelivery(src catalog.LootCatalog, r inventory.BagRules) storage.Cart
 					return nil, nil, expErr
 				}
 				del = append(del, map[string]any{"product": l.Product, "template": l.Template, "expanded_slots": nextSlots})
+				continue
+			}
+			if vkind, vtarget, ok := vaultUpgradeTarget(l.Template); ok {
+				del = append(del, map[string]any{"product": l.Product, "template": l.Template, "vault_upgrade_kind": vkind, "vault_target_slots": vtarget})
 				continue
 			}
 			if l.Kind == "avatar" {
