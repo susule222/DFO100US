@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"sync"
 	"time"
 )
@@ -110,12 +111,39 @@ func (w *worldSession) syncGrantedBag(account, id int64, send func(byte, uint16,
 		return err
 	}
 	rows := bag.Rows()
+	presentSpace0 := make(map[uint16]bool, len(rows))
+	for _, r := range rows {
+		presentSpace0[binary.LittleEndian.Uint16(r[:])] = true
+	}
+	for _, old := range prevBag.Items {
+		if !presentSpace0[old.Slot] {
+			rows = append(rows, protocol.EmptySlotItem(old.Slot))
+			presentSpace0[old.Slot] = true
+		}
+	}
+	for _, old := range prevBag.Equipment {
+		if !presentSpace0[old.Slot] {
+			rows = append(rows, protocol.EmptySlotItem(old.Slot))
+			presentSpace0[old.Slot] = true
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return binary.LittleEndian.Uint16(rows[i][:]) < binary.LittleEndian.Uint16(rows[j][:])
+	})
 	payload, err := protocol.US224InventoryUpdate(rows)
 	if err != nil {
 		return err
 	}
 	if err = send(0, 14, payload); err != nil {
 		return err
+	}
+	if danjiPotTotal(bag) != danjiPotTotal(prevBag) || capsuleCoinTotal(bag) != capsuleCoinTotal(prevBag) {
+		if djUpd, djErr := danjiSpaceUpdatePayload(bag); djErr == nil {
+			if err = send(0, 14, djUpd); err != nil {
+				return err
+			}
+			event(map[string]any{"kind": "gm_space2a_update_sent", "character_id": id})
+		}
 	}
 	if len(bag.Avatars) > 0 || len(prevBag.Avatars) > 0 {
 		avatarRows := bag.AvatarRows()
@@ -138,6 +166,81 @@ func (w *worldSession) syncGrantedBag(account, id int64, send func(byte, uint16,
 				return err
 			}
 			event(map[string]any{"kind": "gm_avatar_update_sent", "character_id": id, "rows": len(avatarRows)})
+		}
+	}
+	if len(bag.Creatures) > 0 || len(prevBag.Creatures) > 0 || len(bag.CreatureArtifacts) > 0 || len(prevBag.CreatureArtifacts) > 0 || len(bag.CreatureItems) > 0 || len(prevBag.CreatureItems) > 0 {
+		if entries := bag.CreatureInfoEntries(); len(entries) > 0 {
+			if err = send(0, protocol.NotiCreatureInfo, protocol.CreatureInfoList(entries)); err != nil {
+				return err
+			}
+		}
+		crRows := bag.CreatureRows()
+		present := make(map[uint16]bool, len(crRows))
+		for _, r := range crRows {
+			present[binary.LittleEndian.Uint16(r[:])] = true
+		}
+		for _, old := range prevBag.Creatures {
+			if !present[old.Slot] {
+				crRows = append(crRows, protocol.EmptySlotItem(old.Slot))
+				present[old.Slot] = true
+			}
+		}
+		for _, old := range prevBag.CreatureArtifacts {
+			if !present[old.Slot] {
+				crRows = append(crRows, protocol.EmptySlotItem(old.Slot))
+				present[old.Slot] = true
+			}
+		}
+		for _, old := range prevBag.CreatureItems {
+			if !present[old.Slot] {
+				crRows = append(crRows, protocol.EmptySlotItem(old.Slot))
+				present[old.Slot] = true
+			}
+		}
+		if len(crRows) > 0 {
+			sort.Slice(crRows, func(i, j int) bool {
+				return binary.LittleEndian.Uint16(crRows[i][:]) < binary.LittleEndian.Uint16(crRows[j][:])
+			})
+			cp, cerr := protocol.US224CreatureUpdate(crRows)
+			if cerr != nil {
+				return cerr
+			}
+			if err = send(0, 14, cp); err != nil {
+				return err
+			}
+			event(map[string]any{"kind": "gm_creature_update_sent", "character_id": id, "rows": len(crRows)})
+		}
+	}
+	if len(bag.Insignias) > 0 || len(prevBag.Insignias) > 0 || len(bag.Gems) > 0 || len(prevBag.Gems) > 0 {
+		insRows := bag.InsigniaRows()
+		present := make(map[uint16]bool, len(insRows))
+		for _, r := range insRows {
+			present[binary.LittleEndian.Uint16(r[:])] = true
+		}
+		for _, old := range prevBag.Insignias {
+			if !present[old.Slot] {
+				insRows = append(insRows, protocol.EmptySlotItem(old.Slot))
+				present[old.Slot] = true
+			}
+		}
+		for _, old := range prevBag.Gems {
+			if !present[old.Slot] {
+				insRows = append(insRows, protocol.EmptySlotItem(old.Slot))
+				present[old.Slot] = true
+			}
+		}
+		if len(insRows) > 0 {
+			sort.Slice(insRows, func(i, j int) bool {
+				return binary.LittleEndian.Uint16(insRows[i][:]) < binary.LittleEndian.Uint16(insRows[j][:])
+			})
+			ip, ierr := protocol.US224InsigniaUpdate(insRows)
+			if ierr != nil {
+				return ierr
+			}
+			if err = send(0, 14, ip); err != nil {
+				return err
+			}
+			event(map[string]any{"kind": "gm_insignia_update_sent", "character_id": id, "rows": len(insRows)})
 		}
 	}
 	if len(bag.Talismans) > 0 || len(prevBag.Talismans) > 0 || len(bag.Runes) > 0 || len(prevBag.Runes) > 0 {

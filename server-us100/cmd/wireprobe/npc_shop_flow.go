@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"dfolan/internal/catalog"
+	"dfolan/internal/db100"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/inventory"
 	"dfolan/internal/storage"
@@ -159,7 +160,9 @@ func (w *worldSession) saveNPCShopLimits(scope string, st persistedNPCShopLimits
 	if w == nil || w.characters == nil || w.characters.Store == nil {
 		return nil
 	}
-	return w.characters.Store.Database().Put(npcShopLimitsTable, npcShopLimitKey(scope, w.account, w.role.ID), st)
+	return w.characters.Store.Database().Mutate(func(tx *db100.Tx) error {
+		return tx.Put(npcShopLimitsTable, npcShopLimitKey(scope, w.account, w.role.ID), st)
+	})
 }
 
 func (st *persistedNPCShopLimits) currentCount(template uint32, period, dayKey, weekKey string) uint32 {

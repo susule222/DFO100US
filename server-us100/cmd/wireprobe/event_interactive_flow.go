@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/rand"
+	"dfolan/internal/db100"
 	"dfolan/internal/events"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/inventory"
@@ -557,7 +558,9 @@ func (w *worldSession) saveEventUIState(st persistedEventUIState) error {
 	if w == nil || w.characters == nil || w.characters.Store == nil || w.account == 0 {
 		return nil
 	}
-	return w.characters.Store.Database().Put(eventUIStateTable, eventUIStateKey(w.account), st)
+	return w.characters.Store.Database().Mutate(func(tx *db100.Tx) error {
+		return tx.Put(eventUIStateTable, eventUIStateKey(w.account), st)
+	})
 }
 
 func ev388MissionRows(st persistedEventUIState) []protocol.Ev388MissionRow {
@@ -1793,6 +1796,8 @@ func (w *worldSession) handleEventGiftCommand(ctx context.Context, plaintext []b
 	}
 }
 
+var errInsufficientEventMaterial = fmt.Errorf("insufficient event material")
+
 func (w *worldSession) consumeBagMaterial(ctx context.Context, key, model string, template, need uint32) ([]outboundPacket, bool, error) {
 	if need == 0 {
 		return nil, true, nil
@@ -1811,7 +1816,10 @@ func (w *worldSession) consumeBagMaterial(ctx context.Context, key, model string
 			}
 		}
 		if total < need {
-			return current.State, json.RawMessage(`{"ok":false}`), nil
+			// Return an error so CommitCharacterEvent rolls back cleanly without
+			// burning the idempotency key in character_events (critical when
+			// trying primary then fallback coin templates or retrying after earning coins).
+			return nil, nil, errInsufficientEventMaterial
 		}
 		rem := need
 		kept := b.Items[:0]
@@ -1839,6 +1847,9 @@ func (w *worldSession) consumeBagMaterial(ctx context.Context, key, model string
 		return updated, receipt, err
 	})
 	if err != nil {
+		if err == errInsufficientEventMaterial {
+			return nil, false, nil
+		}
 		return nil, false, err
 	}
 	if !consumed {

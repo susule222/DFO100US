@@ -28,7 +28,13 @@ func appendActorWornUS224(p []byte, worn []ActorWornUS224) ([]byte, error) {
 		}
 		used[w.Slot] = true
 		p = append(p, byte(w.Slot))
-		p = add32(add32(p, w.Template), 0) // template, item data
+		var itemData uint32
+		if w.Slot == 26 {
+			// 0x14391b3fb decodes itemData (+0x06) into [ItemData+0x00], which
+			// CreatureRender (0x14400b150 -> 0x14391dc70) looks up in NOTI 105 CreatureMap.
+			itemData = w.CreatureID
+		}
+		p = add32(add32(p, w.Template), itemData) // template, item data
 		p = add16(append(p, w.Upgrade), w.Durability)
 		p = append(p, 0, 0)                // flags
 		p = append(p, make([]byte, 10)...) // ten one-byte item details

@@ -44,6 +44,9 @@ func TestActorWornUS224EntryEquipmentAndSuffix(t *testing.T) {
 		case v.Avatar:
 			i += 107
 		case v.Slot == 26:
+			if gotItemData := binary.LittleEndian.Uint32(p[i+5 : i+9]); gotItemData != v.CreatureID {
+				t.Fatalf("slot 26 itemData: got %d, want %d", gotItemData, v.CreatureID)
+			}
 			if gotID := binary.LittleEndian.Uint32(p[i+36 : i+40]); gotID != v.CreatureID || p[i+40] != 0 {
 				t.Fatalf("slot 26 creature block: got id=%d flag=%d, want id=%d flag=0", gotID, p[i+40], v.CreatureID)
 			}

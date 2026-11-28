@@ -34,6 +34,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -1059,23 +1060,34 @@ func main() {
 			worldState = &worldSession{service: worldService, account: developmentAccount, flags: townPolicy.Flags, dungeons: dungeonCatalog, tutorials: tutorialRoutes, tutorialDungeons: tutorialDungeons, professions: characters.Catalog, fatigue: fatigueService, characters: characters, vaults: vaultService, quests: questService, progression: progressionService, loot: lootService, soloPartyBootstrap: *soloPartyBootstrap, channelCtx: channelCtx, gateSet: gateSet, eventsPath: eventsPath}
 		}
 		var writeMu sync.Mutex
+		writeRawLocked := func(raw []byte) error {
+			writeMu.Lock()
+			defer writeMu.Unlock()
+			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			_, err := io.Copy(c, bytes.NewReader(raw))
+			return err
+		}
+		writeBatchLocked := func(prepared []preparedPacket, sent func(preparedPacket)) error {
+			writeMu.Lock()
+			defer writeMu.Unlock()
+			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
+			return writePackets(c, prepared, sent)
+		}
 		sendPayloadRaw := func(kind byte, id uint16, payload []byte) error {
 			prepared, e := preparePackets(keys, []outboundPacket{{"response", kind, id, payload}})
 			if e != nil {
 				event(map[string]any{"kind": "response_encode_error", "peer": peer, "error": e.Error()})
 				return e
 			}
-			writeMu.Lock()
-			defer writeMu.Unlock()
-			c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-			e = writePackets(c, prepared, nil)
+			e = writeBatchLocked(prepared, nil)
 			if e != nil {
 				event(map[string]any{"kind": "response_write_error", "peer": peer, "error": e.Error()})
 			}
 			return e
 		}
 		var pluginSessionID uint64
-		sessionSnap := func() pluginhost.SessionSnapshot {
+		var cachedSnap atomic.Value
+		buildSessionSnap := func() pluginhost.SessionSnapshot {
 			snap := pluginhost.SessionSnapshot{
 				SessionID:    pluginSessionID,
 				ServerID:     serverID,
@@ -1098,9 +1110,29 @@ func main() {
 			}
 			return snap
 		}
+		publishSnap := func() pluginhost.SessionSnapshot {
+			snap := buildSessionSnap()
+			cachedSnap.Store(snap)
+			return snap
+		}
+		// sessionSnap is safe for concurrent calls from plugin tick goroutines
+		// because it reads the atomically published value copy.
+		sessionSnap := func() pluginhost.SessionSnapshot {
+			if v, ok := cachedSnap.Load().(pluginhost.SessionSnapshot); ok {
+				return v
+			}
+			return pluginhost.SessionSnapshot{
+				SessionID:   pluginSessionID,
+				ServerID:    serverID,
+				ChannelID:   chID,
+				AccountID:   developmentAccount,
+				PeerAddr:    peer,
+				ChannelName: chName,
+			}
+		}
 		sendPayload := func(kind byte, id uint16, payload []byte) error {
 			if pluginHost != nil && pluginHost.HasServerPacketHooks() {
-				verdict := pluginHost.OnServerPacket(sessionSnap(), pluginhost.PacketView{
+				verdict := pluginHost.OnServerPacket(publishSnap(), pluginhost.PacketView{
 					PacketID: id,
 					Kind:     kind,
 					Verified: true,
@@ -1113,13 +1145,15 @@ func main() {
 			}
 			return sendPayloadRaw(kind, id, payload)
 		}
+		publishSnap()
 		if pluginBackend != nil && pluginHost != nil {
 			pluginSessionID = pluginBackend.register(sendPayloadRaw, sessionSnap)
+			publishSnap()
 			defer func() {
-				pluginHost.OnSessionClose(sessionSnap())
+				pluginHost.OnSessionClose(publishSnap())
 				pluginBackend.unregister(pluginSessionID)
 			}()
-			pluginHost.OnSessionOpen(sessionSnap())
+			pluginHost.OnSessionOpen(publishSnap())
 		}
 		event(map[string]any{"kind": "accept", "peer": peer, "server_id": serverID, "channel_id": chID, "channel_name": chName, "local": c.LocalAddr().String()})
 		if *injectWatch != "" {
@@ -1128,8 +1162,7 @@ func main() {
 			injectSender.Store(sendPayload)
 			event(map[string]any{"kind": "inject_watch_ready", "path": *injectWatch})
 		}
-		c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-		if _, err := io.Copy(c, bytes.NewReader(chRaw)); err != nil {
+		if err := writeRawLocked(chRaw); err != nil {
 			event(map[string]any{"kind": "write_error", "error": err.Error()})
 			return
 		}
@@ -1144,6 +1177,7 @@ func main() {
 				input = gmReadFrames(c, stop)
 			}
 			for {
+				publishSnap()
 				var frame wire.Frame
 				var err error
 				if input == nil {
@@ -1231,7 +1265,7 @@ func main() {
 					}
 				}
 				if pluginHost != nil && pluginHost.HasClientPacketHooks() {
-					verdict := pluginHost.OnClientPacket(sessionSnap(), pluginhost.PacketView{
+					verdict := pluginHost.OnClientPacket(publishSnap(), pluginhost.PacketView{
 						PacketID: frame.ID,
 						Kind:     frame.Type,
 						Verified: verified,
@@ -1519,7 +1553,7 @@ func main() {
 						event(map[string]any{"kind": "equipment_encode_error", "error": e.Error()})
 						return
 					}
-					if e = writePackets(c, prepared, func(p preparedPacket) {
+					if e = writeBatchLocked(prepared, func(p preparedPacket) {
 						event(map[string]any{"kind": p.Name, "character_id": worldState.role.ID, "id": p.ID, "plain_hex": hex.EncodeToString(p.Payload)})
 					}); e != nil {
 						event(map[string]any{"kind": "equipment_write_error", "error": e.Error()})
@@ -1545,7 +1579,7 @@ func main() {
 						event(map[string]any{"kind": "disjoint_encode_error", "error": e.Error()})
 						return
 					}
-					if e = writePackets(c, prepared, func(p preparedPacket) {
+					if e = writeBatchLocked(prepared, func(p preparedPacket) {
 						event(map[string]any{"kind": p.Name, "character_id": worldState.role.ID, "id": p.ID, "plain_hex": hex.EncodeToString(p.Payload)})
 					}); e != nil {
 						event(map[string]any{"kind": "disjoint_write_error", "error": e.Error()})
@@ -2359,8 +2393,7 @@ func main() {
 						event(map[string]any{"kind": "dungeon_encode_error", "error": e.Error()})
 						continue
 					}
-					c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-					if e = writePackets(c, prepared, func(p preparedPacket) {
+					if e = writeBatchLocked(prepared, func(p preparedPacket) {
 						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID, "plain_hex": hex.EncodeToString(p.Payload)})
 					}); e != nil {
 						event(map[string]any{"kind": "dungeon_write_error", "error": e.Error()})
@@ -2483,8 +2516,7 @@ func main() {
 						// transport and restore from storage on reconnect.
 						return
 					}
-					c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-					if e = writePackets(c, prepared, func(p preparedPacket) {
+					if e = writeBatchLocked(prepared, func(p preparedPacket) {
 						event(map[string]any{"kind": p.Name, "id": p.ID, "character_id": selectedCharacterID, "plain_hex": hex.EncodeToString(p.Payload)})
 					}); e != nil {
 						return
@@ -2616,7 +2648,7 @@ func main() {
 						event(map[string]any{"kind": "quest_submit_encode_error", "error": e.Error()})
 						return
 					}
-					if e = writePackets(c, prepared, func(p preparedPacket) {
+					if e = writeBatchLocked(prepared, func(p preparedPacket) {
 						event(map[string]any{"kind": p.Name, "character_id": worldState.role.ID, "quest": r.ID})
 					}); e != nil {
 						event(map[string]any{"kind": "quest_submit_write_error", "quest": r.ID, "error": e.Error()})
@@ -3166,8 +3198,7 @@ func main() {
 						continue
 					}
 					event(map[string]any{"kind": "entry_preflight_passed", "character_id": role.ID, "frame_count": len(prepared)})
-					c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-					e = writePackets(c, prepared, func(p preparedPacket) {
+					e = writeBatchLocked(prepared, func(p preparedPacket) {
 						entry := map[string]any{"kind": p.Name, "character_id": role.ID, "actor_server_id": role.WireID, "type": p.Kind, "id": p.ID, "plain_bytes": len(p.Payload), "client_acceptance": "pending"}
 						// Layout recovery replays these payloads through
 						// -inject-watch, which needs the exact bytes.
@@ -3199,7 +3230,7 @@ func main() {
 					}
 					selectedBasic, selectedAddition = basic, addition
 					if pluginHost != nil {
-						pluginHost.OnCharacterEnter(sessionSnap())
+						pluginHost.OnCharacterEnter(publishSnap())
 					}
 					continue
 				}
@@ -3257,8 +3288,7 @@ func main() {
 					if e != nil {
 						return
 					}
-					c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-					if _, e = io.Copy(c, bytes.NewReader(response)); e != nil {
+					if e = writeRawLocked(response); e != nil {
 						return
 					}
 					// Log every reply shape: the KR client's request ids differ from the
@@ -3357,6 +3387,7 @@ func main() {
 						if *noRoster {
 							// Development knob: leave the GET_USERINFO reply out so a
 							// roster injected under another id can be examined alone.
+							cancel()
 							event(map[string]any{"kind": "roster_suppressed", "id": frame.ID})
 							continue
 						}
@@ -3405,8 +3436,7 @@ func main() {
 					if err != nil {
 						return
 					}
-					c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-					if _, err = io.Copy(c, bytes.NewReader(response)); err != nil {
+					if err = writeRawLocked(response); err != nil {
 						return
 					}
 					event(map[string]any{"kind": "character_response", "id": id, "bytes": len(response), "payload": len(payload), "roster_pad": protocol.RosterRowPad, "hex": hex.EncodeToString(response)})
@@ -3418,8 +3448,7 @@ func main() {
 						go func(resp []byte, rid uint16) {
 							for i := 0; i < *rosterRepeat; i++ {
 								time.Sleep(time.Duration(*rosterRepeatDelayMS) * time.Millisecond)
-								c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-								if _, werr := io.Copy(c, bytes.NewReader(resp)); werr != nil {
+								if werr := writeRawLocked(resp); werr != nil {
 									return
 								}
 								event(map[string]any{"kind": "roster_repeat", "n": i + 1, "id": rid, "bytes": len(resp)})
@@ -3443,8 +3472,7 @@ func main() {
 						if e != nil {
 							return
 						}
-						c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-						if _, e = io.Copy(c, bytes.NewReader(notification)); e != nil {
+						if e = writeRawLocked(notification); e != nil {
 							return
 						}
 						event(map[string]any{"kind": "character_list_after_mutation", "request": frame.ID, "id": 2, "bytes": len(notification)})
@@ -3452,8 +3480,7 @@ func main() {
 					continue
 				}
 				if response, ok := responses[frame.ID]; ok {
-					c.SetWriteDeadline(time.Now().Add(5 * time.Second))
-					if _, err := io.Copy(c, bytes.NewReader(response)); err != nil {
+					if err := writeRawLocked(response); err != nil {
 						event(map[string]any{"kind": "write_error", "error": err.Error()})
 						return
 					}

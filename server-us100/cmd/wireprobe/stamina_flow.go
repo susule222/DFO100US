@@ -64,22 +64,21 @@ func (w *worldSession) handleRecoverStamina(ctx context.Context, rawFrame []byte
 	if w == nil || w.characters == nil || w.characters.Store == nil || w.role.ID == 0 {
 		return nil, protocol.StaminaRecoveryErrCannotRecover, fmt.Errorf("world session not ready for stamina recovery")
 	}
-	level := characterLevelFromState(w.role.State)
-	if level < 1 {
-		level = 1
-	}
-	curStamina, persisted := readCharacterStamina(w.role.State)
-	var cost uint32
-	if !persisted || curStamina < 100 {
-		cost = protocol.StaminaRecoveryCost(uint32(level), uint32(curStamina))
-	}
-
 	eventKey := fmt.Sprintf("recover_stamina/%d/%x", w.role.ID, sha256.Sum256(rawFrame))
 	var (
 		refuseCode uint16
 		afterGold  uint32
 	)
 	saved, _, err := w.characters.Store.CommitCharacterEvent(ctx, w.account, w.role.ID, w.role.ConfigVersion, eventKey, "us100-recover-stamina-v1", func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
+		level := characterLevelFromState(current.State)
+		if level < 1 {
+			level = 1
+		}
+		curStamina, persisted := readCharacterStamina(current.State)
+		var cost uint32
+		if !persisted || curStamina < 100 {
+			cost = protocol.StaminaRecoveryCost(uint32(level), uint32(curStamina))
+		}
 		bag, err := inventory.ReadBag(current.State)
 		if err != nil {
 			refuseCode = protocol.StaminaRecoveryErrCannotRecover

@@ -363,13 +363,54 @@ func (w *worldSession) grantActivityReward(ctx context.Context, eventKey, model 
 				bag.Gold = uint32(nextGold)
 			}
 			if template > 0 && amount > 0 {
-				local := catalog.LootCatalog{
-					Source: w.loot.Catalog.Source,
-					Items: map[uint32]catalog.LootItem{
-						template: localCatalogEntry(w.loot.Catalog, template, amount),
-					},
+				switch {
+				case inventory.IsAvatarTemplate(template):
+					ids := make([]uint32, amount)
+					for i := range ids {
+						ids[i] = template
+					}
+					bag, _, err = bag.AddAvatars(ids)
+				case inventory.IsCreatureTemplate(template):
+					ids := make([]uint32, amount)
+					for i := range ids {
+						ids[i] = template
+					}
+					bag, _, err = bag.AddCreatures(ids)
+				case inventory.IsCreatureArtifactTemplate(template):
+					ids := make([]uint32, amount)
+					for i := range ids {
+						ids[i] = template
+					}
+					bag, _, err = bag.AddCreatureArtifacts(ids)
+				case inventory.IsCreatureStackableTemplate(template):
+					bag, _, err = bag.AddCreatureItems(template, amount)
+				case inventory.IsInsigniaTemplate(template):
+					ids := make([]uint32, amount)
+					for i := range ids {
+						ids[i] = template
+					}
+					bag, _, err = bag.AddInsignias(ids)
+				case inventory.IsFlagGemTemplate(template):
+					bag, _, err = bag.AddGems(template, amount)
+				case inventory.IsTalismanTemplate(template):
+					ids := make([]uint32, amount)
+					for i := range ids {
+						ids[i] = template
+					}
+					bag, _, err = bag.AddTalismans(ids)
+				case inventory.IsRuneTemplate(template):
+					bag, _, err = bag.AddRunes(template, amount)
+				case inventory.IsKnownOrdinaryEquipment(template):
+					bag, _, err = bag.AddRawEquipment(w.loot.BagRules.EquipmentSlots, template, inventory.OrdinaryEquipmentDurability(template), amount)
+				default:
+					local := catalog.LootCatalog{
+						Source: w.loot.Catalog.Source,
+						Items: map[uint32]catalog.LootItem{
+							template: localCatalogEntry(w.loot.Catalog, template, amount),
+						},
+					}
+					bag, _, err = bag.Add(local, w.loot.BagRules, template, amount)
 				}
-				bag, _, err = bag.Add(local, w.loot.BagRules, template, amount)
 				if err != nil {
 					return nil, nil, err
 				}
@@ -394,6 +435,36 @@ func (w *worldSession) grantActivityReward(ctx context.Context, eventKey, model 
 		if bag, err := inventory.ReadBag(saved.State); err == nil {
 			if upd, err := protocol.US224InventoryUpdate(bag.Rows()); err == nil {
 				out = append(out, outboundPacket{"activity_reward_inventory", 0, 14, upd})
+			}
+			if template > 0 && amount > 0 {
+				if isAccountEventSpace2AItem(template) {
+					if djUpd, djErr := danjiSpaceUpdatePayload(bag); djErr == nil {
+						out = append(out, outboundPacket{"activity_reward_space2a", 0, 14, djUpd})
+					}
+				}
+				if inventory.IsAvatarTemplate(template) {
+					if avInv, aerr := protocol.US224AvatarRestore(inventory.AvatarBagCapacity, bag.AvatarRows()); aerr == nil {
+						out = append(out, outboundPacket{"activity_reward_avatars", 0, 13, avInv})
+					}
+				}
+				if inventory.IsCreatureTemplate(template) || inventory.IsCreatureArtifactTemplate(template) || inventory.IsCreatureStackableTemplate(template) {
+					if entries := bag.CreatureInfoEntries(); len(entries) > 0 {
+						out = append(out, outboundPacket{"activity_reward_creature_info", 0, protocol.NotiCreatureInfo, protocol.CreatureInfoList(entries)})
+					}
+					if crInv, cerr := protocol.US224CreatureRestore(bag.CreatureRows()); cerr == nil {
+						out = append(out, outboundPacket{"activity_reward_creatures", 0, 13, crInv})
+					}
+				}
+				if inventory.IsInsigniaTemplate(template) || inventory.IsFlagGemTemplate(template) {
+					if insInv, ierr := protocol.US224InsigniaRestore(bag.InsigniaRows()); ierr == nil {
+						out = append(out, outboundPacket{"activity_reward_insignias", 0, 13, insInv})
+					}
+				}
+				if inventory.IsTalismanTemplate(template) || inventory.IsRuneTemplate(template) {
+					if talInv, terr := protocol.US224TalismanRestore(bag.TalismanRows()); terr == nil {
+						out = append(out, outboundPacket{"activity_reward_talismans", 0, 13, talInv})
+					}
+				}
 			}
 		}
 	}
