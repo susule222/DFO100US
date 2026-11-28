@@ -1331,7 +1331,7 @@ func main() {
 						continue
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					saved, plan, space, err := sortInventory(ctx, characters.Store, developmentAccount, worldState.role, frame.Raw, plaintext)
+					saved, plan, space, err := sortInventoryWithVaults(ctx, characters.Store, vaultService, developmentAccount, worldState.role, frame.Raw, plaintext)
 					cancel()
 					if err != nil {
 						event(map[string]any{"kind": "sort_items_refused", "character_id": selectedCharacterID, "space": space, "reason": err.Error()})
@@ -1354,7 +1354,7 @@ func main() {
 						continue
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					saved, plan, err := setSortLock(ctx, characters.Store, developmentAccount, worldState.role, frame.Raw, plaintext, frame.ID == protocol.CmdSortLock)
+					saved, plan, err := setSortLockWithVaults(ctx, characters.Store, vaultService, developmentAccount, worldState.role, frame.Raw, plaintext, frame.ID == protocol.CmdSortLock)
 					cancel()
 					if err != nil {
 						event(map[string]any{"kind": "sort_lock_refused", "id": frame.ID, "character_id": selectedCharacterID, "reason": err.Error()})
@@ -1377,7 +1377,7 @@ func main() {
 						continue
 					}
 					ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-					saved, plan, err := handleItemLockCommand(ctx, characters.Store, developmentAccount, worldState.role, frame.ID, frame.Raw, plaintext)
+					saved, plan, err := handleItemLockWithVaults(ctx, characters.Store, vaultService, developmentAccount, worldState.role, frame.ID, frame.Raw, plaintext)
 					cancel()
 					if err != nil {
 						event(map[string]any{"kind": "item_lock_refused", "id": frame.ID, "character_id": selectedCharacterID, "reason": err.Error()})
@@ -1519,7 +1519,7 @@ func main() {
 						}
 						continue
 					}
-					if avPayload, encErr := protocol.EmptyAccountVault(av.Slots, av.Gold); encErr == nil {
+					if avPayload, encErr := vaultService.AccountVaultRestorePayload(context.Background(), developmentAccount); encErr == nil && len(avPayload) > 0 {
 						if sendPayload(0, 13, avPayload) != nil {
 							return
 						}
@@ -2874,7 +2874,7 @@ func main() {
 					} else {
 						plan.DanjiInventory = djInv
 					}
-					if locksBody, lockErr := itemLocksOnEntry(role.State); lockErr != nil {
+					if locksBody, lockErr := itemLocksOnEntryWithVaults(context.Background(), role, vaultService); lockErr != nil {
 						event(map[string]any{"kind": "item_locks_read_error", "error": lockErr.Error()})
 					} else {
 						plan.ItemLocks = locksBody

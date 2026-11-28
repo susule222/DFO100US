@@ -255,7 +255,7 @@ func applyVaultUpgrade(
 		if av.Slots == 0 {
 			return nil, nil
 		}
-		p, err := protocol.EmptyAccountVault(av.Slots, av.Gold)
+		p, err := vaults.AccountVaultRestorePayload(ctx, account)
 		if err != nil {
 			return nil, err
 		}

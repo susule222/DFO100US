@@ -213,6 +213,9 @@ func US224InventorySpaceUpdate(space byte, rows [][CurrentItemRecordSize]byte) (
 	if space == TalismanSpace {
 		return US224TalismanUpdate(rows)
 	}
+	if IsVaultSpace(space) {
+		return us224OrdinaryList([]byte{space}, rows)
+	}
 	return InventorySpaceUpdate(space, rows)
 }
 

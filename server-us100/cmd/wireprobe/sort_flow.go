@@ -18,11 +18,24 @@ func sortInventory(
 	rawFrame []byte,
 	plaintext []byte,
 ) (storage.Character, []outboundPacket, byte, error) {
+	return sortInventoryWithVaults(ctx, store, nil, account, role, rawFrame, plaintext)
+}
+
+func sortInventoryWithVaults(
+	ctx context.Context,
+	store *storage.Store,
+	vaults *inventory.VaultService,
+	account int64,
+	role storage.Character,
+	rawFrame []byte,
+	plaintext []byte,
+) (storage.Character, []outboundPacket, byte, error) {
 	req, err := protocol.DecodeSortItems(plaintext)
 	if err != nil {
 		return role, nil, 0, err
 	}
-	if req.Space != 0 && req.Space != 1 && req.Space != protocol.TalismanSpace {
+	isVault := protocol.IsVaultSpace(req.Space)
+	if req.Space != 0 && req.Space != 1 && req.Space != protocol.TalismanSpace && !isVault {
 		return role, nil, req.Space, fmt.Errorf("unsupported sort inventory space %d", req.Space)
 	}
 	moveMap := make(map[uint16]uint16, len(req.Pairs))
@@ -48,6 +61,23 @@ func sortInventory(
 	}
 
 	key := fmt.Sprintf("sort20/%d/%x", role.ID, sha256.Sum256(rawFrame))
+	if isVault {
+		if vaults == nil {
+			return role, nil, req.Space, fmt.Errorf("vault service unavailable for sort space %d", req.Space)
+		}
+		saved, invRestore, err := vaults.SortVault(ctx, role, key, req.Space, moveMap, destSeen)
+		if err != nil {
+			return role, nil, req.Space, err
+		}
+		plan := []outboundPacket{
+			{"sort_vault_restored", 0, 13, invRestore},
+		}
+		if lockBody, lockErr := itemLocksOnEntryWithVaults(ctx, saved, vaults); lockErr == nil && len(lockBody) > 0 {
+			plan = append(plan, outboundPacket{"item_locks_restored", 0, protocol.NotiItemLockList, lockBody})
+		}
+		plan = append(plan, outboundPacket{"sort_items_ack", 1, 20, protocol.SortItemsSuccess(req.Space)})
+		return saved, plan, req.Space, nil
+	}
 	saved, _, err := store.CommitCharacterEvent(ctx, account, role.ID, role.ConfigVersion, key, "US224-item-sort-v1", func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
 		b, e := inventory.ReadBag(current.State)
 		if e != nil {

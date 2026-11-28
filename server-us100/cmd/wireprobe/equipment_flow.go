@@ -24,6 +24,46 @@ func (s *equipmentSession) handle(service *inventory.WearService, w *worldSessio
 	if e != nil {
 		return nil, e
 	}
+	// Personal Safe I (0x02), Personal Safe II (0x2d), and Account Vault (0x0c)
+	// transfers: Bag <-> Vault, within Vault, and Vault <-> Vault.
+	if protocol.IsVaultSpace(r.SourceList) || protocol.IsVaultSpace(r.DestinationList) {
+		if w.vaults == nil {
+			return nil, fmt.Errorf("vault service unavailable")
+		}
+		if !s.initialized {
+			if _, e = rand.Read(s.nonce[:]); e != nil {
+				return nil, e
+			}
+			s.initialized = true
+		}
+		hash := sha256.Sum256(raw)
+		key := fmt.Sprintf("vaultmove:%x:%x", s.nonce, hash)
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		saved, movedCount, srcRows, dstRows, err := w.vaults.MoveItem(ctx, w.role, service.BagRules, key, r)
+		if err != nil {
+			return nil, err
+		}
+		w.role = saved
+		plan := []outboundPacket{
+			{"vault_move_committed", 1, 19, protocol.ItemMoveSuccess(r, movedCount)},
+		}
+		if len(srcRows) > 0 {
+			body, err := protocol.US224InventorySpaceUpdate(r.SourceList, srcRows)
+			if err != nil {
+				return nil, err
+			}
+			plan = append(plan, outboundPacket{"vault_src_slots_updated", 0, 14, body})
+		}
+		if r.DestinationList != r.SourceList && len(dstRows) > 0 {
+			body, err := protocol.US224InventorySpaceUpdate(r.DestinationList, dstRows)
+			if err != nil {
+				return nil, err
+			}
+			plan = append(plan, outboundPacket{"vault_dst_slots_updated", 0, 14, body})
+		}
+		return plan, nil
+	}
 	// CMD19 carries every bag move, not only equipment. A stack going onto
 	// the quick-use belt belongs to the stackable path; anything it does not
 	// recognise falls through to the equipment move unchanged.

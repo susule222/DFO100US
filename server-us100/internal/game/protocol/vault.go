@@ -13,35 +13,56 @@ const (
 	CmdUpgradeAccountVault uint16 = 306 // 0x132 (0x144ae0fac -> ACK 0x1434c76c0)
 )
 
-// NOTI13, native 0x1434fc079: inventory space 2, u16 slot capacity, u16 item
-// count. Empty rows skip 0xb1-byte item structures and have no further reads.
-func EmptyPersonalVault(slots uint16) ([]byte, error) {
+// IsVaultSpace reports whether space is one of the three US224 vault spaces:
+// Personal Safe I (0x02), Personal Safe II (0x2d), or Account Vault (0x0c).
+func IsVaultSpace(space byte) bool {
+	return space == PersonalVaultSpace || space == PersonalVault2Space || space == AccountVaultSpace
+}
+
+// US224PersonalVaultRestore encodes NOTI 13 space 2 (Personal Safe I / 安全I),
+// verified at DFO_unpacked.exe 0x1434fc079..0x1434fc0dc:
+//   u8 space=0x02, u16 slotCapacity, u16 itemCount, itemCount * 0xb1 bytes.
+func US224PersonalVaultRestore(slots uint16, rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 	if slots == 0 {
 		return nil, fmt.Errorf("vault capacity must select a valid client grade")
 	}
-	return add16(add16([]byte{PersonalVaultSpace}, slots), 0), nil
+	return us224OrdinaryList(add16([]byte{PersonalVaultSpace}, slots), rows)
 }
 
-// EmptyPersonalVault2 encodes NOTI 13 space 0x2d (Personal Safe II / 安全II),
+// EmptyPersonalVault encodes an empty NOTI 13 space 2 payload.
+func EmptyPersonalVault(slots uint16) ([]byte, error) {
+	return US224PersonalVaultRestore(slots, nil)
+}
+
+// US224PersonalVault2Restore encodes NOTI 13 space 0x2d (Personal Safe II / 安全II),
 // verified at DFO_unpacked.exe 0x1434fc0e1..0x1434fc14c:
-//   u8 space=0x2d, u16 slotCapacity, u16 itemCount=0.
-func EmptyPersonalVault2(slots uint16) ([]byte, error) {
+//   u8 space=0x2d, u16 slotCapacity, u16 itemCount, itemCount * 0xb1 bytes.
+func US224PersonalVault2Restore(slots uint16, rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 	if slots == 0 {
 		return nil, fmt.Errorf("vault2 capacity must select a valid client grade")
 	}
-	return add16(add16([]byte{PersonalVault2Space}, slots), 0), nil
+	return us224OrdinaryList(add16([]byte{PersonalVault2Space}, slots), rows)
 }
 
-// EmptyAccountVault encodes NOTI 13 space 0x0c (Account Vault / 账号金库),
+// EmptyPersonalVault2 encodes an empty NOTI 13 space 0x2d payload.
+func EmptyPersonalVault2(slots uint16) ([]byte, error) {
+	return US224PersonalVault2Restore(slots, nil)
+}
+
+// US224AccountVaultRestore encodes NOTI 13 space 0x0c (Account Vault / 账号金库),
 // verified at DFO_unpacked.exe 0x1434fc14e..0x1434fc18a:
-//   u8 space=0x0c, u16 slotCapacity, u32 gold, u16 itemCount=0.
-func EmptyAccountVault(slots uint16, gold uint32) ([]byte, error) {
+//   u8 space=0x0c, u16 slotCapacity, u32 gold, u16 itemCount, itemCount * 0xb1 bytes.
+func US224AccountVaultRestore(slots uint16, gold uint32, rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 	if slots == 0 {
 		return nil, fmt.Errorf("account vault capacity must select a valid client grade")
 	}
-	p := add16([]byte{AccountVaultSpace}, slots)
-	p = add32(p, gold)
-	return add16(p, 0), nil
+	hdr := add32(add16([]byte{AccountVaultSpace}, slots), gold)
+	return us224OrdinaryList(hdr, rows)
+}
+
+// EmptyAccountVault encodes an empty NOTI 13 space 0x0c payload.
+func EmptyAccountVault(slots uint16, gold uint32) ([]byte, error) {
+	return US224AccountVaultRestore(slots, gold, nil)
 }
 
 // PersonalVaultUpgradeNoti encodes NOTI 66 (0x42) subType 1 (Personal Safe I

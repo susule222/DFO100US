@@ -20,11 +20,25 @@ func setSortLock(
 	plaintext []byte,
 	locked bool,
 ) (storage.Character, []outboundPacket, error) {
+	return setSortLockWithVaults(ctx, store, nil, account, role, rawFrame, plaintext, locked)
+}
+
+func setSortLockWithVaults(
+	ctx context.Context,
+	store *storage.Store,
+	vaults *inventory.VaultService,
+	account int64,
+	role storage.Character,
+	rawFrame []byte,
+	plaintext []byte,
+	locked bool,
+) (storage.Character, []outboundPacket, error) {
 	req, err := protocol.DecodeItemSlotTarget(plaintext)
 	if err != nil {
 		return role, nil, err
 	}
-	if req.Space != 0 && req.Space != 1 && req.Space != protocol.TalismanSpace {
+	isVault := protocol.IsVaultSpace(req.Space)
+	if req.Space != 0 && req.Space != 1 && req.Space != protocol.TalismanSpace && !isVault {
 		return role, nil, fmt.Errorf("unsupported sort lock space %d", req.Space)
 	}
 	cmdID := protocol.CmdSortUnlock
@@ -34,6 +48,18 @@ func setSortLock(
 		ackName = "sort_lock_ack"
 	}
 	key := fmt.Sprintf("sortlock%d/%d/%x", cmdID, role.ID, sha256.Sum256(rawFrame))
+	if isVault {
+		if vaults == nil {
+			return role, nil, fmt.Errorf("vault service unavailable for sort lock space %d", req.Space)
+		}
+		saved, err := vaults.SetSortLock(ctx, role, key, req.Space, req.Slot, locked)
+		if err != nil {
+			return role, nil, err
+		}
+		return saved, []outboundPacket{
+			{ackName, 1, cmdID, protocol.SortLockSuccess(req.Space, req.Slot)},
+		}, nil
+	}
 	saved, _, err := store.CommitCharacterEvent(ctx, account, role.ID, role.ConfigVersion, key, "US224-item-sort-lock-v1", func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
 		b, e := inventory.ReadBag(current.State)
 		if e != nil {
@@ -170,6 +196,19 @@ func handleItemLockCommand(
 	rawFrame []byte,
 	plaintext []byte,
 ) (storage.Character, []outboundPacket, error) {
+	return handleItemLockWithVaults(ctx, store, nil, account, role, cmdID, rawFrame, plaintext)
+}
+
+func handleItemLockWithVaults(
+	ctx context.Context,
+	store *storage.Store,
+	vaults *inventory.VaultService,
+	account int64,
+	role storage.Character,
+	cmdID uint16,
+	rawFrame []byte,
+	plaintext []byte,
+) (storage.Character, []outboundPacket, error) {
 	var space byte
 	var slot uint16
 	var targetState byte
@@ -195,26 +234,36 @@ func handleItemLockCommand(
 	default:
 		return role, nil, fmt.Errorf("unsupported item lock cmd %d", cmdID)
 	}
-	if space != 0 && space != 1 && space != 3 {
+	isVault := protocol.IsVaultSpace(space)
+	if space != 0 && space != 1 && space != 3 && space != protocol.TalismanSpace && !isVault {
 		return role, nil, fmt.Errorf("unsupported item lock space %d", space)
 	}
 
 	key := fmt.Sprintf("itemlock%d/%d/%x", cmdID, role.ID, sha256.Sum256(rawFrame))
-	saved, _, err := store.CommitCharacterEvent(ctx, account, role.ID, role.ConfigVersion, key, "US224-item-lock-v1", func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
-		b, e := inventory.ReadBag(current.State)
-		if e != nil {
-			return nil, nil, e
+	var saved storage.Character
+	var err error
+	if isVault {
+		if vaults == nil {
+			return role, nil, fmt.Errorf("vault service unavailable for item lock space %d", space)
 		}
-		if !mutateBagItemLock(&b, space, slot, targetState, 0) {
-			return nil, nil, fmt.Errorf("no item at space=%d slot=%d", space, slot)
-		}
-		state, e := inventory.SaveBag(current.State, b)
-		if e != nil {
-			return nil, nil, e
-		}
-		receipt, e := json.Marshal(map[string]any{"cmd": cmdID, "space": space, "slot": slot, "item_lock": targetState})
-		return state, receipt, e
-	})
+		saved, err = vaults.SetItemLock(ctx, role, key, space, slot, targetState, 0)
+	} else {
+		saved, _, err = store.CommitCharacterEvent(ctx, account, role.ID, role.ConfigVersion, key, "US224-item-lock-v1", func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
+			b, e := inventory.ReadBag(current.State)
+			if e != nil {
+				return nil, nil, e
+			}
+			if !mutateBagItemLock(&b, space, slot, targetState, 0) {
+				return nil, nil, fmt.Errorf("no item at space=%d slot=%d", space, slot)
+			}
+			state, e := inventory.SaveBag(current.State, b)
+			if e != nil {
+				return nil, nil, e
+			}
+			receipt, e := json.Marshal(map[string]any{"cmd": cmdID, "space": space, "slot": slot, "item_lock": targetState})
+			return state, receipt, e
+		})
+	}
 	if err != nil {
 		return role, nil, err
 	}
@@ -243,6 +292,22 @@ func itemLocksOnEntry(state json.RawMessage) ([]byte, error) {
 		return nil, err
 	}
 	entries := b.LockedItemEntries(time.Now().Unix())
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	return protocol.ItemLockListNoti(entries)
+}
+
+func itemLocksOnEntryWithVaults(ctx context.Context, role storage.Character, vaults *inventory.VaultService) ([]byte, error) {
+	b, err := inventory.ReadBag(role.State)
+	if err != nil {
+		return nil, err
+	}
+	now := time.Now().Unix()
+	entries := b.LockedItemEntries(now)
+	if vaults != nil {
+		entries = append(entries, vaults.LockedItemEntries(ctx, role, now)...)
+	}
 	if len(entries) == 0 {
 		return nil, nil
 	}
