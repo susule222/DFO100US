@@ -97,13 +97,24 @@ func (s *Service) EntryAdditionStatsUS100(role storage.Character) ([]byte, error
 	}
 	block := protocol.EntryAdditionBlock{Level: uint32(state.Level), Experience: state.Experience, Value19: fame}
 	worn := make([]protocol.ActorWornUS224, 0, len(bag.WornAvatars)+len(bag.Worn))
-	for _, group := range []struct {
-		items  []inventory.BagEquipment
-		avatar bool
-	}{{bag.WornAvatars, true}, {bag.Worn, false}} {
-		for _, item := range group.items {
-			worn = append(worn, protocol.ActorWornUS224{Slot: item.Slot, Template: item.Template, Durability: item.Durability, Upgrade: item.EffectiveUpgrade(), Avatar: group.avatar})
+	for _, item := range bag.WornAvatars {
+		if item.Slot >= 12 || item.Template == 0 || item.Template == 0xffffffff {
+			continue
 		}
+		worn = append(worn, protocol.ActorWornUS224{Slot: item.Slot, Template: item.Template, Durability: item.Durability, Upgrade: item.EffectiveUpgrade(), Avatar: true})
+	}
+	for _, item := range bag.Worn {
+		// NOTI 2 mode-1 ActorWornUS224 covers avatars (0..11) and ordinary
+		// equipment (12..25). Special worn slots >= 26 (creature 26, artifacts
+		// 27..29, insignia 31, talismans 33..35) have distinct client wire
+		// layouts (e.g. creature type 0x1a at 0x1434eb0b1) and are restored via
+		// NOTI 13/14 Space 3 + NOTI CreatureInfo; passing them here makes
+		// appendActorWornUS224 fail and drops the entire mode-1 stat packet
+		// (zeroing base HPMax/MPMax -> 0% / -nan(ind)% HP/MP bars).
+		if item.Slot < 12 || item.Slot > 25 || item.Template == 0 || item.Template == 0xffffffff {
+			continue
+		}
+		worn = append(worn, protocol.ActorWornUS224{Slot: item.Slot, Template: item.Template, Durability: item.Durability, Upgrade: item.EffectiveUpgrade(), Avatar: false})
 	}
 	return protocol.UserInfoAdditionWithWornUS224(role.WireID, block, blob.Bytes(), trees, worn)
 }

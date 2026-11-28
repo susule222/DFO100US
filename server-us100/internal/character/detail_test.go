@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"dfolan/internal/catalog"
 	"dfolan/internal/game/protocol"
+	"dfolan/internal/inventory"
 	"dfolan/internal/storage"
 	"encoding/hex"
 	"encoding/json"
@@ -86,5 +87,65 @@ func TestEntryVitalMaximumUsesProfessionGrowthOnlyForMissingValues(t *testing.T)
 		if _, err := s.entryVitalMaximum(role, state, "[hp max]"); err == nil {
 			t.Errorf("accepted invalid saved HP %v", n)
 		}
+	}
+}
+
+func TestEntryAdditionStatsUS100SkipsSpecialWornSlotsAbove25(t *testing.T) {
+	// Reproduces character 48 wearing title (13), weapon (12), armor/accessories (14,19,20,21),
+	// avatars (0,9), AND special worn slots >= 26 (creature 26, artifact 27, insignia 31, talisman 33).
+	// Previously slot >= 26 made appendActorWornUS224 fail and fell back to the 34-byte zero-stat stub,
+	// leaving base HPMax/MPMax=0 and turning the HP/MP orbs into 0% / -nan(ind)% when toggling a title.
+	role := storage.Character{
+		ID: 48, WireID: 10, Profession: 0,
+		State: json.RawMessage(`{
+			"level":18,
+			"experience":12345,
+			"attributes":{"[hp max]":945,"[mp max]":565,"[physical attack]":89.1,"[physical defense]":89.1},
+			"inventory":{
+				"version":"ordinary-bag-v1",
+				"worn_avatars":[{"slot":0,"template":101550957},{"slot":9,"template":501590378}],
+				"worn":[
+					{"slot":12,"template":101010938,"durability":45},
+					{"slot":13,"template":500330547,"durability":0},
+					{"slot":14,"template":400090164,"durability":60},
+					{"slot":26,"template":500990710,"creature_id":1},
+					{"slot":27,"template":501000001},
+					{"slot":31,"template":100350001},
+					{"slot":33,"template":100401044}
+				]
+			}
+		}`),
+	}
+	got, err := (&Service{}).EntryAdditionStatsUS100(role)
+	if err != nil {
+		t.Fatalf("EntryAdditionStatsUS100 failed with special worn slots >= 26: %v", err)
+	}
+	wantBlob := protocol.EntryStatBlobUS100{
+		HPMax:       9450,
+		MPMax:       5650,
+		Strength:    891,
+		Vitality:    891,
+		BasePercent: 100,
+	}.Bytes()
+	wantWorn := []protocol.ActorWornUS224{
+		{Slot: 0, Template: 101550957, Avatar: true},
+		{Slot: 9, Template: 501590378, Avatar: true},
+		{Slot: 12, Template: 101010938, Durability: 45, Avatar: false},
+		{Slot: 13, Template: 500330547, Durability: 0, Avatar: false},
+		{Slot: 14, Template: 400090164, Durability: 60, Avatar: false},
+	}
+	wantFame := (*inventory.EquipmentCatalog)(nil).AdventurerFame(role.State)
+	want, err := protocol.UserInfoAdditionWithWornUS224(
+		10,
+		protocol.EntryAdditionBlock{Level: 18, Experience: 12345, Value19: wantFame},
+		wantBlob,
+		[2][]protocol.EntrySkill{},
+		wantWorn,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("mode-1 payload mismatch: got %d bytes, want %d bytes", len(got), len(want))
 	}
 }
