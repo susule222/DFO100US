@@ -9,6 +9,7 @@
 // 与韩服版差异：locale 补丁改为 en-US（0x0409 / CP1252 / OEM 437），
 // 不含任何韩服 exe 专用 RVA 内存补丁（US100 的补丁点待定位后另行加入）。
 #include <windows.h>
+#include <imm.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -699,6 +700,141 @@ static void install_swap_detour(BYTE *addr, void *hookfn, BYTE *orig, BYTE *patc
 static WNDPROC g_wp_original = NULL;
 static ULONGLONG g_wp_deadline = 0;
 
+// ---- 中文输入法（IME）修复 ----
+// 实测反汇编（DFO_unpacked.exe v2.24.0.124）发现美服客户端在 5 处阻断了中文 IME：
+//   1. WM_SETFOCUS (0x38B775D) 与 WM_KEYDOWN (0x4FCB15C) 直接调用 DefWindowProcW(hwnd, WM_IME_SETCONTEXT, 0, ISC_SHOWUIALL) 反复关闭 IME 上下文；
+//   2. WM_IME_SETCONTEXT (0x4FCB2BF) 把 lParam 清 0，隐藏输入法候选框；
+//   3. WM_IME_STARTCOMPOSITION (0x4FCB08C) 把组合窗移到 (-1000, -1000)；
+//   4. WM_IME_COMPOSITION (0x4FCA778) 读出 GCS_RESULTSTR 到栈缓冲后直接丢弃且吞掉消息，不写入 0x14A8216F0 字符缓冲也不走 DefWindowProcW；
+//   5. CEditBox/CMultiEditBox 每帧检测到组合缓冲非空就调 ImmNotifyIME(CPS_CANCEL) 强行取消拼音组合。
+// 修复：NOP 掉两处虚假的 WM_IME_SETCONTEXT(0) 调用；在主窗口过程拦截 IME 消息走原生
+// DefWindowProcW 展示候选框，并在 GCS_RESULTSTR 提交时用 ImmGetCompositionStringW 读取
+// UTF-16 字符串，逐字以 WM_CHAR 喂给游戏原窗口过程（0x4FCA500 原生接收任意 UTF-16 汉字）。
+typedef HIMC (WINAPI *pfn_ImmGetContext)(HWND);
+typedef BOOL (WINAPI *pfn_ImmReleaseContext)(HWND, HIMC);
+typedef LONG (WINAPI *pfn_ImmGetCompositionStringW)(HIMC, DWORD, LPVOID, DWORD);
+typedef BOOL (WINAPI *pfn_ImmSetCompositionWindow)(HIMC, LPCOMPOSITIONFORM);
+typedef BOOL (WINAPI *pfn_ImmSetCandidateWindow)(HIMC, LPCANDIDATEFORM);
+
+static volatile LONG g_ime_fix_on = 1;
+static volatile LONG g_ime_api_ready = 0;
+static pfn_ImmGetContext g_pImmGetContext = NULL;
+static pfn_ImmReleaseContext g_pImmReleaseContext = NULL;
+static pfn_ImmGetCompositionStringW g_pImmGetCompositionStringW = NULL;
+static pfn_ImmSetCompositionWindow g_pImmSetCompositionWindow = NULL;
+static pfn_ImmSetCandidateWindow g_pImmSetCandidateWindow = NULL;
+static int g_ime_anchor_x = 0;
+static int g_ime_anchor_y = 0;
+static int g_ime_anchor_valid = 0;
+static int g_ime_composing = 0;
+static LONG g_ime_log_budget = 8;
+
+static int ime_ensure_api(void)
+{
+    if (InterlockedCompareExchange(&g_ime_api_ready, 0, 0) != 0) {
+        return g_pImmGetContext != NULL && g_pImmReleaseContext != NULL && g_pImmGetCompositionStringW != NULL;
+    }
+    HMODULE imm = GetModuleHandleA("imm32.dll");
+    if (imm == NULL) {
+        imm = LoadLibraryA("imm32.dll");
+    }
+    if (imm != NULL) {
+        g_pImmGetContext = (pfn_ImmGetContext)GetProcAddress(imm, "ImmGetContext");
+        g_pImmReleaseContext = (pfn_ImmReleaseContext)GetProcAddress(imm, "ImmReleaseContext");
+        g_pImmGetCompositionStringW = (pfn_ImmGetCompositionStringW)GetProcAddress(imm, "ImmGetCompositionStringW");
+        g_pImmSetCompositionWindow = (pfn_ImmSetCompositionWindow)GetProcAddress(imm, "ImmSetCompositionWindow");
+        g_pImmSetCandidateWindow = (pfn_ImmSetCandidateWindow)GetProcAddress(imm, "ImmSetCandidateWindow");
+    }
+    InterlockedExchange(&g_ime_api_ready, 1);
+    return g_pImmGetContext != NULL && g_pImmReleaseContext != NULL && g_pImmGetCompositionStringW != NULL;
+}
+
+static void ime_position_windows(HWND hwnd)
+{
+    if (!ime_ensure_api()) {
+        return;
+    }
+    HIMC himc = g_pImmGetContext(hwnd);
+    if (himc == NULL) {
+        return;
+    }
+    RECT rc;
+    int x = 40;
+    int y = 40;
+    if (GetClientRect(hwnd, &rc)) {
+        if (g_ime_anchor_valid) {
+            x = g_ime_anchor_x;
+            y = g_ime_anchor_y + 20;
+        } else {
+            x = 40;
+            y = (rc.bottom > 120) ? (rc.bottom - 90) : 40;
+        }
+        int max_x = (rc.right > 280) ? (rc.right - 260) : 16;
+        int max_y = (rc.bottom > 100) ? (rc.bottom - 80) : 16;
+        if (x < 16) x = 16;
+        if (x > max_x) x = max_x;
+        if (y < 16) y = 16;
+        if (y > max_y) y = max_y;
+    }
+    if (g_pImmSetCompositionWindow != NULL) {
+        COMPOSITIONFORM cf;
+        memset(&cf, 0, sizeof(cf));
+        cf.dwStyle = CFS_POINT;
+        cf.ptCurrentPos.x = x;
+        cf.ptCurrentPos.y = y;
+        g_pImmSetCompositionWindow(himc, &cf);
+    }
+    if (g_pImmSetCandidateWindow != NULL) {
+        CANDIDATEFORM cand;
+        memset(&cand, 0, sizeof(cand));
+        cand.dwIndex = 0;
+        cand.dwStyle = CFS_CANDIDATEPOS;
+        cand.ptCurrentPos.x = x;
+        cand.ptCurrentPos.y = y + 4;
+        g_pImmSetCandidateWindow(himc, &cand);
+    }
+    g_pImmReleaseContext(hwnd, himc);
+}
+
+static void ime_commit_result_string(HWND hwnd)
+{
+    if (g_wp_original == NULL || !ime_ensure_api()) {
+        return;
+    }
+    HIMC himc = g_pImmGetContext(hwnd);
+    if (himc == NULL) {
+        return;
+    }
+    LONG bytes = g_pImmGetCompositionStringW(himc, GCS_RESULTSTR, NULL, 0);
+    if (bytes > 0) {
+        wchar_t wbuf[1024];
+        DWORD cap = (DWORD)((sizeof(wbuf) / sizeof(wbuf[0]) - 1) * sizeof(wchar_t));
+        DWORD to_read = ((DWORD)bytes > cap) ? cap : (DWORD)bytes;
+        LONG got = g_pImmGetCompositionStringW(himc, GCS_RESULTSTR, wbuf, to_read);
+        if (got > 0) {
+            int count = (int)(got / (LONG)sizeof(wchar_t));
+            wbuf[count] = 0;
+            for (int i = 0; i < count; i++) {
+                wchar_t ch = wbuf[i];
+                if (ch >= 0x20) {
+                    g_wp_original(hwnd, WM_CHAR, (WPARAM)ch, 1);
+                }
+            }
+            if (InterlockedDecrement(&g_ime_log_budget) >= 0 && g_log != NULL) {
+                char utf8[512];
+                utf8[0] = 0;
+                WideCharToMultiByte(CP_UTF8, 0, wbuf, count, utf8, sizeof(utf8) - 1, NULL, NULL);
+                utf8[sizeof(utf8) - 1] = 0;
+                EnterCriticalSection(&g_cs);
+                fprintf(g_log, "ime-fix: committed %d wchar(s) utf8=\"%s\"\n", count, utf8);
+                fflush(g_log);
+                LeaveCriticalSection(&g_cs);
+            }
+        }
+    }
+    g_pImmReleaseContext(hwnd, himc);
+}
+
 static LRESULT WINAPI hook_game_wndproc(HWND hwnd, UINT msg, WPARAM w, LPARAM l)
 {
     if (msg == WM_CLOSE && GetTickCount64() < g_wp_deadline) {
@@ -709,6 +845,52 @@ static LRESULT WINAPI hook_game_wndproc(HWND hwnd, UINT msg, WPARAM w, LPARAM l)
             LeaveCriticalSection(&g_cs);
         }
         return 0;
+    }
+    if (g_ime_fix_on) {
+        switch (msg) {
+        case WM_LBUTTONDOWN:
+            g_ime_anchor_x = (int)(short)LOWORD(l);
+            g_ime_anchor_y = (int)(short)HIWORD(l);
+            g_ime_anchor_valid = 1;
+            break;
+        case WM_KILLFOCUS:
+            g_ime_composing = 0;
+            break;
+        case WM_IME_SETCONTEXT:
+            if (w != 0) {
+                l |= (LPARAM)ISC_SHOWUIALL;
+            }
+            return DefWindowProcW(hwnd, msg, w, l);
+        case WM_IME_NOTIFY:
+            return DefWindowProcW(hwnd, msg, w, l);
+        case WM_IME_STARTCOMPOSITION:
+            g_ime_composing = 1;
+            ime_position_windows(hwnd);
+            return DefWindowProcW(hwnd, msg, w, l);
+        case WM_IME_COMPOSITION:
+            ime_position_windows(hwnd);
+            if ((l & (LPARAM)GCS_RESULTSTR) != 0) {
+                ime_commit_result_string(hwnd);
+                return DefWindowProcW(hwnd, msg, w, l & ~(LPARAM)GCS_RESULTSTR);
+            }
+            return DefWindowProcW(hwnd, msg, w, l);
+        case WM_IME_ENDCOMPOSITION:
+            g_ime_composing = 0;
+            return DefWindowProcW(hwnd, msg, w, l);
+        case WM_IME_CHAR:
+            if (w >= 0x20 && g_wp_original != NULL) {
+                g_wp_original(hwnd, WM_CHAR, w, 1);
+            }
+            return 0;
+        case WM_KEYDOWN:
+        case WM_KEYUP:
+            if (w == VK_PROCESSKEY) {
+                return DefWindowProcW(hwnd, msg, w, l);
+            }
+            break;
+        default:
+            break;
+        }
     }
     LRESULT plugin_res = 0;
     if (plugin_host_dispatch_wndproc(hwnd, msg, w, l, &plugin_res)) {
@@ -842,13 +1024,24 @@ static void patch_game_bytes(DWORD rva, const BYTE *expected, const BYTE *replac
     }
 }
 
-static void patch_game_startup_checks(int fast_channel_select, int skip_server_select)
+static void patch_game_startup_checks(int fast_channel_select, int skip_server_select, int ime_fix)
 {
     // US100 NGS 初始化成功判定：0x4EC40B7 的 je 0x4EC40E1 -> jmp，
     // 强制 init-OK 包装函数返回成功（等价于跳过 NGS 失败退出路径）。
     static const BYTE ngs_expected[] = { 0x74, 0x28 };
     static const BYTE ngs_replacement[] = { 0xEB, 0x28 };
     patch_game_bytes(0x4EC40B7, ngs_expected, ngs_replacement, 2);
+
+    if (ime_fix) {
+        // 美服客户端在 WM_SETFOCUS (0x38B775D) 与 WM_KEYDOWN (0x4FCB15C) 中直接调用
+        // DefWindowProcW(hwnd, WM_IME_SETCONTEXT, 0, ISC_SHOWUIALL)，每次聚焦和按键都会
+        // 强行注销 IME 上下文。NOP 掉这两处调用，由 hook_game_wndproc 正常转发 IME 消息。
+        static const BYTE focus_ime_expected[] = { 0xFF, 0x15, 0xCD, 0x94, 0xBE, 0x02 };
+        static const BYTE key_ime_expected[]   = { 0xFF, 0x15, 0xCE, 0x5A, 0x4D, 0x01 };
+        static const BYTE nop6[]               = { 0x90, 0x90, 0x90, 0x90, 0x90, 0x90 };
+        patch_game_bytes(0x38B775D, focus_ime_expected, nop6, 6);
+        patch_game_bytes(0x4FCB15C, key_ime_expected, nop6, 6);
+    }
 
     if (fast_channel_select) {
         // 1) CNSelectChannelModule::AutoSelectChannel (0x3701fe0):
@@ -1068,6 +1261,7 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
         int locale_hooks_on = 0;
         int fast_channel_select = 1;
         int skip_server_select = 0;
+        int ime_fix = 1;
         int panelfill_on = 0;
         {
             FILE *f = plugin_open_ini_file();
@@ -1086,6 +1280,9 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
                     }
                     if (sscanf(line, "skip_server_select=%d", &v) == 1) {
                         skip_server_select = v;
+                    }
+                    if (sscanf(line, "ime_fix=%d", &v) == 1) {
+                        ime_fix = v;
                     }
                     if (sscanf(line, "panelfill=%d", &v) == 1) {
                         panelfill_on = v;
@@ -1120,14 +1317,15 @@ BOOL WINAPI DllMain(HINSTANCE inst, DWORD reason, LPVOID reserved)
             install_window_guard();
             install_ods_hook();
         }
-        patch_game_startup_checks(fast_channel_select, skip_server_select);
+        InterlockedExchange(&g_ime_fix_on, ime_fix ? 1 : 0);
+        patch_game_startup_checks(fast_channel_select, skip_server_select, ime_fix);
         if (panelfill_on) {
             install_panel_fill();
         }
         if (g_log != NULL) {
             EnterCriticalSection(&g_cs);
-            fprintf(g_log, "=== ngs_stub attached pid=%lu GetACP=%lu hooks=%d locale=%d fast_ch=%d skip_srv=%d plugins=%d(%s) ===\n",
-                    GetCurrentProcessId(), GetACP(), hooks_on, locale_hooks_on, fast_channel_select, skip_server_select, g_plugins_enabled, g_plugins_dir_cfg);
+            fprintf(g_log, "=== ngs_stub attached pid=%lu GetACP=%lu hooks=%d locale=%d fast_ch=%d skip_srv=%d ime_fix=%d plugins=%d(%s) ===\n",
+                    GetCurrentProcessId(), GetACP(), hooks_on, locale_hooks_on, fast_channel_select, skip_server_select, ime_fix, g_plugins_enabled, g_plugins_dir_cfg);
             fflush(g_log);
             LeaveCriticalSection(&g_cs);
         }
