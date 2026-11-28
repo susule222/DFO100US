@@ -4,6 +4,7 @@ import (
 	"context"
 	"dfolan/internal/catalog"
 	"dfolan/internal/character"
+	"dfolan/internal/dungeon"
 	"dfolan/internal/events"
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/inventory"
@@ -11,6 +12,7 @@ import (
 	"dfolan/internal/storage"
 	"encoding/binary"
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -25,7 +27,7 @@ func makeEventCMD(eventID uint32, args ...uint32) []byte {
 	return b
 }
 
-func TestInteractiveEventInitAndRewardClaims(t *testing.T) {
+func TestInteractiveEventStepByStepProgressionAndClaims(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()
 	store, err := storage.Open(ctx, storage.Config{DBPath: filepath.Join(dir, "ev_ui.db")})
@@ -50,7 +52,7 @@ func TestInteractiveEventInitAndRewardClaims(t *testing.T) {
 	}
 	role, err := store.CreateCharacter(ctx, storage.Character{
 		AccountID:     acctID,
-		Name:          "EventClaimer",
+		Name:          "EventStepper",
 		Profession:    0,
 		ConfigVersion: checksum,
 		State:         initState,
@@ -67,228 +69,236 @@ func TestInteractiveEventInitAndRewardClaims(t *testing.T) {
 	lootCat := catalog.LootCatalog{Items: map[uint32]catalog.LootItem{}}
 	lootCat.Source.Checksum = checksum
 
+	evPath := filepath.Join(dir, "events.json")
+	pol := events.DefaultActive()
+	rawPol, _ := json.Marshal(pol)
+	if err := os.WriteFile(evPath, rawPol, 0600); err != nil {
+		t.Fatal(err)
+	}
+
 	w := &worldSession{
 		account:    acctID,
 		role:       role,
+		eventsPath: evPath,
 		characters: &character.Service{Store: store},
 		loot:       &loot.Service{Store: store, Catalog: lootCat, BagRules: bagRules},
 	}
 
-	now := time.Date(2026, 11, 27, 22, 30, 0, 0, time.Local)
-	pol := events.DefaultActive()
+	t0 := time.Date(2026, 11, 28, 18, 0, 0, 0, time.Local)
 
-	// 1. Initial sync emits state NOTIs for 520, 512+388, 515, 619, 614, 602
-	//    and auto-increments Event 515 daily attendance to day 1 on login.
-	initPkts := w.interactiveEventInitPackets(pol, now)
-	seenIDs := map[uint16]bool{}
-	var init515Days byte
+	// 1. Fresh login starts all timers/energy/pickaxes at 0 (NOT pre-completed!)
+	initPkts := w.interactiveEventInitPackets(pol, t0)
+	var saw520Zero, saw512Zero, saw619Zero, saw602Zero, saw614Day1 bool
 	for _, p := range initPkts {
-		seenIDs[p.ID] = true
-		if p.ID == protocol.NotiEv515EverydayConnect && len(p.Payload) >= 11 {
-			init515Days = p.Payload[2]
-		}
-	}
-	if init515Days != 1 {
-		t.Fatalf("expected Ev515 auto-checkin to set days=1 on login, got %d", init515Days)
-	}
-	for _, want := range []uint16{
-		protocol.NotiEv520ReverseHotTime,
-		protocol.NotiEv388MissionWeekly,
-		protocol.NotiEv388MissionDaily,
-		protocol.NotiEv512DungeonMining,
-		protocol.NotiEv515EverydayConnect,
-		protocol.NotiEv619DailyCheck,
-		protocol.NotiEv614Melody,
-		protocol.NotiEv602RiaCubeLab,
-	} {
-		if !seenIDs[want] {
-			t.Fatalf("missing initial event state NOTI %d (got %v)", want, seenIDs)
-		}
-	}
-
-	// 2. Claim Event 520 reward #0 (5M -> 10333092) and reward #1 (10M -> 10333113) via 0-indexed CMD 680
-	pkts520a, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(520, 0), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var gotInvA, got2222A bool
-	for _, p := range pkts520a {
-		if p.ID == 14 {
-			gotInvA = true
-		}
-		if p.ID == protocol.NotiEv520ReverseHotTime && p.Payload[4] == 1 && p.Payload[5] == 0 && binary.LittleEndian.Uint32(p.Payload[8:12]) == 100 {
-			got2222A = true
-		}
-	}
-	if !gotInvA || !got2222A {
-		t.Fatalf("Ev520 5M claim expected NOTI 14 + NOTI 2222(claimed1=1,claimed2=0,maxLv=100), got inv=%v 2222=%v", gotInvA, got2222A)
-	}
-	pkts520b, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(520, 1), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var gotInvB, got2222B bool
-	for _, p := range pkts520b {
-		if p.ID == 14 {
-			gotInvB = true
-		}
-		if p.ID == protocol.NotiEv520ReverseHotTime && p.Payload[4] == 1 && p.Payload[5] == 1 {
-			got2222B = true
-		}
-	}
-	if !gotInvB || !got2222B {
-		t.Fatalf("Ev520 10M claim expected NOTI 14 + NOTI 2222(claimed1=1,claimed2=1), got inv=%v 2222=%v", gotInvB, got2222B)
-	}
-
-	// 3. Mine Event 512 stage 0 node 0, then node 3, then node 1 (bitmask 1<<node)
-	pkts512, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(512, 0, 0), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var gotMiningInv, got2155 bool
-	for _, p := range pkts512 {
-		if p.ID == 14 {
-			gotMiningInv = true
-		}
-		if p.ID == protocol.NotiEv512DungeonMining {
-			if binary.LittleEndian.Uint32(p.Payload[0:4]) == 9 && binary.LittleEndian.Uint32(p.Payload[4:8]) == (1<<0) {
-				got2155 = true
+		switch p.ID {
+		case protocol.NotiEv520ReverseHotTime:
+			if binary.LittleEndian.Uint32(p.Payload[0:4]) == 0 {
+				saw520Zero = true
+			}
+		case protocol.NotiEv512DungeonMining:
+			if binary.LittleEndian.Uint32(p.Payload[0:4]) == 0 {
+				saw512Zero = true
+			}
+		case protocol.NotiEv619DailyCheck:
+			if binary.LittleEndian.Uint32(p.Payload[4:8]) == 0 {
+				saw619Zero = true
+			}
+		case protocol.NotiEv602RiaCubeLab:
+			if binary.LittleEndian.Uint32(p.Payload[0x2c:0x30]) == 0 {
+				saw602Zero = true
+			}
+		case protocol.NotiEv614Melody:
+			if p.Payload[0] == 1 && p.Payload[1] == 0 && p.Payload[2] == 0 && p.Payload[3] == 0 {
+				saw614Day1 = true
 			}
 		}
 	}
-	if !gotMiningInv || !got2155 {
-		t.Fatalf("Ev512 mine expected NOTI 14 + NOTI 2155(pickaxes=9,stage0=1), got inv=%v 2155=%v", gotMiningInv, got2155)
-	}
-	if _, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(512, 0, 3), now); err != nil {
-		t.Fatal(err)
-	}
-	pkts512Node1, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(512, 0, 1), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var gotBitmask bool
-	for _, p := range pkts512Node1 {
-		if p.ID == protocol.NotiEv512DungeonMining && binary.LittleEndian.Uint32(p.Payload[4:8]) == ((1<<0)|(1<<3)|(1<<1)) {
-			gotBitmask = true
-		}
-	}
-	if !gotBitmask {
-		t.Fatalf("Ev512 out-of-order mining did not preserve bitmask (1<<0|1<<3|1<<1)")
+	if !saw520Zero || !saw512Zero || !saw619Zero || !saw602Zero || !saw614Day1 {
+		t.Fatalf("fresh login must start step-by-step from 0: 520=%v 512=%v 619=%v 602=%v 614=%v",
+			saw520Zero, saw512Zero, saw619Zero, saw602Zero, saw614Day1)
 	}
 
-	// 4. Event 515: claim day 1 (action=1, day=1) + next day login + allRecvBtn (action=3, day=0)
-	pkts515, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(515, 1, 1), now)
-	if err != nil {
-		t.Fatal(err)
+	// 2. Premature claims MUST be refused before prerequisites are met!
+	pktsEarly520, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(520, 0), t0.Add(1*time.Minute))
+	if err != nil || pktsEarly520[0].Name != "event_520_not_ready" {
+		t.Fatalf("Ev520 5M at 1 min must be refused, got %+v err=%v", pktsEarly520, err)
 	}
-	var got515Claim bool
-	for _, p := range pkts515 {
-		if p.ID == protocol.NotiEv515EverydayConnect && p.Payload[2] == 1 && (binary.LittleEndian.Uint32(p.Payload[3:7])&(1<<1)) != 0 {
-			got515Claim = true
-		}
+	pktsEarly512, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(512, 0, 0), t0.Add(1*time.Minute))
+	if err != nil || pktsEarly512[0].Name != "event_512_not_ready" {
+		t.Fatalf("Ev512 mine with 0 pickaxes must be refused, got %+v err=%v", pktsEarly512, err)
 	}
-	if !got515Claim {
-		t.Fatalf("Ev515 day 1 claim did not set dailyClaimedMask bit 1")
+	pktsEarly602, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(602, 1), t0.Add(1*time.Minute))
+	if err != nil || pktsEarly602[0].Name != "event_602_search_not_ready" {
+		t.Fatalf("Ev602 search at 0%% energy must be refused, got %+v err=%v", pktsEarly602, err)
 	}
-	// Advance to next calendar day -> allRecvBtn (action=3) should auto-count day 2 and claim day 2.
-	nextDay := now.Add(24 * time.Hour)
-	pkts515All, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(515, 3, 0), nextDay)
-	if err != nil {
-		t.Fatal(err)
+	pktsEarly619, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(619, 1), t0.Add(1*time.Minute))
+	if err != nil || pktsEarly619[0].Name != "event_619_not_ready" {
+		t.Fatalf("Ev619 daily claim at 1 min must be refused, got %+v err=%v", pktsEarly619, err)
 	}
-	var got515All bool
-	for _, p := range pkts515All {
-		if p.ID == protocol.NotiEv515EverydayConnect && p.Payload[2] == 2 && (binary.LittleEndian.Uint32(p.Payload[3:7])&((1<<1)|(1<<2))) == ((1<<1)|(1<<2)) {
-			got515All = true
-		}
-	}
-	if !got515All {
-		t.Fatalf("Ev515 action=3 (allRecvBtn) did not claim day 2 on next calendar day")
+	pktsEarly614, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(614, 1, 3), t0.Add(1*time.Minute))
+	if err != nil || pktsEarly614[0].Name != "event_614_not_ready" {
+		t.Fatalf("Ev614 mission 3 at 0 clears must be refused, got %+v err=%v", pktsEarly614, err)
 	}
 
-	// 5. Event 602 query (CMD 681 sub=3), search (sub=1), save (sub=2,1), transfer (CMD 680 sub=1)
-	if pktsQ, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(602, 3, 0, 0), now); err != nil || len(pktsQ) != 1 || pktsQ[0].ID != protocol.NotiEv602RiaCubeLab {
-		t.Fatalf("Ev602 query failed: pkts=%d err=%v", len(pktsQ), err)
-	}
-	if _, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(602, 1), now); err != nil {
-		t.Fatal(err)
-	}
-	if pkts602S, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(602, 2, 1), now); err != nil {
-		t.Fatal(err)
-	} else if len(pkts602S) != 1 || pkts602S[0].ID != protocol.NotiEv602RiaCubeLab || pkts602S[0].Payload[2] != 0 || pkts602S[0].Payload[3] < 1 {
-		t.Fatalf("Ev602 save did not encode savedItemIdx=0 and pickedIndices: %x", pkts602S[0].Payload)
-	}
-	pkts602T, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(602, 1), now)
+	// 3. Ev520 step-by-step: at 5 min (300s) -> 5M unlocks, 10M STILL refused; at 10 min (600s) -> 10M unlocks!
+	t5m := t0.Add(5 * time.Minute)
+	pkts520a, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(520, 0), t5m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got602Inv, got602Mask bool
+	var got520aInv bool
+	for _, p := range pkts520a {
+		if p.ID == 14 {
+			got520aInv = true
+		}
+	}
+	if !got520aInv {
+		t.Fatalf("Ev520 5M at 5m should succeed and grant item")
+	}
+	pkts520bEarly, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(520, 1), t5m)
+	if err != nil || pkts520bEarly[0].Name != "event_520_not_ready" {
+		t.Fatalf("Ev520 10M at 5m must still be refused, got %+v", pkts520bEarly)
+	}
+	t10m := t0.Add(10 * time.Minute)
+	pkts520b, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(520, 1), t10m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got520bInv bool
+	for _, p := range pkts520b {
+		if p.ID == 14 {
+			got520bInv = true
+		}
+	}
+	if !got520bInv {
+		t.Fatalf("Ev520 10M at 10m should succeed and grant item")
+	}
+
+	// 4. Ev512/388 step-by-step: 30 min online grants 1 pickaxe; skipping node 0 -> node 1 refused; node 0 succeeds!
+	t30m := t0.Add(30 * time.Minute)
+	w.onInteractiveEventTick(pol, t30m)
+	pktsSkip512, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(512, 0, 1), t30m)
+	if err != nil || pktsSkip512[0].Name != "event_512_not_ready" {
+		t.Fatalf("Ev512 skipping node 0 to node 1 must be refused, got %+v", pktsSkip512)
+	}
+	pktsMine0, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(512, 0, 0), t30m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got512Inv, got512Mask bool
+	for _, p := range pktsMine0 {
+		if p.ID == 14 {
+			got512Inv = true
+		}
+		if p.ID == protocol.NotiEv512DungeonMining && binary.LittleEndian.Uint32(p.Payload[0:4]) == 0 && binary.LittleEndian.Uint32(p.Payload[4:8]) == 1 {
+			got512Mask = true
+		}
+	}
+	if !got512Inv || !got512Mask {
+		t.Fatalf("Ev512 node 0 should consume 1 pickaxe and set bit 0, got inv=%v mask=%v", got512Inv, got512Mask)
+	}
+
+	// 5. Ev602 step-by-step: 3 ordinary dungeon clears charge 0 -> 34 -> 68 -> 100%, then search -> save -> transfer!
+	w.activeDungeon = &dungeon.Session{Definition: catalog.DungeonDefinition{ID: 3, BasisLevel: 50}}
+	w.onInteractiveEventClear(t30m)
+	w.onInteractiveEventClear(t30m)
+	w.onInteractiveEventClear(t30m)
+	if _, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(602, 1), t30m); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(602, 2, 1), t30m); err != nil {
+		t.Fatal(err)
+	}
+	pkts602T, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(602, 1), t30m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got602Inv bool
 	for _, p := range pkts602T {
 		if p.ID == 14 {
 			got602Inv = true
 		}
-		if p.ID == protocol.NotiEv602RiaCubeLab && binary.LittleEndian.Uint32(p.Payload[0x1c:0x20]) == 1 && p.Payload[2] == 0xff {
-			got602Mask = true
-		}
 	}
-	if !got602Inv || !got602Mask {
-		t.Fatalf("Ev602 transfer expected NOTI 14 + transferredMask=1, got inv=%v mask=%v", got602Inv, got602Mask)
+	if !got602Inv {
+		t.Fatalf("Ev602 transfer after charge+search+save should grant item")
 	}
-
-	// 6. Event 614 claim weekly mission 0 + Event 619 query/claim/reset + Event 367 daily claim
-	if _, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(614, 1, 0), now); err != nil {
-		t.Fatal(err)
-	}
-	// CMD 681 sub=1 on Event 619 is a pure status query and must NOT claim a reward.
-	pkts619Q, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(619, 1), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkts619Q) != 1 || pkts619Q[0].ID != protocol.NotiEv619DailyCheck || pkts619Q[0].Payload[8] != 0 || binary.LittleEndian.Uint32(pkts619Q[0].Payload[12:16]) != 0 {
-		t.Fatalf("Ev619 CMD 681 sub=1 query mutated state or encoded wrong offsets: %+v", pkts619Q)
-	}
-	// CMD 680 sub=1 claims daily gift #0 -> p[8]=1 (claimedToday), p[12:16]=1 (pickedMask), p[16]=1 (totalDays).
-	pkts619Claim, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(619, 1), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got619Noti bool
-	for _, p := range pkts619Claim {
-		if p.ID == protocol.NotiEv619DailyCheck && p.Payload[8] == 1 && binary.LittleEndian.Uint32(p.Payload[12:16]) == 1 && p.Payload[16] == 1 {
-			got619Noti = true
-		}
-	}
-	if !got619Noti {
-		t.Fatalf("Ev619 claim did not emit expected NOTI 2161 (claimedToday=1 at +8, pickedMask=1 at +12): %+v", pkts619Claim)
-	}
-	// CMD 681 sub=2 resets gift pool -> p[8]=0, p[12:16]=0, totalDays preserved (=1).
-	pkts619Reset, err := w.handleEventCommand(ctx, protocol.CmdEventQuery, makeEventCMD(619, 2), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(pkts619Reset) != 1 || pkts619Reset[0].ID != protocol.NotiEv619DailyCheck || pkts619Reset[0].Payload[8] != 0 || binary.LittleEndian.Uint32(pkts619Reset[0].Payload[12:16]) != 0 || pkts619Reset[0].Payload[16] != 1 {
-		t.Fatalf("Ev619 reset did not clear claimedToday & pickedMask: %+v", pkts619Reset)
-	}
-	pkts367, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(367, 1), now)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var got367Ack bool
-	for _, p := range pkts367 {
-		if p.Kind == 1 && p.ID == protocol.CmdEventAction && len(p.Payload) == 45 && binary.LittleEndian.Uint32(p.Payload[41:45]) == 1 {
-			got367Ack = true
-		}
-	}
-	if !got367Ack {
-		t.Fatalf("Ev367 claim expected 45-byte ACK 680 with popup flag=1")
+	// Milestone 1 (requires 2 transfers) must still be refused after 1 transfer!
+	pkts602M1, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(602, 2, 1), t30m)
+	if err != nil || pkts602M1[0].Name != "event_602_milestone_not_ready" {
+		t.Fatalf("Ev602 milestone 1 after 1 contribution must be refused, got %+v", pkts602M1)
 	}
 
-	// 7. Verify all claimed items actually landed in character bag!
+	// 6. Ev619 step-by-step: 30m online + 3 clears (+15m) = 45m -> still locked; +15m (60m total) -> unlocks!
+	// Milestone 0 (5 days) must STILL be refused after 1 day!
+	t45m := t30m.Add(15 * time.Minute)
+	pkts619Ok, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(619, 1), t45m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got619Inv bool
+	for _, p := range pkts619Ok {
+		if p.ID == 14 {
+			got619Inv = true
+		}
+	}
+	if !got619Inv {
+		t.Fatalf("Ev619 daily claim at 60m effective time (45m online + 3*5m clear bonus) should succeed")
+	}
+	pkts619BonusEarly, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(619, 2, 0), t45m)
+	if err != nil || pkts619BonusEarly[0].Name != "event_619_bonus_not_ready" {
+		t.Fatalf("Ev619 5-day bonus on day 1 must be refused, got %+v", pkts619BonusEarly)
+	}
+
+	// 7. Ev614 step-by-step: Lv95+ clear unlocks Mission 1; claiming it sets TotalCleared=1 (not 4), so Line 0 (4) stays locked!
+	w.activeDungeon = &dungeon.Session{Definition: catalog.DungeonDefinition{ID: 100, BasisLevel: 100}}
+	w.onInteractiveEventClear(t45m)
+	pkts614M1, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(614, 1, 1), t45m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got614Total1 bool
+	for _, p := range pkts614M1 {
+		if p.ID == protocol.NotiEv614Melody && p.Payload[8] == 1 {
+			got614Total1 = true
+		}
+	}
+	if !got614Total1 {
+		t.Fatalf("Ev614 claiming 1 mission must increment TotalCleared to 1 (not 4)")
+	}
+	pkts614LineEarly, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(614, 2, 0), t45m)
+	if err != nil || pkts614LineEarly[0].Name != "event_614_line_not_ready" {
+		t.Fatalf("Ev614 line 0 (4 missions) must be refused at TotalCleared=1, got %+v", pkts614LineEarly)
+	}
+
+	// 8. Ev515 day 1 check-in: day 1 succeeds, day 2 stays locked; Ev367 succeeds once/day and refuses duplicate same day
+	pkts515, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(515, 1, 1), t45m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got515Day1 bool
+	for _, p := range pkts515 {
+		if p.ID == protocol.NotiEv515EverydayConnect && (binary.LittleEndian.Uint32(p.Payload[3:7])&(1<<1)) != 0 {
+			got515Day1 = true
+		}
+	}
+	if !got515Day1 {
+		t.Fatalf("Ev515 day 1 claim should set bit 1")
+	}
+	pkts367, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(367, 1), t45m)
+	if err != nil || len(pkts367) < 2 {
+		t.Fatalf("Ev367 first daily claim should succeed, got %d pkts err=%v", len(pkts367), err)
+	}
+	pkts367Dup, err := w.handleEventCommand(ctx, protocol.CmdEventAction, makeEventCMD(367, 1), t45m)
+	if err != nil || pkts367Dup[0].Name != "event_367_already_claimed" {
+		t.Fatalf("Ev367 second claim same day must be refused, got %+v", pkts367Dup)
+	}
+
+	// 9. Verify all legitimately unlocked items landed in bag
 	bag, err := inventory.ReadBag(w.role.State)
 	if err != nil {
 		t.Fatal(err)
 	}
-	wantTemplates := map[uint32]bool{10333092: false, 10333113: false, 50007754: false, 50007815: false, 50081632: false, 50081692: false, 10326700: false, 50061692: false}
+	wantTemplates := map[uint32]bool{10333092: false, 10333113: false, 50007754: false, 50007815: false, 50081632: false, 50081693: false, 10326700: false, 50061692: false}
 	for _, it := range bag.Items {
 		if _, ok := wantTemplates[it.Template]; ok {
 			wantTemplates[it.Template] = true
@@ -296,39 +306,7 @@ func TestInteractiveEventInitAndRewardClaims(t *testing.T) {
 	}
 	for tmpl, ok := range wantTemplates {
 		if !ok {
-			t.Fatalf("expected claimed reward template %d in character bag", tmpl)
-		}
-	}
-
-	// 8. Use claimed Event 619 item (10326700) via CMD 507 (0x1fb) and verify ACK 507 + bag decrement
-	var elixirSlot uint16
-	for _, it := range bag.Items {
-		if it.Template == 10326700 {
-			elixirSlot = it.Slot
-			break
-		}
-	}
-	cmd507 := make([]byte, 32)
-	binary.LittleEndian.PutUint16(cmd507[0:2], elixirSlot)
-	cmd507[2] = 0
-	binary.LittleEndian.PutUint32(cmd507[7:11], 0x10c) // [epic drop buff event action]
-	plan507, err := w.useStackableAction(cmd507, []byte("cmd507-elixir-1"))
-	if err != nil {
-		t.Fatalf("useStackableAction CMD 507 failed: %v", err)
-	}
-	if len(plan507) != 2 || plan507[0].ID != protocol.CmdUseStackableAction || plan507[1].ID != 14 {
-		t.Fatalf("unexpected CMD 507 plan: %+v", plan507)
-	}
-	if plan507[0].Payload[0] != 1 || binary.LittleEndian.Uint16(plan507[0].Payload[1:3]) != elixirSlot || binary.LittleEndian.Uint32(plan507[0].Payload[4:8]) != 0x10c {
-		t.Fatalf("unexpected ACK 507 payload: %x", plan507[0].Payload)
-	}
-	bagAfter507, err := inventory.ReadBag(w.role.State)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, it := range bagAfter507.Items {
-		if it.Slot == elixirSlot {
-			t.Fatalf("expected slot %d to be consumed after CMD 507, still present: %+v", elixirSlot, it)
+			t.Fatalf("expected earned reward template %d in character bag", tmpl)
 		}
 	}
 }

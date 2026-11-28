@@ -55,6 +55,7 @@ type worldSession struct {
 	lastSyncedFatigue  [3]uint16
 	lastSyncedPremium  string
 	lastSyncedEvents   string
+	eventLastTickAt    time.Time
 }
 
 func (w *worldSession) enter(role storage.Character, spawn storage.WorldPosition) error {
