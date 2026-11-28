@@ -321,15 +321,21 @@ func TestInteractiveEventStepByStepProgressionAndClaims(t *testing.T) {
 	}
 	var gotGiftAck, gotGiftNoti bool
 	for _, p := range giftPkts {
-		if p.ID == protocol.CmdRequestEventGift && len(p.Payload) == 4 && p.Payload[0] == 1 && binary.LittleEndian.Uint16(p.Payload[1:3]) == ev500GiftDailyID && p.Payload[3] == 1 {
+		// ACK 643 must NOT send claimed==1 for giftID 78 (missing from Event/EventGift.evt)
+		// because DFO_unpacked.exe @ 0x142fad5b0 dereferences NULL on missing m_giftInfoMap entries.
+		// ACK 643 sends claimed==2 to skip the buggy popup lookup, and NOTI 559 sets claimed==1 safely.
+		if p.ID == protocol.CmdRequestEventGift && len(p.Payload) == 4 && p.Payload[0] == 1 && binary.LittleEndian.Uint16(p.Payload[1:3]) == ev500GiftDailyID && p.Payload[3] == 2 {
 			gotGiftAck = true
 		}
-		if p.ID == protocol.NotiEventGiftUpdate {
+		if p.ID == protocol.NotiEventGiftUpdate && len(p.Payload) == 8 &&
+			binary.LittleEndian.Uint16(p.Payload[0:2]) == 2 &&
+			binary.LittleEndian.Uint16(p.Payload[2:4]) == ev500GiftBaseID && p.Payload[4] == 1 &&
+			binary.LittleEndian.Uint16(p.Payload[5:7]) == ev500GiftDailyID && p.Payload[7] == 1 {
 			gotGiftNoti = true
 		}
 	}
 	if !gotGiftAck || !gotGiftNoti {
-		t.Fatalf("Ev500 CMD 643 expected ACK 643 + NOTI 559, got ack=%v noti=%v", gotGiftAck, gotGiftNoti)
+		t.Fatalf("Ev500 CMD 643 expected safe ACK 643(claimed=2) + NOTI 559(77=1,78=1), got ack=%v noti=%v pkts=%+v", gotGiftAck, gotGiftNoti, giftPkts)
 	}
 	// Duplicate claim same day must be refused
 	dupGift, err := w.handleEventGiftCommand(ctx, giftReq, t45m)

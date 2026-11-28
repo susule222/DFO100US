@@ -1550,6 +1550,24 @@ func (w *worldSession) handleEventCommand(ctx context.Context, cmdID uint16, pla
 	}
 }
 
+// eventGiftAckSafeState returns the `claimed` byte to place in ACK 643 (0x283).
+//
+// In US100 DFO_unpacked.exe (EventGiftManager.cpp @ 0x142fad4e0..0x142fad5c8),
+// when ACK 643 has claimed == 1, the handler searches m_giftInfoMap (+0x28,
+// loaded from PVF Event/EventGift.evt, which only defines giftID 89 in US100).
+// If giftID is missing from m_giftInfoMap (e.g. Event 500 giftIDs 77 and 78),
+// `rsi` stays NULL (0) and the wcscmp loop at 0x142fad5b0 immediately crashes
+// with an access violation reading [0x0]. Sending claimed == 2 in ACK 643
+// skips that buggy lookup (jne 0x142fad5e1), resets the client request timer
+// (+0x260 = -1), and lets the immediately following NOTI 559 (0x142fad740)
+// safely set m_claimStateMap[giftID] = 1 without touching m_giftInfoMap.
+func eventGiftAckSafeState(giftID uint16) byte {
+	if giftID == 89 {
+		return 1
+	}
+	return 2
+}
+
 // handleEventGiftCommand processes CMD 643 (0x283, CMDPACKET_REQUEST_EVENT_GIFT),
 // including Event 500 daily Kiri's Soul Reinforcement Box (giftID 78 / 0x4e -> 50060816).
 func (w *worldSession) handleEventGiftCommand(ctx context.Context, plaintext []byte, now time.Time) ([]outboundPacket, error) {
@@ -1586,7 +1604,7 @@ func (w *worldSession) handleEventGiftCommand(ctx context.Context, plaintext []b
 			dailyClaimed = 1
 		}
 		out = append(out,
-			outboundPacket{"event_gift_ack", 1, protocol.CmdRequestEventGift, protocol.RequestEventGiftSuccess(giftID, 1)},
+			outboundPacket{"event_gift_ack", 1, protocol.CmdRequestEventGift, protocol.RequestEventGiftSuccess(giftID, eventGiftAckSafeState(giftID))},
 			outboundPacket{"event_gift_update", 0, protocol.NotiEventGiftUpdate, protocol.EventGiftStatus([]protocol.EventGiftEntry{
 				{GiftID: ev500GiftBaseID, Claimed: 1},
 				{GiftID: ev500GiftDailyID, Claimed: dailyClaimed},
@@ -1594,9 +1612,17 @@ func (w *worldSession) handleEventGiftCommand(ctx context.Context, plaintext []b
 		)
 		return out, nil
 	default:
-		return []outboundPacket{
-			{"event_gift_ack", 1, protocol.CmdRequestEventGift, protocol.RequestEventGiftSuccess(giftID, 1)},
-		}, nil
+		ackState := eventGiftAckSafeState(giftID)
+		pkts := []outboundPacket{
+			{"event_gift_ack", 1, protocol.CmdRequestEventGift, protocol.RequestEventGiftSuccess(giftID, ackState)},
+		}
+		if ackState != 1 {
+			pkts = append(pkts, outboundPacket{
+				"event_gift_update", 0, protocol.NotiEventGiftUpdate,
+				protocol.EventGiftStatus([]protocol.EventGiftEntry{{GiftID: giftID, Claimed: 1}}),
+			})
+		}
+		return pkts, nil
 	}
 }
 
