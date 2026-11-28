@@ -451,6 +451,26 @@ func TestCreatureRenderNoti105AutoHatchAndBoosterTitleMigration(t *testing.T) {
 	if wornTpl != 500990710 || wornCID == 0 {
 		t.Fatalf("expected auto-hatched 500990710 with CreatureID>0 in Space 3 NOTI 14, got tpl=%d cid=%d", wornTpl, wornCID)
 	}
+	// Verify live town NOTI 2 mode-0 update carries 0x143803320 creature template + active=1.
+	var mode0Payload []byte
+	for _, pkt := range plan {
+		if pkt.ID == 2 && len(pkt.Payload) > 0 && pkt.Payload[0] == 0 {
+			mode0Payload = pkt.Payload
+		}
+	}
+	if len(mode0Payload) == 0 {
+		t.Fatalf("expected NOTI 2 mode-0 town_appearance_updated after equipping creature")
+	}
+	nameLen := int(binary.LittleEndian.Uint32(mode0Payload[134:138]))
+	eqStart := 138 + nameLen + 5
+	eqCount := int(mode0Payload[eqStart])
+	creOff := eqStart + 1 + eqCount*31 + 22
+	if gotTpl := binary.LittleEndian.Uint32(mode0Payload[creOff : creOff+4]); gotTpl != 500990710 {
+		t.Fatalf("live NOTI 2 mode-0 creature template = %d, want 500990710", gotTpl)
+	}
+	if gotActive := mode0Payload[creOff+8]; gotActive != 1 {
+		t.Fatalf("live NOTI 2 mode-0 creature active byte = %d, want 1", gotActive)
+	}
 
 	// 7. Opening Title Random Box 590005789 awards Title directly into Equipment (9..64), NOT Items!
 	cmd160 := make([]byte, 8)

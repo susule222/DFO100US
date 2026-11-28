@@ -89,6 +89,61 @@ func TestEntryBasicNativeBoundaries(t *testing.T) {
 	}
 }
 
+func TestEntryBasicCreatureFieldsUS224(t *testing.T) {
+	// Verify 0x143803320 (slot 26 creature template, name, active=!isHungry) and
+	// fixed+0x4d/0x55 (slot 32 creature skin template & name) land at exact US224 offsets.
+	p, err := UserInfoBasicProbe(EntryBasicProbe{
+		ActorServerID:        10,
+		Context:              [2]byte{1, 20},
+		Fame:                 1234,
+		CreatureTemplate:     500990710,
+		CreatureName:         "Azalea",
+		CreatureActive:       true,
+		CreatureSkinTemplate: 500990711,
+		CreatureSkinName:     "SkinPet",
+		Character: CharacterRow{
+			Name:       "2",
+			Profession: 0,
+			Level:      18,
+			Equipment:  []Equipment{{Slot: 26, Item: 500990710}},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fixed block starts at offset 5.
+	if got := binary.LittleEndian.Uint32(p[5+fixedRowBlockCreatureSkinOffset:]); got != 500990711 {
+		t.Fatalf("fixed+0x4d creature skin template = %d, want 500990711", got)
+	}
+	if got := string(p[5+fixedRowBlockCreatureSkinNameOffset : 5+fixedRowBlockCreatureSkinNameOffset+len("SkinPet")]); got != "SkinPet" {
+		t.Fatalf("fixed+0x55 creature skin name = %q, want %q", got, "SkinPet")
+	}
+	if p[5+fixedRowBlockCreatureSkinNameOffset+len("SkinPet")] != 0 {
+		t.Fatal("fixed+0x55 creature skin name is not NUL-terminated")
+	}
+	// After appearance rows: 4 + 4 + 8 + 1 + 4 + 1 = 22 bytes before 0x143803320.
+	eqStart := nameTextV224 + len("2") + 5
+	afterEq := eqStart + 1 + mode0AppearanceRowBytes
+	creOff := afterEq + 22
+	if got := binary.LittleEndian.Uint32(p[creOff : creOff+4]); got != 500990710 {
+		t.Fatalf("0x143803320 creature template = %d, want 500990710", got)
+	}
+	if got := binary.LittleEndian.Uint32(p[creOff+4 : creOff+8]); got != uint32(len("Azalea")) {
+		t.Fatalf("0x143803320 creature name len = %d, want %d", got, len("Azalea"))
+	}
+	if got := string(p[creOff+8 : creOff+8+len("Azalea")]); got != "Azalea" {
+		t.Fatalf("0x143803320 creature name = %q, want %q", got, "Azalea")
+	}
+	if got := p[creOff+8+len("Azalea")]; got != 1 {
+		t.Fatalf("0x143803320 creature active byte = %d, want 1 (fed/visible)", got)
+	}
+	// Tail sentinels must stay aligned shifted by len("Azalea") + 1 appearance row.
+	shift := mode0AppearanceRowBytes + len("Azalea")
+	if p[198+len("2")+shift] != 1 || p[233+len("2")+shift] != 1 || p[247+len("2")+shift] != 0xff {
+		t.Fatalf("tail sentinels misaligned after creature fields: %x %x %x", p[198+len("2")+shift], p[233+len("2")+shift], p[247+len("2")+shift])
+	}
+}
+
 func TestUS224TownAppearanceEncoding(t *testing.T) {
 	eq := []Equipment{{Slot: 0, Item: 39165}, {Slot: 3, Item: 40813}, {Slot: 12, Item: 100001}}
 	p, err := UserInfoBasicProbe(EntryBasicProbe{

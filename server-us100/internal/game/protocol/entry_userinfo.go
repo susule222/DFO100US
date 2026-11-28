@@ -12,20 +12,27 @@ import (
 // actor id failed with an access violation at DFO.exe+0x4F1F2A0.
 // Native row reader: 0x143807f80 (reads block, then u16 actor id).
 type EntryBasicProbe struct {
-	ActorServerID     uint16
-	Context           [2]byte
-	Fame              uint32
-	PartyFrame        uint32 // 0x1438096f8: fixed+0x30 -> [actor+0x47c] equipped Party Frame
-	PartyRequestFrame uint32 // 0x143809718: fixed+0x34 -> [actor+0x484] equipped Party Request Frame
-	WeaponSkin        uint32 // 0x1438091b0: fixed+0x62 -> [actor+0x494] -> SetWeaponSkin(0x141087fc0)
-	NeoPremiumKind    byte   // 0x143805930: active Neo Premium kind (0x75/0x76/0x78) sets [userInfo+0x35c]=1 so [Rental Service] gear is wearable
-	Character         CharacterRow
+	ActorServerID        uint16
+	Context              [2]byte
+	Fame                 uint32
+	PartyFrame           uint32 // 0x1438096f8: fixed+0x30 -> [actor+0x47c] equipped Party Frame
+	PartyRequestFrame    uint32 // 0x143809718: fixed+0x34 -> [actor+0x484] equipped Party Request Frame
+	WeaponSkin           uint32 // 0x1438091b0: fixed+0x62 -> [actor+0x494] -> SetWeaponSkin(0x141087fc0)
+	CreatureTemplate     uint32 // 0x143803320: worn slot 26 creature template -> 0x14400a9a0 -> [userInfo+0x348]
+	CreatureName         string // 0x143803320: creature custom name (<31B; empty uses PVF default) -> [userInfo+0x350]
+	CreatureActive       bool   // 0x1438033a2: wire 1 -> [userInfo+0x358]=0 (fed/visible); wire 0 -> hungry/hidden
+	CreatureSkinTemplate uint32 // 0x1438033b0: fixed+0x4d -> 0x14400a9a0 -> [userInfo+0x4c4] (worn slot 32 creature skin)
+	CreatureSkinName     string // 0x1438033bb: fixed+0x55 (up to 12B + NUL) -> [userInfo+0x4c8]
+	NeoPremiumKind       byte   // 0x143805930: active Neo Premium kind (0x75/0x76/0x78) sets [userInfo+0x35c]=1 so [Rental Service] gear is wearable
+	Character            CharacterRow
 }
 
 const (
 	fixedRowBlockV224                    = 127
 	fixedRowBlockPartyFrameOffset        = 0x30 // 48: 0x149477530 -> [actor+0x47c]
 	fixedRowBlockPartyRequestFrameOffset = 0x34 // 52: 0x149477534 -> [actor+0x484]
+	fixedRowBlockCreatureSkinOffset      = 0x4d // 77: 0x14947754d -> 0x14400a9a0 -> [userInfo+0x4c4]
+	fixedRowBlockCreatureSkinNameOffset  = 0x55 // 85..97 (13B incl. NUL): 0x149477555 -> [userInfo+0x4c8]
 	fixedRowBlockWeaponSkinOffset        = 0x62 // 98: 0x149477562 -> SetWeaponSkin(0x141087fc0)
 	fixedRowBlockFameOffset              = 0x77 // 119: 0x149477577 -> 0x143f0b9f0(actor, fame)
 	mode0AppearanceSlotLimit             = 36
@@ -106,6 +113,17 @@ func UserInfoBasicProbe(s EntryBasicProbe) ([]byte, error) {
 	if s.PartyRequestFrame != 0 {
 		binary.LittleEndian.PutUint32(fixed[fixedRowBlockPartyRequestFrameOffset:], s.PartyRequestFrame)
 	}
+	if s.CreatureSkinTemplate != 0 {
+		binary.LittleEndian.PutUint32(fixed[fixedRowBlockCreatureSkinOffset:], s.CreatureSkinTemplate)
+		if s.CreatureSkinName != "" {
+			nb := []byte(s.CreatureSkinName)
+			maxLen := fixedRowBlockWeaponSkinOffset - fixedRowBlockCreatureSkinNameOffset - 1
+			if len(nb) > maxLen {
+				nb = nb[:maxLen]
+			}
+			copy(fixed[fixedRowBlockCreatureSkinNameOffset:], nb)
+		}
+	}
 	if s.WeaponSkin != 0 {
 		binary.LittleEndian.PutUint32(fixed[fixedRowBlockWeaponSkinOffset:], s.WeaponSkin)
 	}
@@ -131,8 +149,16 @@ func UserInfoBasicProbe(s EntryBasicProbe) ([]byte, error) {
 	p = add32(add32(p, 0), 0)    // 0x143808516, 0x143808550
 	p = append(p, 0)             // 0x143808594
 	p = add32(p, 0)              // 0x1438085d4
-	p = append(p, 0)             // 0x143808618 -> [tmp+0x344]
-	p = append(addName(add32(p, 0), ""), 0) // 0x143803320: u32 + str + u8
+	p = append(p, 0) // 0x143808618 -> [tmp+0x344]
+	creatureName := s.CreatureName
+	if len(creatureName) >= 31 {
+		creatureName = creatureName[:30]
+	}
+	var creatureActive byte
+	if s.CreatureTemplate != 0 && s.CreatureActive {
+		creatureActive = 1
+	}
+	p = append(addName(add32(p, s.CreatureTemplate), creatureName), creatureActive) // 0x143803320: u32 + str + u8 (1=>[userInfo+0x358]=0 fed/visible)
 	p = append(p, s.NeoPremiumKind)         // 0x143805930: u8 ([userInfo+0x430]=kind, [userInfo+0x35c]=kind!=0)
 	p = add32(add32(p, 0), 0)               // 0x143808645, 0x14380865e
 	p = add16(add32(addName(p, ""), 0), 0)  // 0x143803e00: str + u32 + u16

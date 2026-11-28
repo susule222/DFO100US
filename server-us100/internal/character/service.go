@@ -225,6 +225,27 @@ func (s *Service) EntryBasicProbe(role storage.Character, channelContext [2]byte
 		return nil, err
 	}
 	appearance := mode0Appearance(bag)
+	var creatureTemplate, creatureSkinTemplate uint32
+	for _, item := range bag.Worn {
+		switch item.Slot {
+		case inventory.WornCreatureSlot:
+			if item.Template != 0 {
+				creatureTemplate = item.Template
+			}
+		case 32:
+			if item.Template != 0 {
+				creatureSkinTemplate = item.Template
+			}
+		}
+	}
+	if creatureSkinTemplate == 0 {
+		for _, item := range bag.WornAvatars {
+			if item.Slot == 32 && item.Template != 0 {
+				creatureSkinTemplate = item.Template
+				break
+			}
+		}
+	}
 	var fame uint32
 	var neoPremiumKind byte
 	var partyFrame, partyReqFrame, weaponSkin uint32
@@ -247,13 +268,16 @@ func (s *Service) EntryBasicProbe(role storage.Character, channelContext [2]byte
 		fame = (*inventory.EquipmentCatalog)(nil).BagAdventurerFame(bag)
 	}
 	return protocol.UserInfoBasicProbe(protocol.EntryBasicProbe{
-		ActorServerID:     role.WireID,
-		Context:           channelContext,
-		Fame:              fame,
-		PartyFrame:        partyFrame,
-		PartyRequestFrame: partyReqFrame,
-		WeaponSkin:        weaponSkin,
-		NeoPremiumKind:    neoPremiumKind,
+		ActorServerID:        role.WireID,
+		Context:              channelContext,
+		Fame:                 fame,
+		PartyFrame:           partyFrame,
+		PartyRequestFrame:    partyReqFrame,
+		WeaponSkin:           weaponSkin,
+		CreatureTemplate:     creatureTemplate,
+		CreatureActive:       creatureTemplate != 0,
+		CreatureSkinTemplate: creatureSkinTemplate,
+		NeoPremiumKind:       neoPremiumKind,
 		Character: protocol.CharacterRow{
 			Name:        role.Name,
 			Profession:  role.Profession,

@@ -107,6 +107,40 @@ func TestTownEntryProjectsEquippedTitleSlot13(t *testing.T) {
 	}
 }
 
+func TestTownEntryProjectsEquippedCreatureSlot26(t *testing.T) {
+	st := json.RawMessage(`{
+		"level":18,
+		"advancement":0,
+		"inventory":{
+			"version":"ordinary-bag-v1",
+			"worn":[{"slot":26,"template":500990710,"creature_id":1}]
+		}
+	}`)
+	role := storage.Character{WireID: 10, Name: "2", Profession: 0, State: st}
+	p, err := new(Service).EntryBasicProbe(role, [2]byte{1, 20})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := 261 + 1 + 1*31; len(p) != want {
+		t.Fatalf("mode-0 length=%d want=%d", len(p), want)
+	}
+	eqStart := 138 + 1 + 5
+	if p[eqStart] != 1 {
+		t.Fatalf("appearance count=%d want=1", p[eqStart])
+	}
+	// 0x143803320 creature block begins 22 bytes after the appearance rows.
+	creOff := eqStart + 1 + 31 + 22
+	if got := binary.LittleEndian.Uint32(p[creOff : creOff+4]); got != 500990710 {
+		t.Fatalf("mode-0 creature template = %d, want 500990710", got)
+	}
+	if got := binary.LittleEndian.Uint32(p[creOff+4 : creOff+8]); got != 0 {
+		t.Fatalf("mode-0 default creature name len = %d, want 0", got)
+	}
+	if got := p[creOff+8]; got != 1 {
+		t.Fatalf("mode-0 creature active byte = %d, want 1 (fed/visible in town & dungeon)", got)
+	}
+}
+
 func TestRosterV224ProjectsEquippedAvatarsAndWeapon(t *testing.T) {
 	ctx := t.Context()
 	store, err := storage.Open(ctx, storage.Config{DBPath: filepath.Join(t.TempDir(), "roster.db")})
