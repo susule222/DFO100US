@@ -523,61 +523,74 @@ func (s *VaultService) MoveItem(
 			if err != nil {
 				return nil, curPV, curAV, nil, err
 			}
-			if srcItem == nil {
-				return nil, curPV, curAV, nil, fmt.Errorf("source slot %d:%d is empty", r.SourceList, r.SourceSlot)
+			if srcItem == nil && dstItem == nil {
+				return nil, curPV, curAV, nil, fmt.Errorf("both vault locations %d:%d and %d:%d are empty", r.SourceList, r.SourceSlot, r.DestinationList, r.DestinationSlot)
 			}
-			if r.SourceItem != 0 && r.SourceItem != srcItem.Template {
-				return nil, curPV, curAV, nil, fmt.Errorf("stale source item %d != %d", r.SourceItem, srcItem.Template)
+			if (srcItem == nil && r.SourceItem != 0) || (srcItem != nil && r.SourceItem != 0 && r.SourceItem != srcItem.Template) {
+				return nil, curPV, curAV, nil, fmt.Errorf("stale source item %d", r.SourceItem)
 			}
-			if r.DestinationItem != 0 && (dstItem == nil || r.DestinationItem != dstItem.Template) {
-				return nil, curPV, curAV, nil, fmt.Errorf("stale destination item")
+			if (dstItem == nil && r.DestinationItem != 0) || (dstItem != nil && r.DestinationItem != 0 && r.DestinationItem != dstItem.Template) {
+				return nil, curPV, curAV, nil, fmt.Errorf("stale destination item %d", r.DestinationItem)
 			}
 
-			if srcItem.isEquip() {
+			// For same-space vault drags (e.g. 0x02 -> 0x02), the US224 client puts the
+			// empty target slot in SourceSlot (SourceItem=0) and the dragged item in
+			// DestinationSlot (DestinationItem=template), matching ACK 19 SwapSlot(src,dst).
+			fromList, fromSlot, fromItem := r.SourceList, r.SourceSlot, srcItem
+			toList, toSlot, toItem := r.DestinationList, r.DestinationSlot, dstItem
+			if fromItem == nil {
+				if r.SourceList != r.DestinationList {
+					return nil, curPV, curAV, nil, fmt.Errorf("source slot %d:%d is empty", r.SourceList, r.SourceSlot)
+				}
+				fromList, fromSlot, fromItem = r.DestinationList, r.DestinationSlot, dstItem
+				toList, toSlot, toItem = r.SourceList, r.SourceSlot, nil
+			}
+
+			if fromItem.isEquip() {
 				if r.Count > 1 {
 					return nil, curPV, curAV, nil, fmt.Errorf("invalid equipment move count %d", r.Count)
 				}
 				movedCount = 1
-				if err = writeSlot(r.DestinationList, r.DestinationSlot, srcItem); err != nil {
+				if err = writeSlot(toList, toSlot, fromItem); err != nil {
 					return nil, curPV, curAV, nil, err
 				}
-				if err = writeSlot(r.SourceList, r.SourceSlot, dstItem); err != nil {
+				if err = writeSlot(fromList, fromSlot, toItem); err != nil {
 					return nil, curPV, curAV, nil, err
 				}
 			} else {
 				reqCount := r.Count
-				if reqCount == 0 || reqCount > srcItem.Amount {
-					reqCount = srcItem.Amount
+				if reqCount == 0 || reqCount > fromItem.Amount {
+					reqCount = fromItem.Amount
 				}
-				if dstItem == nil {
+				if toItem == nil {
 					// Move full stack or partial split into empty slot.
-					moved := *srcItem
+					moved := *fromItem
 					moved.Amount = reqCount
 					var remain *VaultItem
-					if reqCount < srcItem.Amount {
-						cp := *srcItem
-						cp.Amount = srcItem.Amount - reqCount
+					if reqCount < fromItem.Amount {
+						cp := *fromItem
+						cp.Amount = fromItem.Amount - reqCount
 						remain = &cp
 					}
-					if err = writeSlot(r.DestinationList, r.DestinationSlot, &moved); err != nil {
+					if err = writeSlot(toList, toSlot, &moved); err != nil {
 						return nil, curPV, curAV, nil, err
 					}
-					if err = writeSlot(r.SourceList, r.SourceSlot, remain); err != nil {
+					if err = writeSlot(fromList, fromSlot, remain); err != nil {
 						return nil, curPV, curAV, nil, err
 					}
 					movedCount = reqCount
-				} else if !dstItem.isEquip() && dstItem.Template == srcItem.Template {
+				} else if !toItem.isEquip() && toItem.Template == fromItem.Template {
 					// Merge same stackable template up to stack limit.
 					effLimit := stackLimit
-					if dstItem.Amount > effLimit {
-						effLimit = dstItem.Amount
+					if toItem.Amount > effLimit {
+						effLimit = toItem.Amount
 					}
-					if srcItem.Amount > effLimit {
-						effLimit = srcItem.Amount
+					if fromItem.Amount > effLimit {
+						effLimit = fromItem.Amount
 					}
 					spaceLeft := uint32(0)
-					if effLimit > dstItem.Amount {
-						spaceLeft = effLimit - dstItem.Amount
+					if effLimit > toItem.Amount {
+						spaceLeft = effLimit - toItem.Amount
 					}
 					if spaceLeft == 0 {
 						return nil, curPV, curAV, nil, fmt.Errorf("destination stack is full")
@@ -586,33 +599,33 @@ func (s *VaultService) MoveItem(
 					if actual > spaceLeft {
 						actual = spaceLeft
 					}
-					merged := *dstItem
+					merged := *toItem
 					merged.Amount += actual
 					var remain *VaultItem
-					if actual < srcItem.Amount {
-						cp := *srcItem
-						cp.Amount = srcItem.Amount - actual
+					if actual < fromItem.Amount {
+						cp := *fromItem
+						cp.Amount = fromItem.Amount - actual
 						remain = &cp
 					}
-					if err = writeSlot(r.DestinationList, r.DestinationSlot, &merged); err != nil {
+					if err = writeSlot(toList, toSlot, &merged); err != nil {
 						return nil, curPV, curAV, nil, err
 					}
-					if err = writeSlot(r.SourceList, r.SourceSlot, remain); err != nil {
+					if err = writeSlot(fromList, fromSlot, remain); err != nil {
 						return nil, curPV, curAV, nil, err
 					}
 					movedCount = actual
 				} else {
 					// Swap full stack with different item.
-					if reqCount < srcItem.Amount {
+					if reqCount < fromItem.Amount {
 						return nil, curPV, curAV, nil, fmt.Errorf("cannot split stack onto occupied slot")
 					}
-					if err = writeSlot(r.DestinationList, r.DestinationSlot, srcItem); err != nil {
+					if err = writeSlot(toList, toSlot, fromItem); err != nil {
 						return nil, curPV, curAV, nil, err
 					}
-					if err = writeSlot(r.SourceList, r.SourceSlot, dstItem); err != nil {
+					if err = writeSlot(fromList, fromSlot, toItem); err != nil {
 						return nil, curPV, curAV, nil, err
 					}
-					movedCount = srcItem.Amount
+					movedCount = fromItem.Amount
 				}
 			}
 

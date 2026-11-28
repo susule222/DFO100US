@@ -201,13 +201,31 @@ func TestVaultMoveLiveCaptureSafe1Safe2AccountVaultShareAndSort(t *testing.T) {
 		t.Fatalf("expected Character 2 Bag slot 9 to receive +12 100180873, got %+v", b2.Equipment)
 	}
 
-	// 6) CMD 20 Sort inside Safe I: move slot 0 -> slot 2.
+	// 6) Same-vault drag using exact live-captured client ordering: SourceSlot=34 (empty target),
+	// DestinationSlot=0 (dragged item in Safe I).
+	sameVaultDrag := encodeMove19(protocol.PersonalVaultSpace, 34, 0, 0, protocol.PersonalVaultSpace, 0, 10327281)
+	samePlan, err := eqSess.handle(wearSvc, w1, sameVaultDrag, append([]byte("same-vault-drag"), sameVaultDrag...))
+	if err != nil {
+		t.Fatalf("same-vault drag (src=empty target 34, dst=item 0) failed: %v", err)
+	}
+	if len(samePlan) != 2 || samePlan[0].ID != 19 || samePlan[1].ID != 14 || samePlan[1].Payload[0] != protocol.PersonalVaultSpace {
+		t.Fatalf("expected ACK19 + single Safe I NOTI14, got %+v", samePlan)
+	}
+	v1AfterDrag, _, _, err := vaultSvc.BootstrapAll(ctx, w1.role)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binary.LittleEndian.Uint16(v1AfterDrag[3:5]) != 1 || binary.LittleEndian.Uint16(v1AfterDrag[5:7]) != 34 {
+		t.Fatalf("expected Safe I item moved from slot 0 to slot 34, restore=%x", v1AfterDrag[:16])
+	}
+
+	// 7) CMD 20 Sort inside Safe I: move slot 34 -> slot 2.
 	sortPlain := make([]byte, 8)
 	sortPlain[0] = protocol.PersonalVaultSpace
 	sortPlain[1] = 0
-	binary.LittleEndian.PutUint16(sortPlain[2:4], 1) // 1 pair
-	binary.LittleEndian.PutUint16(sortPlain[4:6], 0) // from 0
-	binary.LittleEndian.PutUint16(sortPlain[6:8], 2) // to 2
+	binary.LittleEndian.PutUint16(sortPlain[2:4], 1)  // 1 pair
+	binary.LittleEndian.PutUint16(sortPlain[4:6], 34) // from 34
+	binary.LittleEndian.PutUint16(sortPlain[6:8], 2)  // to 2
 	_, sortPlan, space, err := sortInventoryWithVaults(ctx, store, vaultSvc, account, w1.role, []byte("sort-safe1"), sortPlain)
 	if err != nil || space != protocol.PersonalVaultSpace {
 		t.Fatalf("sort Safe I failed: space=%d err=%v", space, err)
