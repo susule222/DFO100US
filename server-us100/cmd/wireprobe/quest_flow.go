@@ -108,18 +108,51 @@ func (w *worldSession) questInteraction(p []byte) ([]outboundPacket, error) {
 		}
 	}
 	id := binary.LittleEndian.Uint16(p[2:])
-	d, ok := w.quests.Catalog.Quests[uint32(id)]
-	if !ok || d.Kind != "[meet npc]" || len(d.ObjectiveCells) != 1 {
+	en := w.quests.Index().Entries[uint32(id)]
+	if en == nil || !en.Implemented {
 		return nil, nil
 	}
-	npc := uint32(d.ObjectiveCells[0].Value)
-	if !w.service.HasNPC(w.state.Position, npc) {
-		return nil, fmt.Errorf("quest NPC is absent from current source area")
+	npcPresentInArea := func(npc uint32) bool {
+		if w.service.HasNPC(w.state.Position, npc) {
+			return true
+		}
+		// Phase-only NPCs (spawned on alternate [phase] maps absent from the
+		// base-phase world catalog, e.g. Lv.82+ and Lv.95-100 scenario NPCs)
+		// cannot appear in base [NPC] lists; allow them in any valid town area.
+		return !w.service.CatalogHasNPC(npc) && w.service.HasArea(w.state.Position)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if e := w.quests.MeetNPC(ctx, w.role, id, npc); e != nil {
-		return nil, e
+	switch en.Model {
+	case "single-meet-npc-remaining-v1":
+		if !npcPresentInArea(en.NPC) {
+			return nil, fmt.Errorf("quest NPC is absent from current source area")
+		}
+		if e := w.quests.MeetNPC(ctx, w.role, id, en.NPC); e != nil {
+			return nil, e
+		}
+	case "single-reach-range-remaining-v1":
+		if en.Range.NPC != 0 {
+			if !npcPresentInArea(en.Range.NPC) {
+				return nil, fmt.Errorf("quest range NPC is absent from current source area")
+			}
+		} else if w.state.Position.Town != en.Range.Town || w.state.Position.Area != en.Range.Area {
+			return nil, fmt.Errorf("character is not in target quest area %d/%d", en.Range.Town, en.Range.Area)
+		}
+		if e := w.quests.SettleReachRange(ctx, w.role, id); e != nil {
+			return nil, e
+		}
+	case "seek-items-and-meet-npc-remaining-v1":
+		if !npcPresentInArea(en.NPC) {
+			return nil, fmt.Errorf("quest NPC is absent from current source area")
+		}
+		if e := w.quests.SettleSeekAndMeetNPC(ctx, w.role, id); e != nil {
+			return nil, e
+		}
+	case "look-cinematic-client-gated-v1", "question-client-gated-v1", "use-item-client-gated-v1":
+		// Already ready at Progress=0; fall through to emit NOTI 291 confirmation.
+	default:
+		return nil, nil
 	}
 	active, e := w.quests.Active(ctx, w.role)
 	if e != nil {

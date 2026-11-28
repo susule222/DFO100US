@@ -78,10 +78,16 @@ func ReachRange(d catalog.QuestDefinition) (RangeObjective, bool) {
 	return RangeObjective{Town: uint32(c[0].Value), Area: uint32(c[1].Value), X: c[2].Value, Y: c[3].Value, W: c[4].Value, H: c[5].Value}, true
 }
 
+// RangeProximityMargin accounts for the client's character reach/hitbox overlap
+// against [reach the range] trigger boxes (e.g. Q3160 in 40/3 starts at X=1034
+// while the Imperial Guard barricade stops walking at X=1033 and the client
+// triggers CMD 33 at X=994).
+const RangeProximityMargin int32 = 80
+
 func (r RangeObjective) Contains(p storage.WorldPosition) bool {
 	return p.Town == r.Town && p.Area == r.Area &&
-		int32(p.X) >= r.X && int32(p.X) <= r.X+r.W &&
-		int32(p.Y) >= r.Y && int32(p.Y) <= r.Y+r.H
+		int32(p.X) >= r.X-RangeProximityMargin && int32(p.X) <= r.X+r.W+RangeProximityMargin &&
+		int32(p.Y) >= r.Y-RangeProximityMargin && int32(p.Y) <= r.Y+r.H+RangeProximityMargin
 }
 
 type ItemNeed struct{ Template, Amount uint32 }
