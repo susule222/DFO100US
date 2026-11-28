@@ -1995,6 +1995,15 @@ func main() {
 							}
 							event(map[string]any{"kind": "seen_cinematics_synced", "cinematic_skip_mode": skipMode})
 						}
+						if worldState != nil && worldState.role.ID != 0 {
+							charLvl := characterLevelFromState(worldState.role.State)
+							if digestBody, de := storyDigestLevelOnEntry(characters.Store, developmentAccount, worldState.role.ID, charLvl); de == nil && len(digestBody) > 0 {
+								if err = sendPayload(0, protocol.NotiStoryDigestLevel, digestBody); err != nil {
+									return
+								}
+								event(map[string]any{"kind": "story_digest_level_synced", "character_id": worldState.role.ID, "level": binary.LittleEndian.Uint32(digestBody)})
+							}
+						}
 					}
 					continue
 				}
@@ -2005,6 +2014,30 @@ func main() {
 					if cid, decErr := protocol.DecodeRecordSeenCinematic(plaintext); decErr == nil {
 						if recErr := recordSeenCinematic(characters.Store, developmentAccount, cid); recErr == nil {
 							event(map[string]any{"kind": "seen_cinematic_recorded", "cinematic_id": cid})
+						}
+					}
+					continue
+				}
+				if frame.Type == 1 && frame.ID == protocol.CmdStoryDigestUpdate {
+					if !bootstrapped || !verified || selectedCharacterID == 0 || characters == nil {
+						continue
+					}
+					var lvl uint32
+					if worldState != nil {
+						if cl := characterLevelFromState(worldState.role.State); cl > 0 {
+							lvl = uint32(cl)
+						}
+					}
+					if lvl == 0 {
+						if role, loadErr := characters.Store.LiveCharacter(developmentAccount, selectedCharacterID); loadErr == nil {
+							if cl := characterLevelFromState(role.State); cl > 0 {
+								lvl = uint32(cl)
+							}
+						}
+					}
+					if lvl > 0 {
+						if recErr := recordStoryDigestLevel(characters.Store, selectedCharacterID, lvl); recErr == nil {
+							event(map[string]any{"kind": "story_digest_level_recorded", "character_id": selectedCharacterID, "level": lvl})
 						}
 					}
 					continue
@@ -2955,6 +2988,11 @@ func main() {
 						event(map[string]any{"kind": "seen_cinematics_read_error", "error": seenErr.Error()})
 					} else {
 						plan.SeenCinematics = seenBody
+					}
+					if digestBody, digestErr := storyDigestLevelOnEntry(characters.Store, developmentAccount, role.ID, characterLevelFromState(role.State)); digestErr != nil {
+						event(map[string]any{"kind": "story_digest_level_read_error", "error": digestErr.Error()})
+					} else {
+						plan.StoryDigestLevel = digestBody
 					}
 					nowEntry := time.Now()
 					plan.TimeSync = protocol.UserInfoTimeSyncUS100(uint32(nowEntry.Unix()))

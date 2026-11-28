@@ -86,3 +86,75 @@ func TestSeenCinematicsAndSkipAllOption(t *testing.T) {
 		t.Fatalf("expected non-seen cinematic 1235 cleared after disabling skip-all")
 	}
 }
+
+func TestStoryDigestLevelAndSkipAllOption(t *testing.T) {
+	store, err := storage.Open(context.Background(), storage.Config{DBPath: filepath.Join(t.TempDir(), "storydigest.db")})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer store.Close()
+
+	const account int64 = 42
+	const charID int64 = 48
+
+	// 1. Default state: NOTI 1370 sends 0 when skip-all is off and no CMD 1438 recorded.
+	p0, err := storyDigestLevelOnEntry(store, account, charID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(p0) != 4 || binary.LittleEndian.Uint32(p0) != 0 {
+		t.Fatalf("expected default NOTI 1370 level 0, got %x", p0)
+	}
+
+	// 2. CMD 1438 records character level 100 and is monotonic.
+	if err := recordStoryDigestLevel(store, charID, 100); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordStoryDigestLevel(store, charID, 50); err != nil {
+		t.Fatal(err)
+	}
+	p1, err := storyDigestLevelOnEntry(store, account, charID, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binary.LittleEndian.Uint32(p1) != 100 {
+		t.Fatalf("expected persisted level 100, got %d", binary.LittleEndian.Uint32(p1))
+	}
+
+	// 3. Option 82 == 1 ("跳过所有过场动画") returns the character's exact current level
+	// even for a fresh character with no CMD 1438 record so StoryDigest never opens.
+	body := make([]byte, 448)
+	binary.LittleEndian.PutUint32(body[0:4], generalOptionBytes)
+	binary.LittleEndian.PutUint16(body[4+uiSizeIndex*2:], 75)
+	binary.LittleEndian.PutUint16(body[4+cinematicSkipOptionIndex*2:], cinematicSkipModeAll)
+	if err := saveGeneralOptions(store, account, body); err != nil {
+		t.Fatal(err)
+	}
+	pSkip, err := storyDigestLevelOnEntry(store, account, 999, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if binary.LittleEndian.Uint32(pSkip) != 100 {
+		t.Fatalf("expected skip-all NOTI 1370 level 100, got %d", binary.LittleEndian.Uint32(pSkip))
+	}
+
+	// 4. Verify NOTI 1370 is scheduled BEFORE NOTI 124 (ENTER_GAMEWORLD_COMPLETE).
+	plan := entryPayloads{
+		SeenCinematics:   protocol.SeenCinematicsAllPayload(),
+		StoryDigestLevel: protocol.StoryDigestLevelPayload(100),
+		Complete:         protocol.EnterGameworldComplete(),
+	}
+	pkts := plan.packets()
+	digestIdx, completeIdx := -1, -1
+	for i, pkt := range pkts {
+		if pkt.ID == protocol.NotiStoryDigestLevel {
+			digestIdx = i
+		}
+		if pkt.ID == 124 {
+			completeIdx = i
+		}
+	}
+	if digestIdx < 0 || completeIdx < 0 || digestIdx >= completeIdx {
+		t.Fatalf("expected NOTI 1370 before NOTI 124, got digestIdx=%d completeIdx=%d", digestIdx, completeIdx)
+	}
+}

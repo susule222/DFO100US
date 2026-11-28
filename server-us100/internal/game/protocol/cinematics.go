@@ -15,9 +15,29 @@ const (
 	// CinematicManager+0x150.
 	NotiSeenCinematics uint16 = 1352
 
+	// NotiStoryDigestLevel (0x55a, registered at 0x140015756 -> handler 0x142851280)
+	// pushes a u32 level into StoryDigestManager+0x8c. On NOTI 124
+	// (ENTER_GAMEWORLD_COMPLETE -> 0x14351dbd6 -> 0x142852ec0), the client compares
+	// Digest.etc entries for the character's current level against this value and
+	// opens StoryDigest (Type 1723) + MoviePlayer (Type 1455) if not covered.
+	NotiStoryDigestLevel uint16 = 1370
+
+	// CmdStoryDigestUpdate (0x59e, ENUM_CMDPACKET_STORY_DIGEST_UPDATE, sender
+	// 0x142853093) notifies the server (0 payload bytes) when the client starts
+	// StoryDigest for the character's current level so it is persisted across
+	// client launches.
+	CmdStoryDigestUpdate uint16 = 1438
+
 	SeenCinematicMaxID = 40000 // 0x9c40 entries in CinematicManager+0x150
 	SeenCinematicBytes = SeenCinematicMaxID / 8
 )
+
+// StoryDigestLevelPayload encodes NOTI 1370 (0x55a): u32 last-seen character level.
+func StoryDigestLevelPayload(level uint32) []byte {
+	p := make([]byte, 4)
+	binary.LittleEndian.PutUint32(p[0:4], level)
+	return p
+}
 
 // SeenCinematicsPayload encodes NOTI 1352 (0x548): u32 5000 + 5000 raw bitmask bytes.
 func SeenCinematicsPayload(mask []byte) []byte {

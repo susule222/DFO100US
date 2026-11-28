@@ -5,6 +5,7 @@ import (
 	"dfolan/internal/game/protocol"
 	"dfolan/internal/storage"
 	"encoding/binary"
+	"encoding/json"
 	"strconv"
 )
 
@@ -24,6 +25,7 @@ const (
 	cinematicSkipOptionIndex = 82
 	cinematicSkipModeAll     = 1
 	seenCinematicsTable      = "account_seen_cinematics_v224"
+	storyDigestLevelTable    = "character_story_digest_level_v224"
 )
 
 func generalOptionValue(store *storage.Store, account int64, idx int) (uint16, bool, error) {
@@ -82,4 +84,65 @@ func seenCinematicsOnEntry(store *storage.Store, account int64) ([]byte, error) 
 		return protocol.SeenCinematicsPayload(nil), nil
 	}
 	return protocol.SeenCinematicsPayload(mask), nil
+}
+
+func characterLevelFromState(raw []byte) int {
+	if len(raw) == 0 {
+		return 0
+	}
+	var st struct {
+		Level int `json:"level"`
+	}
+	if err := json.Unmarshal(raw, &st); err != nil {
+		return 0
+	}
+	return st.Level
+}
+
+func recordStoryDigestLevel(store *storage.Store, characterID int64, level uint32) error {
+	if store == nil || characterID <= 0 || level == 0 {
+		return nil
+	}
+	key := strconv.FormatInt(characterID, 10)
+	return store.Database().Mutate(func(tx *db100.Tx) error {
+		var saved uint32
+		ok, err := tx.Get(storyDigestLevelTable, key, &saved)
+		if err != nil {
+			return err
+		}
+		if ok && saved >= level {
+			return nil
+		}
+		return tx.Put(storyDigestLevelTable, key, level)
+	})
+}
+
+// storyDigestLevelOnEntry builds NOTI 1370 (0x55a) for StoryDigestManager+0x8c.
+// DigestTable::FindGroupForLevel (0x1458cc5b0) matches [minLevel, maxLevel], so
+// when Option 82 == 1 ("跳过所有过场动画") we push the character's exact current
+// level (making the seen digest group identical to the current level's group so
+// StoryDigest + MoviePlayer never open). Otherwise we push the persisted level
+// recorded via CMD 1438 (ENUM_CMDPACKET_STORY_DIGEST_UPDATE).
+func storyDigestLevelOnEntry(store *storage.Store, account, characterID int64, charLevel int) ([]byte, error) {
+	var current uint32
+	if charLevel > 0 {
+		current = uint32(charLevel)
+	}
+	if mode, ok, err := generalOptionValue(store, account, cinematicSkipOptionIndex); err != nil {
+		return nil, err
+	} else if ok && mode == cinematicSkipModeAll && current > 0 {
+		return protocol.StoryDigestLevelPayload(current), nil
+	}
+	if store == nil || characterID <= 0 {
+		return protocol.StoryDigestLevelPayload(0), nil
+	}
+	var saved uint32
+	ok, err := store.Database().Get(storyDigestLevelTable, strconv.FormatInt(characterID, 10), &saved)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		return protocol.StoryDigestLevelPayload(0), nil
+	}
+	return protocol.StoryDigestLevelPayload(saved), nil
 }
