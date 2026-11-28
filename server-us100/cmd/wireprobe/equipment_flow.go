@@ -94,14 +94,14 @@ func (s *equipmentSession) handle(service *inventory.WearService, w *worldSessio
 	// replies so EquipSwap always unlocks the bag, updates CUser, and recalculates
 	// character stats in real time.
 	ackReq := r
-	if ackReq.SourceList == 3 && (ackReq.DestinationList == 0 || ackReq.DestinationList == 1 || ackReq.DestinationList == protocol.TalismanSpace) {
+	if ackReq.SourceList == 3 && (ackReq.DestinationList == 0 || ackReq.DestinationList == 1 || ackReq.DestinationList == protocol.CreatureSpace || ackReq.DestinationList == protocol.InsigniaSpace || ackReq.DestinationList == protocol.TalismanSpace) {
 		ackReq.SourceList, ackReq.DestinationList = ackReq.DestinationList, ackReq.SourceList
 		ackReq.SourceSlot, ackReq.DestinationSlot = ackReq.DestinationSlot, ackReq.SourceSlot
 		ackReq.SourceItem, ackReq.DestinationItem = ackReq.DestinationItem, ackReq.SourceItem
 	}
 	plan := []outboundPacket{{"equipment_move_committed", 1, 19, protocol.ItemMoveSuccess(ackReq, 1)}}
 	isAvatarMove := r.SourceList == 1 || r.DestinationList == 1
-	for _, space := range []byte{0, 1, 3, protocol.TalismanSpace} {
+	for _, space := range []byte{0, 1, 3, protocol.CreatureSpace, protocol.InsigniaSpace, protocol.TalismanSpace} {
 		var rows [][protocol.CurrentItemRecordSize]byte
 		for _, loc := range []struct {
 			space byte
@@ -111,7 +111,7 @@ func (s *equipmentSession) handle(service *inventory.WearService, w *worldSessio
 				continue
 			}
 			// US100 v2.24 NOTI 14 (0x1435106e0) checks template == 0xffffffff (-1)
-			// across spaces 0, 1, 3, and 0x2b to delete/skip an emptied slot cleanly.
+			// across spaces 0, 1, 3, 7, 0x25, and 0x2b to delete/skip an emptied slot cleanly.
 			row := protocol.EmptySlotItem(loc.slot)
 			if space == protocol.TalismanSpace && loc.slot >= inventory.RuneSlotStart {
 				for _, rn := range b.Runes {
@@ -126,9 +126,43 @@ func (s *equipmentSession) handle(service *inventory.WearService, w *worldSessio
 				rows = append(rows, row)
 				continue
 			}
+			if space == protocol.CreatureSpace && loc.slot >= inventory.CreatureItemSlotStart {
+				for _, ci := range b.CreatureItems {
+					if ci.Slot == loc.slot {
+						row = protocol.OrdinaryItem(ci.Slot, ci.Template, ci.Amount)
+						if ci.SortLocked {
+							row[protocol.ItemSortLockOffset] = 1
+						}
+						break
+					}
+				}
+				rows = append(rows, row)
+				continue
+			}
+			if space == protocol.InsigniaSpace && loc.slot >= inventory.GemSlotStart {
+				for _, gm := range b.Gems {
+					if gm.Slot == loc.slot {
+						row = protocol.OrdinaryItem(gm.Slot, gm.Template, gm.Amount)
+						if gm.SortLocked {
+							row[protocol.ItemSortLockOffset] = 1
+						}
+						break
+					}
+				}
+				rows = append(rows, row)
+				continue
+			}
 			items := b.Equipment
 			if space == 1 {
 				items = b.Avatars
+			} else if space == protocol.CreatureSpace {
+				if loc.slot >= inventory.ArtifactSlotStart {
+					items = b.CreatureArtifacts
+				} else {
+					items = b.Creatures
+				}
+			} else if space == protocol.InsigniaSpace {
+				items = b.Insignias
 			} else if space == protocol.TalismanSpace {
 				items = b.Talismans
 			} else if space == 3 {

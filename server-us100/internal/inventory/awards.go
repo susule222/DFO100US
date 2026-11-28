@@ -16,6 +16,14 @@ type Awarder struct {
 	Equipment *EquipmentCatalog
 }
 
+func repeatTemplate(id, amount uint32) []uint32 {
+	ids := make([]uint32, amount)
+	for i := range ids {
+		ids[i] = id
+	}
+	return ids
+}
+
 func (a *Awarder) Grant(raw json.RawMessage, id, amount uint32) (json.RawMessage, AwardReceipt, error) {
 	r := AwardReceipt{Template: id, Amount: amount}
 	if a == nil || a.Catalog.Source.Checksum != a.Rules.Source {
@@ -25,11 +33,38 @@ func (a *Awarder) Grant(raw json.RawMessage, id, amount uint32) (json.RawMessage
 	if e != nil {
 		return nil, r, e
 	}
-	if id == 0 || a.Catalog.Items[id].Kind == "stackable" {
+	switch {
+	case IsCreatureTemplate(id):
+		if amount == 0 || amount > uint32(CreatureSlotEnd-CreatureSlotStart+1) {
+			return nil, r, fmt.Errorf("invalid creature award")
+		}
+		b, r.Slots, e = b.AddCreatures(repeatTemplate(id, amount))
+	case IsCreatureArtifactTemplate(id):
+		if amount == 0 || amount > uint32(ArtifactSlotEnd-ArtifactSlotStart+1) {
+			return nil, r, fmt.Errorf("invalid creature artifact award")
+		}
+		b, r.Slots, e = b.AddCreatureArtifacts(repeatTemplate(id, amount))
+	case IsCreatureStackableTemplate(id):
 		var slot uint16
-		b, slot, e = b.Add(a.Catalog, a.Rules, id, amount)
+		b, slot, e = b.AddCreatureItems(id, amount)
 		r.Slots = []uint16{slot}
-	} else if IsEmblemTemplate(id) {
+	case IsInsigniaTemplate(id):
+		if amount == 0 || amount > uint32(InsigniaSlotEnd-InsigniaSlotStart+1) {
+			return nil, r, fmt.Errorf("invalid insignia award")
+		}
+		b, r.Slots, e = b.AddInsignias(repeatTemplate(id, amount))
+	case IsFlagGemTemplate(id):
+		var slot uint16
+		b, slot, e = b.AddGems(id, amount)
+		r.Slots = []uint16{slot}
+	case IsRuneTemplate(id):
+		b, r.Slots, e = b.AddRunes(id, amount)
+	case IsTalismanTemplate(id) || (a.Equipment != nil && a.Equipment.IsTalisman(id)):
+		if amount == 0 || amount > uint32(TalismanSlotCount) {
+			return nil, r, fmt.Errorf("invalid talisman award")
+		}
+		b, r.Slots, e = b.AddTalismans(repeatTemplate(id, amount))
+	case IsEmblemTemplate(id):
 		limit := uint32(1000)
 		if amount > limit {
 			limit = amount
@@ -43,16 +78,11 @@ func (a *Awarder) Grant(raw json.RawMessage, id, amount uint32) (json.RawMessage
 		var slot uint16
 		b, slot, e = b.Add(local, a.Rules, id, amount)
 		r.Slots = []uint16{slot}
-	} else if IsTalismanTemplate(id) || (a.Equipment != nil && a.Equipment.IsTalisman(id)) {
-		if amount == 0 || amount > uint32(TalismanSlotCount) {
-			return nil, r, fmt.Errorf("invalid talisman award")
-		}
-		ids := make([]uint32, amount)
-		for i := range ids {
-			ids[i] = id
-		}
-		b, r.Slots, e = b.AddTalismans(ids)
-	} else {
+	case id == 0 || a.Catalog.Items[id].Kind == "stackable":
+		var slot uint16
+		b, slot, e = b.Add(a.Catalog, a.Rules, id, amount)
+		r.Slots = []uint16{slot}
+	default:
 		if a.Equipment == nil || a.Equipment.Source.Checksum != a.Rules.Source {
 			return nil, r, fmt.Errorf("equipment award source missing")
 		}

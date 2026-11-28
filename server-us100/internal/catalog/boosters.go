@@ -53,11 +53,12 @@ func (s SkinStorageItem) SkinIndices() []uint32 {
 
 // BoosterCatalog holds all openable box definitions extracted from a US100 PVF.
 type BoosterCatalog struct {
-	Source      pvf.ArchiveSnapshot        `json:"source"`
-	Boxes       map[uint32]BoosterBox      `json:"boxes"`
-	SkinItems   map[uint32]SkinStorageItem `json:"skin_items,omitempty"`
-	TypeCounts  map[string]int             `json:"type_counts,omitempty"`
-	BoxTagStats map[string]int             `json:"box_tag_stats,omitempty"`
+	Source       pvf.ArchiveSnapshot        `json:"source"`
+	Boxes        map[uint32]BoosterBox      `json:"boxes"`
+	SkinItems    map[uint32]SkinStorageItem `json:"skin_items,omitempty"`
+	CreatureEggs map[uint32]uint32          `json:"creature_eggs,omitempty"`
+	TypeCounts   map[string]int             `json:"type_counts,omitempty"`
+	BoxTagStats  map[string]int             `json:"box_tag_stats,omitempty"`
 }
 
 func LoadBoosters(filePath string) (*BoosterCatalog, error) {
@@ -84,6 +85,9 @@ func LoadBoosters(filePath string) (*BoosterCatalog, error) {
 	}
 	if c.SkinItems == nil {
 		c.SkinItems = map[uint32]SkinStorageItem{}
+	}
+	if c.CreatureEggs == nil {
+		c.CreatureEggs = map[uint32]uint32{}
 	}
 	return &c, nil
 }
@@ -113,11 +117,12 @@ func SaveBoosters(filePath string, c *BoosterCatalog) error {
 // classifying every awarded template as avatar / equipment / stackable / creature.
 func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 	cat := &BoosterCatalog{
-		Source:      a.Snapshot(),
-		Boxes:       map[uint32]BoosterBox{},
-		SkinItems:   map[uint32]SkinStorageItem{},
-		TypeCounts:  map[string]int{},
-		BoxTagStats: map[string]int{},
+		Source:       a.Snapshot(),
+		Boxes:        map[uint32]BoosterBox{},
+		SkinItems:    map[uint32]SkinStorageItem{},
+		CreatureEggs: map[uint32]uint32{},
+		TypeCounts:   map[string]int{},
+		BoxTagStats:  map[string]int{},
 	}
 
 	skinCatByID := map[uint32]byte{}
@@ -177,7 +182,20 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 		eqPaths[r.ID] = p
 	}
 
-	// Cache equipment metadata (avatar vs talisman vs ordinary equipment + durability) on demand.
+	// Extract all Creature Egg -> Hatched Creature mappings ([output index]) from list/equipment.lst.
+	for id, p := range eqPaths {
+		low := strings.ToLower(p)
+		if !strings.Contains(low, "creature/") && !strings.Contains(low, "/creature") {
+			continue
+		}
+		if s, err := ResolveScript(a, p); err == nil {
+			if outCells := sectionCells(s.Cells, "[output index]"); len(outCells) > 0 && outCells[0].Type == 0 && outCells[0].Value > 0 {
+				cat.CreatureEggs[id] = uint32(outCells[0].Value)
+			}
+		}
+	}
+
+	// Cache equipment metadata (avatar / talisman / creature / artifact / flag / ordinary equipment + durability) on demand.
 	eqCache := map[uint32]boosterEquipMeta{}
 	classifyEquip := func(id uint32) boosterEquipMeta {
 		if m, ok := eqCache[id]; ok {
@@ -192,25 +210,39 @@ func ImportBoosters(a *pvf.Archive) (*BoosterCatalog, error) {
 		lower := strings.ToLower(p)
 		isAv := strings.Contains(lower, "/avatar/") || strings.Contains(lower, "avatar/")
 		isTal := strings.Contains(lower, "/talisman/") || strings.Contains(lower, "talisman/")
+		var isCreature, isArtifact, isFlag bool
 		var dur uint16 = 35
 		if s, err := ResolveScript(a, p); err == nil {
 			if tc := sectionCells(s.Cells, "[equipment type]"); len(tc) > 0 {
 				eqType := strings.ToLower(tc[0].Text)
-				if strings.Contains(eqType, "avatar") {
+				switch {
+				case strings.Contains(eqType, "avatar"):
 					isAv = true
-				}
-				if eqType == "[talisman]" {
+				case eqType == "[talisman]":
 					isTal = true
+				case eqType == "[creature]":
+					isCreature = true
+				case eqType == "[artifact red]" || eqType == "[artifact blue]" || eqType == "[artifact green]":
+					isArtifact = true
+				case eqType == "[flag]":
+					isFlag = true
 				}
 			}
 			if dc := sectionCells(s.Cells, "[durability]"); len(dc) > 0 && dc[0].Type == 0 && dc[0].Value > 0 && dc[0].Value <= 65535 {
 				dur = uint16(dc[0].Value)
 			}
 		}
-		if isAv || isTal {
+		if isAv || isTal || isCreature || isArtifact || isFlag {
 			dur = 0
 		}
-		m := boosterEquipMeta{isAvatar: isAv, isTalisman: isTal, durability: dur}
+		m := boosterEquipMeta{
+			isAvatar:   isAv,
+			isTalisman: isTal,
+			isCreature: isCreature,
+			isArtifact: isArtifact,
+			isFlag:     isFlag,
+			durability: dur,
+		}
 		eqCache[id] = m
 		return m
 	}
@@ -384,7 +416,28 @@ func intValues(cells []pvf.Token) []int32 {
 type boosterEquipMeta struct {
 	isAvatar   bool
 	isTalisman bool
+	isCreature bool
+	isArtifact bool
+	isFlag     bool
 	durability uint16
+}
+
+func (m boosterEquipMeta) applyToAward(aw *BoosterAward) {
+	switch {
+	case m.isAvatar:
+		aw.Kind = "a"
+	case m.isTalisman:
+		aw.Kind = "t"
+	case m.isCreature:
+		aw.Kind = "c"
+	case m.isArtifact:
+		aw.Kind = "ca"
+	case m.isFlag:
+		aw.Kind = "f"
+	default:
+		aw.Kind = "e"
+		aw.Durability = m.durability
+	}
 }
 
 func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) boosterEquipMeta) BoosterBox {
@@ -449,13 +502,9 @@ func parseBoosterSelection(cells []pvf.Token, classifyEquip func(uint32) booster
 						q = uint32(nums[i+1])
 					}
 					em := classifyEquip(tpl)
-					if em.isAvatar {
-						items = append(items, BoosterAward{Template: tpl, Quantity: q, Kind: "a"})
-					} else if em.isTalisman {
-						items = append(items, BoosterAward{Template: tpl, Quantity: q, Kind: "t"})
-					} else {
-						items = append(items, BoosterAward{Template: tpl, Quantity: q, Kind: "e", Durability: em.durability})
-					}
+					aw := BoosterAward{Template: tpl, Quantity: q}
+					em.applyToAward(&aw)
+					items = append(items, aw)
 				}
 			}
 		}
@@ -547,16 +596,14 @@ func parseBoosterInfo(cells []pvf.Token, classifyEquip func(uint32) boosterEquip
 						aw.Kind = "a"
 					case "[equipment]":
 						em := classifyEquip(aw.Template)
-						if em.isAvatar {
-							aw.Kind = "a"
-						} else if em.isTalisman {
-							aw.Kind = "t"
-						} else {
-							aw.Kind = "e"
-							aw.Durability = em.durability
-						}
+						em.applyToAward(&aw)
 					case "[creature]":
-						aw.Kind = "c"
+						em := classifyEquip(aw.Template)
+						if em.isArtifact {
+							aw.Kind = "ca"
+						} else {
+							aw.Kind = "c"
+						}
 					}
 					entries = append(entries, aw)
 				}
@@ -592,14 +639,7 @@ func parsePackageData(cells []pvf.Token, eqPaths map[uint32]string, classifyEqui
 			aw := BoosterAward{Template: id, Quantity: uint32(qty), Weight: 1000}
 			if _, isEq := eqPaths[id]; isEq {
 				em := classifyEquip(id)
-				if em.isAvatar {
-					aw.Kind = "a"
-				} else if em.isTalisman {
-					aw.Kind = "t"
-				} else {
-					aw.Kind = "e"
-					aw.Durability = em.durability
-				}
+				em.applyToAward(&aw)
 			}
 			groups = append(groups, []BoosterAward{aw})
 		}

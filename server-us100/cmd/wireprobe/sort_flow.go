@@ -35,7 +35,7 @@ func sortInventoryWithVaults(
 		return role, nil, 0, err
 	}
 	isVault := protocol.IsVaultSpace(req.Space)
-	if req.Space != 0 && req.Space != 1 && req.Space != protocol.TalismanSpace && !isVault {
+	if req.Space != 0 && req.Space != 1 && req.Space != protocol.CreatureSpace && req.Space != protocol.InsigniaSpace && req.Space != protocol.TalismanSpace && !isVault {
 		return role, nil, req.Space, fmt.Errorf("unsupported sort inventory space %d", req.Space)
 	}
 	moveMap := make(map[uint16]uint16, len(req.Pairs))
@@ -46,6 +46,12 @@ func sortInventoryWithVaults(
 		}
 		if req.Space == 1 && (pair.From >= inventory.AvatarBagCapacity || pair.To >= inventory.AvatarBagCapacity) {
 			return role, nil, req.Space, fmt.Errorf("sort slot out of avatar bag range: %d->%d", pair.From, pair.To)
+		}
+		if req.Space == protocol.CreatureSpace && (pair.From >= inventory.CreatureBagCapacity || pair.To >= inventory.CreatureBagCapacity) {
+			return role, nil, req.Space, fmt.Errorf("sort slot out of creature bag range: %d->%d", pair.From, pair.To)
+		}
+		if req.Space == protocol.InsigniaSpace && (pair.From >= inventory.InsigniaBagCapacity || pair.To >= inventory.InsigniaBagCapacity) {
+			return role, nil, req.Space, fmt.Errorf("sort slot out of insignia bag range: %d->%d", pair.From, pair.To)
 		}
 		if req.Space == protocol.TalismanSpace && (pair.From >= inventory.EquippedRuneStart || pair.To >= inventory.EquippedRuneStart) {
 			return role, nil, req.Space, fmt.Errorf("sort slot out of talisman/rune bag range: %d->%d", pair.From, pair.To)
@@ -116,6 +122,58 @@ func sortInventoryWithVaults(
 					b.Avatars[i].Slot = dst
 				}
 			}
+		} else if req.Space == protocol.CreatureSpace {
+			for _, cr := range b.Creatures {
+				if _, moving := moveMap[cr.Slot]; !moving && destSeen[cr.Slot] {
+					return nil, nil, fmt.Errorf("sort destination creature slot %d occupied by unmoved creature", cr.Slot)
+				}
+			}
+			for _, ca := range b.CreatureArtifacts {
+				if _, moving := moveMap[ca.Slot]; !moving && destSeen[ca.Slot] {
+					return nil, nil, fmt.Errorf("sort destination artifact slot %d occupied by unmoved artifact", ca.Slot)
+				}
+			}
+			for _, ci := range b.CreatureItems {
+				if _, moving := moveMap[ci.Slot]; !moving && destSeen[ci.Slot] {
+					return nil, nil, fmt.Errorf("sort destination creature item slot %d occupied by unmoved item", ci.Slot)
+				}
+			}
+			for i := range b.Creatures {
+				if dst, ok := moveMap[b.Creatures[i].Slot]; ok {
+					b.Creatures[i].Slot = dst
+				}
+			}
+			for i := range b.CreatureArtifacts {
+				if dst, ok := moveMap[b.CreatureArtifacts[i].Slot]; ok {
+					b.CreatureArtifacts[i].Slot = dst
+				}
+			}
+			for i := range b.CreatureItems {
+				if dst, ok := moveMap[b.CreatureItems[i].Slot]; ok {
+					b.CreatureItems[i].Slot = dst
+				}
+			}
+		} else if req.Space == protocol.InsigniaSpace {
+			for _, ins := range b.Insignias {
+				if _, moving := moveMap[ins.Slot]; !moving && destSeen[ins.Slot] {
+					return nil, nil, fmt.Errorf("sort destination insignia slot %d occupied by unmoved insignia", ins.Slot)
+				}
+			}
+			for _, gm := range b.Gems {
+				if _, moving := moveMap[gm.Slot]; !moving && destSeen[gm.Slot] {
+					return nil, nil, fmt.Errorf("sort destination gem slot %d occupied by unmoved gem", gm.Slot)
+				}
+			}
+			for i := range b.Insignias {
+				if dst, ok := moveMap[b.Insignias[i].Slot]; ok {
+					b.Insignias[i].Slot = dst
+				}
+			}
+			for i := range b.Gems {
+				if dst, ok := moveMap[b.Gems[i].Slot]; ok {
+					b.Gems[i].Slot = dst
+				}
+			}
 		} else {
 			for _, tl := range b.Talismans {
 				if _, moving := moveMap[tl.Slot]; !moving && destSeen[tl.Slot] {
@@ -162,6 +220,10 @@ func sortInventoryWithVaults(
 		invRestore, err = protocol.US224InventoryRestoreWithExpansion(bag.ExpandedSlots, bag.Rows())
 	} else if req.Space == 1 {
 		invRestore, err = protocol.US224AvatarRestore(inventory.AvatarBagCapacity, bag.AvatarRows())
+	} else if req.Space == protocol.CreatureSpace {
+		invRestore, err = protocol.US224CreatureRestore(bag.CreatureRows())
+	} else if req.Space == protocol.InsigniaSpace {
+		invRestore, err = protocol.US224InsigniaRestore(bag.InsigniaRows())
 	} else {
 		invRestore, err = protocol.US224TalismanRestore(bag.TalismanRows())
 	}

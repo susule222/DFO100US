@@ -17,11 +17,20 @@ const ItemSortLockOffset = 0x55
 // and 0x141405d76 -> 0x14391db40 reads [decoded+0xe4+idx] for idx=0..2.
 const TalismanRuneSocketsOffset = 0x67
 
-// TalismanSpace is the US224 inventory space for the Talisman & Rune tab (护石栏).
-// Verified from DFO_unpacked.exe: 0x1414055f0 calls GetInventoryBySpace(0x2b),
-// initialized at 0x143a886e2 with capacity 0x149 (329 slots: 0..79 talismans,
-// 80..319 runes, 320..328 equipped runes for worn talisman slots 33..35).
-const TalismanSpace byte = 0x2b
+// Specialized US224 inventory spaces verified from DFO_unpacked.exe (0x143a88660..0x143a886fa):
+//   - CreatureSpace (0x07): cap 0x110 (272 slots: 0..159 creatures/eggs, 160..215 artifacts, 216..271 creature items)
+//   - InsigniaSpace (0x25): cap 0x70  (112 slots: 0..55 insignias [flag], 56..111 gems [flag gem])
+//   - TalismanSpace (0x2b): cap 0x149 (329 slots: 0..79 talismans, 80..319 runes, 320..328 equipped runes)
+const (
+	CreatureSpace byte = 0x07
+	InsigniaSpace byte = 0x25
+	TalismanSpace byte = 0x2b
+
+	// CmdCreatureEggHatch is CMD 102 (0x66), sent by DFO_unpacked.exe (0x143b29597)
+	// when right-clicking a Creature Egg in Space 7: u8 space (=7), u16 slot.
+	// ACK 102 (0x1434b91c0): u8 1, u16 slot, u8 space (=7).
+	CmdCreatureEggHatch uint16 = 102
+)
 
 // OrdinaryItem is the current 181-byte base row. Special equipment branches
 // require extra source/type validation and are deliberately separate.
@@ -157,6 +166,44 @@ func US224TalismanUpdate(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 	return us224OrdinaryList([]byte{TalismanSpace}, rows)
 }
 
+// US224CreatureRestore encodes NOTI13 space 7 (Creature / Artifact / Creature Item tab):
+// u8 space=7, u16 count, count * 0xb1 bytes (verified at 0x1434fc010 & trailer preds 0x143a4cd70/0x143a4cdb0).
+func US224CreatureRestore(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
+	return us224OrdinaryList([]byte{CreatureSpace}, rows)
+}
+
+// US224CreatureUpdate encodes NOTI14 space 7 (live Creature tab update):
+// u8 space=7, u16 count, count * 0xb1 bytes.
+func US224CreatureUpdate(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
+	return us224OrdinaryList([]byte{CreatureSpace}, rows)
+}
+
+// US224InsigniaRestore encodes NOTI13 space 0x25 (Insignia & Gem tab / 勋章栏):
+// u8 space=0x25, u16 count, count * 0xb1 bytes.
+func US224InsigniaRestore(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
+	return us224OrdinaryList([]byte{InsigniaSpace}, rows)
+}
+
+// US224InsigniaUpdate encodes NOTI14 space 0x25 (live Insignia & Gem update):
+// u8 space=0x25, u16 count, count * 0xb1 bytes.
+func US224InsigniaUpdate(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
+	return us224OrdinaryList([]byte{InsigniaSpace}, rows)
+}
+
+// DecodeCreatureEggHatch decodes CMD 102 (0x66, 0x143b295f4): u8 space, u16 slot (+ Blowfish pad).
+func DecodeCreatureEggHatch(p []byte) (space byte, slot uint16, err error) {
+	if len(p) < 3 {
+		return 0, 0, fmt.Errorf("creature egg hatch requires at least 3 bytes, got %d", len(p))
+	}
+	return p[0], binary.LittleEndian.Uint16(p[1:3]), nil
+}
+
+// CreatureEggHatchSuccess encodes ACK 102 (0x66, 0x1434b91c0): u8 1, u16 slot, u8 space.
+func CreatureEggHatchSuccess(space byte, slot uint16) []byte {
+	p := add16([]byte{1}, slot)
+	return append(p, space)
+}
+
 // Space 3 has the same item framing in the US224 restore and update
 // readers: 0xb1 bytes; two length-prefixed extras for an avatar template.
 // The inventory layer keeps avatars, ordinary equipment, and worn talismans
@@ -170,7 +217,7 @@ func us224WornList(rows [][CurrentItemRecordSize]byte) ([]byte, error) {
 	p := add16([]byte{3}, uint16(len(rows)))
 	for _, r := range rows {
 		slot := binary.LittleEndian.Uint16(r[:])
-		if slot > 25 && (slot < 33 || slot > 35) {
+		if slot > 35 {
 			return nil, fmt.Errorf("unsupported worn slot %d", slot)
 		}
 		if seen[slot] {
@@ -212,6 +259,12 @@ func US224InventorySpaceUpdate(space byte, rows [][CurrentItemRecordSize]byte) (
 	}
 	if space == TalismanSpace {
 		return US224TalismanUpdate(rows)
+	}
+	if space == CreatureSpace {
+		return US224CreatureUpdate(rows)
+	}
+	if space == InsigniaSpace {
+		return US224InsigniaUpdate(rows)
 	}
 	if IsVaultSpace(space) {
 		return us224OrdinaryList([]byte{space}, rows)

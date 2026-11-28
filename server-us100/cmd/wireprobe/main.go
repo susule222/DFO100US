@@ -1788,15 +1788,47 @@ func main() {
 						}
 					}
 					hasAvatar := false
+					hasCreature := false
+					hasInsignia := false
+					hasTalisman := false
 					for _, l := range lines {
 						if l.Kind == "avatar" {
 							hasAvatar = true
-							break
+						}
+						if inventory.IsCreatureTemplate(l.Template) || inventory.IsCreatureArtifactTemplate(l.Template) || inventory.IsCreatureStackableTemplate(l.Template) {
+							hasCreature = true
+						}
+						if inventory.IsInsigniaTemplate(l.Template) || inventory.IsFlagGemTemplate(l.Template) {
+							hasInsignia = true
+						}
+						if inventory.IsTalismanTemplate(l.Template) || inventory.IsRuneTemplate(l.Template) {
+							hasTalisman = true
 						}
 					}
 					if hasAvatar {
 						if avInv, aerr := inventory.AvatarPayload(latest.State); aerr == nil {
 							if sendPayload(0, 13, avInv) != nil {
+								return
+							}
+						}
+					}
+					if hasCreature {
+						if crInv, cerr := inventory.CreaturePayload(latest.State); cerr == nil {
+							if sendPayload(0, 13, crInv) != nil {
+								return
+							}
+						}
+					}
+					if hasInsignia {
+						if insInv, ierr := inventory.InsigniaPayload(latest.State); ierr == nil {
+							if sendPayload(0, 13, insInv) != nil {
+								return
+							}
+						}
+					}
+					if hasTalisman {
+						if talInv, terr := inventory.TalismanPayload(latest.State); terr == nil {
+							if sendPayload(0, 13, talInv) != nil {
 								return
 							}
 						}
@@ -2067,6 +2099,24 @@ func main() {
 						if e = sendPayload(1, protocol.CmdUseStackableAction, protocol.UseStackableActionRefused(4)); e != nil {
 							return
 						}
+						continue
+					}
+					for _, packet := range plan {
+						if e = sendPayload(packet.Kind, packet.ID, packet.Payload); e != nil {
+							return
+						}
+						event(map[string]any{"kind": packet.Name, "character_id": worldState.role.ID, "id": packet.ID})
+					}
+					continue
+				}
+				if worldState != nil && bootstrapped && frame.ID == protocol.CmdCreatureEggHatch {
+					if !verified {
+						event(map[string]any{"kind": "creature_egg_hatch_rejected", "reason": "checksum failed"})
+						continue
+					}
+					plan, e := worldState.handleCreatureEggHatch(plaintext, frame.Raw)
+					if e != nil {
+						event(map[string]any{"kind": "creature_egg_hatch_error", "character_id": worldState.role.ID, "reason": e.Error()})
 						continue
 					}
 					for _, packet := range plan {
@@ -2814,6 +2864,12 @@ func main() {
 						}
 						if e == nil {
 							plan.Avatars, e = inventory.AvatarPayload(role.State)
+						}
+						if e == nil {
+							plan.Creatures, e = inventory.CreaturePayload(role.State)
+						}
+						if e == nil {
+							plan.Insignias, e = inventory.InsigniaPayload(role.State)
 						}
 						if e == nil {
 							plan.Talismans, e = inventory.TalismanPayload(role.State)

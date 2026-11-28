@@ -23,6 +23,8 @@ type entryPayloads struct {
 	Experience, CompletedQuests, Inventory                                    []byte
 	DanjiInventory                                                            []byte
 	Avatars                                                                   []byte
+	Creatures                                                                 []byte
+	Insignias                                                                 []byte
 	Talismans                                                                 []byte
 	AvailableQuests                                                           []byte
 	Worn                                                                      []byte
@@ -76,6 +78,8 @@ func (p entryPayloads) packets() []outboundPacket {
 		{"inventory_restored", 0, 13, p.Inventory},
 		{"danji_inventory_restored", 0, 13, p.DanjiInventory},
 		{"avatar_inventory_restored", 0, 13, p.Avatars},
+		{"creature_inventory_restored", 0, 13, p.Creatures},
+		{"insignia_inventory_restored", 0, 13, p.Insignias},
 		{"talisman_inventory_restored", 0, 13, p.Talismans},
 		{"worn_equipment_restored", 0, 13, p.Worn},
 		{"item_locks_restored", 0, 251, p.ItemLocks},

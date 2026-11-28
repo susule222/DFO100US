@@ -412,7 +412,7 @@ func openBoosterBox(
 			storage.TacticianContractKind: true,
 			storage.GrowthContractKind:    true,
 			storage.CubeContractKind:      true,
-		}, false, false)
+		}, false, false, false, false)
 	}
 	if isChoice && openCount == 1 && (box == 590005785 || box == 50002547) {
 		qty := uint32(1)
@@ -435,7 +435,7 @@ func openBoosterBox(
 		if err != nil {
 			return role, nil, box, chosen, qty, false, err
 		}
-		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{{Template: chosen, Quantity: qty}}, applied, nil, false, false)
+		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{{Template: chosen, Quantity: qty}}, applied, nil, false, false, false, false)
 	}
 
 	// Bagged contract booster (e.g. 590006272..590006277 opened from bag):
@@ -467,7 +467,7 @@ func openBoosterBox(
 			}
 		}
 		display := contractBoosterAward(box, uint32(openCount))
-		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{display}, applied, map[byte]bool{kind: true}, false, false)
+		return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, []boosterAward{display}, applied, map[byte]bool{kind: true}, false, false, false, false)
 	}
 
 	// Universal US100 PVF booster/selection/package resolution (41,394+ boxes),
@@ -530,27 +530,51 @@ func openBoosterBox(
 
 	contractDays := map[byte]int64{}
 	var avatarIDs []uint32
+	var creatureIDs []uint32
+	var artifactIDs []uint32
+	var creatureItemAwards []boosterAward
+	var insigniaIDs []uint32
+	var gemAwards []boosterAward
 	var talismanIDs []uint32
 	var runeAwards []boosterAward
 	var equipAwards []boosterAward
 	var bagAwards []boosterAward
 	for _, a := range awards {
-		if a.Avatar {
+		switch {
+		case a.Avatar:
 			for i := uint32(0); i < a.Quantity; i++ {
 				avatarIDs = append(avatarIDs, a.Template)
 			}
-		} else if a.Talisman || inventory.IsTalismanTemplate(a.Template) {
+		case a.Creature || inventory.IsCreatureTemplate(a.Template):
+			for i := uint32(0); i < a.Quantity; i++ {
+				creatureIDs = append(creatureIDs, a.Template)
+			}
+		case a.CreatureArtifact || inventory.IsCreatureArtifactTemplate(a.Template):
+			for i := uint32(0); i < a.Quantity; i++ {
+				artifactIDs = append(artifactIDs, a.Template)
+			}
+		case a.CreatureItem || inventory.IsCreatureStackableTemplate(a.Template):
+			creatureItemAwards = append(creatureItemAwards, a)
+		case a.Insignia || inventory.IsInsigniaTemplate(a.Template):
+			for i := uint32(0); i < a.Quantity; i++ {
+				insigniaIDs = append(insigniaIDs, a.Template)
+			}
+		case a.Gem || a.StackableType == "[flag gem]" || inventory.IsFlagGemTemplate(a.Template):
+			gemAwards = append(gemAwards, a)
+		case a.Talisman || inventory.IsTalismanTemplate(a.Template):
 			for i := uint32(0); i < a.Quantity; i++ {
 				talismanIDs = append(talismanIDs, a.Template)
 			}
-		} else if a.Rune || a.StackableType == "[rune]" {
+		case a.Rune || a.StackableType == "[rune]" || inventory.IsRuneTemplate(a.Template):
 			runeAwards = append(runeAwards, a)
-		} else if a.Equipment {
+		case a.Equipment:
 			equipAwards = append(equipAwards, a)
-		} else if kind, days, ok := directContractItem(a.Template); ok {
-			contractDays[kind] += days * int64(a.Quantity)
-		} else {
-			bagAwards = append(bagAwards, a)
+		default:
+			if kind, days, ok := directContractItem(a.Template); ok {
+				contractDays[kind] += days * int64(a.Quantity)
+			} else {
+				bagAwards = append(bagAwards, a)
+			}
 		}
 	}
 
@@ -567,6 +591,40 @@ func openBoosterBox(
 			b, _, e = b.AddAvatars(avatarIDs)
 			if e != nil {
 				return nil, nil, e
+			}
+		}
+		if len(creatureIDs) > 0 {
+			b, _, e = b.AddCreatures(creatureIDs)
+			if e != nil {
+				return nil, nil, e
+			}
+		}
+		if len(artifactIDs) > 0 {
+			b, _, e = b.AddCreatureArtifacts(artifactIDs)
+			if e != nil {
+				return nil, nil, e
+			}
+		}
+		if len(creatureItemAwards) > 0 {
+			for _, a := range creatureItemAwards {
+				b, _, e = b.AddCreatureItems(a.Template, a.Quantity)
+				if e != nil {
+					return nil, nil, e
+				}
+			}
+		}
+		if len(insigniaIDs) > 0 {
+			b, _, e = b.AddInsignias(insigniaIDs)
+			if e != nil {
+				return nil, nil, e
+			}
+		}
+		if len(gemAwards) > 0 {
+			for _, a := range gemAwards {
+				b, _, e = b.AddGems(a.Template, a.Quantity)
+				if e != nil {
+					return nil, nil, e
+				}
 			}
 		}
 		if len(talismanIDs) > 0 {
@@ -636,7 +694,13 @@ func openBoosterBox(
 			changedKinds[k] = true
 		}
 	}
-	return finalizeBoosterPackets(ctx, store, fatigue, account, saved, box, slot, awards, applied, changedKinds, len(avatarIDs) > 0, len(talismanIDs) > 0 || len(runeAwards) > 0)
+	return finalizeBoosterPackets(
+		ctx, store, fatigue, account, saved, box, slot, awards, applied, changedKinds,
+		len(avatarIDs) > 0,
+		len(creatureIDs) > 0 || len(artifactIDs) > 0 || len(creatureItemAwards) > 0,
+		len(insigniaIDs) > 0 || len(gemAwards) > 0,
+		len(talismanIDs) > 0 || len(runeAwards) > 0,
+	)
 }
 
 func catalogToBoosterAward(a catalog.BoosterAward, mult uint32) boosterAward {
@@ -645,16 +709,26 @@ func catalogToBoosterAward(a catalog.BoosterAward, mult uint32) boosterAward {
 		q = 1
 	}
 	isTal := a.Kind == "t" || inventory.IsTalismanTemplate(a.Template)
-	isRune := a.StackableType == "[rune]"
+	isCre := a.Kind == "c" || inventory.IsCreatureTemplate(a.Template)
+	isArt := a.Kind == "ca" || inventory.IsCreatureArtifactTemplate(a.Template)
+	isCreItem := inventory.IsCreatureStackableTemplate(a.Template)
+	isIns := a.Kind == "f" || inventory.IsInsigniaTemplate(a.Template)
+	isGem := a.StackableType == "[flag gem]" || inventory.IsFlagGemTemplate(a.Template)
+	isRune := a.StackableType == "[rune]" || inventory.IsRuneTemplate(a.Template)
 	return boosterAward{
-		Template:      a.Template,
-		Quantity:      q * mult,
-		Avatar:        a.Kind == "a",
-		Talisman:      isTal,
-		Rune:          isRune,
-		Equipment:     a.Kind == "e" && !isTal,
-		StackableType: a.StackableType,
-		Durability:    a.Durability,
+		Template:         a.Template,
+		Quantity:         q * mult,
+		Avatar:           a.Kind == "a",
+		Creature:         isCre && !isArt,
+		CreatureArtifact: isArt,
+		CreatureItem:     isCreItem,
+		Insignia:         isIns,
+		Gem:              isGem,
+		Talisman:         isTal,
+		Rune:             isRune,
+		Equipment:        a.Kind == "e" && !isTal && !isCre && !isArt && !isIns,
+		StackableType:    a.StackableType,
+		Durability:       a.Durability,
 	}
 }
 
@@ -900,14 +974,19 @@ func resolveSelectionBox(def selectionBoxDef, category, chosen uint32, isChoice 
 }
 
 type boosterAward struct {
-	Template      uint32 `json:"template"`
-	Quantity      uint32 `json:"quantity"`
-	Avatar        bool   `json:"avatar,omitempty"`
-	Talisman      bool   `json:"talisman,omitempty"`
-	Rune          bool   `json:"rune,omitempty"`
-	Equipment     bool   `json:"equipment,omitempty"`
-	StackableType string `json:"-"`
-	Durability    uint16 `json:"-"`
+	Template         uint32 `json:"template"`
+	Quantity         uint32 `json:"quantity"`
+	Avatar           bool   `json:"avatar,omitempty"`
+	Creature         bool   `json:"creature,omitempty"`
+	CreatureArtifact bool   `json:"creature_artifact,omitempty"`
+	CreatureItem     bool   `json:"creature_item,omitempty"`
+	Insignia         bool   `json:"insignia,omitempty"`
+	Gem              bool   `json:"gem,omitempty"`
+	Talisman         bool   `json:"talisman,omitempty"`
+	Rune             bool   `json:"rune,omitempty"`
+	Equipment        bool   `json:"equipment,omitempty"`
+	StackableType    string `json:"-"`
+	Durability       uint16 `json:"-"`
 }
 
 func contractBoosterAward(box, openCount uint32) boosterAward {
@@ -955,6 +1034,8 @@ func finalizeBoosterPackets(
 	applied bool,
 	changedKinds map[byte]bool,
 	syncAvatars bool,
+	syncCreatures bool,
+	syncInsignias bool,
 	syncTalismans bool,
 ) (storage.Character, []outboundPacket, uint32, uint32, uint32, bool, error) {
 	bag, err := inventory.ReadBag(saved.State)
@@ -987,6 +1068,20 @@ func finalizeBoosterPackets(
 			return saved, nil, box, 0, 0, applied, aerr
 		}
 		plan = append(plan, outboundPacket{"booster_avatar_restored", 0, 13, avInv})
+	}
+	if syncCreatures {
+		crInv, cerr := protocol.US224CreatureRestore(bag.CreatureRows())
+		if cerr != nil {
+			return saved, nil, box, 0, 0, applied, cerr
+		}
+		plan = append(plan, outboundPacket{"booster_creature_restored", 0, 13, crInv})
+	}
+	if syncInsignias {
+		insInv, ierr := protocol.US224InsigniaRestore(bag.InsigniaRows())
+		if ierr != nil {
+			return saved, nil, box, 0, 0, applied, ierr
+		}
+		plan = append(plan, outboundPacket{"booster_insignia_restored", 0, 13, insInv})
 	}
 	if syncTalismans {
 		talInv, terr := protocol.US224TalismanRestore(bag.TalismanRows())

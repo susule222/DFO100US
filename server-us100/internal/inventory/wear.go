@@ -105,9 +105,13 @@ func (s *WearService) moveOrdinary(role storage.Character, r protocol.ItemMoveRe
 	if s == nil || s.Catalog == nil || s.Catalog.Source.Checksum != role.ConfigVersion || s.Rules.Source != role.ConfigVersion || s.Professions.Source.Checksum != role.ConfigVersion {
 		return nil, fmt.Errorf("wear service source mismatch")
 	}
-	if (r.SourceList != 0 && r.SourceList != 1 && r.SourceList != 3 && r.SourceList != protocol.TalismanSpace) ||
-		(r.DestinationList != 0 && r.DestinationList != 1 && r.DestinationList != 3 && r.DestinationList != protocol.TalismanSpace) ||
-		r.Count > 1 || r.Extra != 0 || r.Selection != 0xffffffff || r.Flags != [3]byte{} {
+	allowedSpace := func(list byte) bool {
+		return list == 0 || list == 1 || list == 3 || list == protocol.CreatureSpace || list == protocol.InsigniaSpace || list == protocol.TalismanSpace
+	}
+	isStackMove := (r.SourceList == protocol.CreatureSpace && r.DestinationList == protocol.CreatureSpace && r.SourceSlot >= CreatureItemSlotStart && r.DestinationSlot >= CreatureItemSlotStart) ||
+		(r.SourceList == protocol.InsigniaSpace && r.DestinationList == protocol.InsigniaSpace && r.SourceSlot >= GemSlotStart && r.DestinationSlot >= GemSlotStart)
+	if !allowedSpace(r.SourceList) || !allowedSpace(r.DestinationList) ||
+		(!isStackMove && r.Count > 1) || r.Extra != 0 || r.Selection != 0xffffffff || r.Flags != [3]byte{} {
 		return nil, fmt.Errorf("unsupported ordinary equipment move")
 	}
 	if r.SourceList == r.DestinationList && r.SourceSlot == r.DestinationSlot {
@@ -116,6 +120,219 @@ func (s *WearService) moveOrdinary(role storage.Character, r protocol.ItemMoveRe
 	b, e := ReadBag(role.State)
 	if e != nil {
 		return nil, e
+	}
+	// Creature & Artifact move path (space 7 <-> space 3 slots 26..29, or within space 7).
+	if r.SourceList == protocol.CreatureSpace || r.DestinationList == protocol.CreatureSpace ||
+		(r.SourceList == 3 && (r.SourceSlot == WornCreatureSlot || (r.SourceSlot >= WornArtifactSlotMin && r.SourceSlot <= WornArtifactSlotMax))) ||
+		(r.DestinationList == 3 && (r.DestinationSlot == WornCreatureSlot || (r.DestinationSlot >= WornArtifactSlotMin && r.DestinationSlot <= WornArtifactSlotMax))) {
+		if (r.SourceList != protocol.CreatureSpace && r.SourceList != 3) || (r.DestinationList != protocol.CreatureSpace && r.DestinationList != 3) {
+			return nil, fmt.Errorf("cannot move creature item into unrelated bag")
+		}
+		if r.SourceList == protocol.CreatureSpace && r.DestinationList == protocol.CreatureSpace &&
+			r.SourceSlot >= CreatureItemSlotStart && r.DestinationSlot >= CreatureItemSlotStart {
+			if r.SourceSlot > CreatureItemSlotEnd || r.DestinationSlot > CreatureItemSlotEnd {
+				return nil, fmt.Errorf("slot outside creature consumable inventory")
+			}
+			findCI := func(slot uint16) *BagItem {
+				for _, v := range b.CreatureItems {
+					if v.Slot == slot {
+						cp := v
+						return &cp
+					}
+				}
+				return nil
+			}
+			a, z := findCI(r.SourceSlot), findCI(r.DestinationSlot)
+			if a == nil && z == nil {
+				return nil, fmt.Errorf("both creature consumable locations are empty")
+			}
+			replaceCI := func(slot uint16, item *BagItem) {
+				kept := make([]BagItem, 0, len(b.CreatureItems)+1)
+				for _, v := range b.CreatureItems {
+					if v.Slot != slot {
+						kept = append(kept, v)
+					}
+				}
+				if item != nil {
+					v := *item
+					v.Slot = slot
+					kept = append(kept, v)
+				}
+				b.CreatureItems = kept
+			}
+			replaceCI(r.SourceSlot, z)
+			replaceCI(r.DestinationSlot, a)
+			return SaveBag(role.State, b)
+		}
+		isArtifact := (r.SourceList == protocol.CreatureSpace && r.SourceSlot >= ArtifactSlotStart && r.SourceSlot <= ArtifactSlotEnd) ||
+			(r.DestinationList == protocol.CreatureSpace && r.DestinationSlot >= ArtifactSlotStart && r.DestinationSlot <= ArtifactSlotEnd) ||
+			(r.SourceList == 3 && r.SourceSlot >= WornArtifactSlotMin && r.SourceSlot <= WornArtifactSlotMax) ||
+			(r.DestinationList == 3 && r.DestinationSlot >= WornArtifactSlotMin && r.DestinationSlot <= WornArtifactSlotMax)
+		findCreature := func(list byte, slot uint16) (*BagEquipment, error) {
+			rows := b.Worn
+			if list == protocol.CreatureSpace {
+				if isArtifact {
+					if slot < ArtifactSlotStart || slot > ArtifactSlotEnd {
+						return nil, fmt.Errorf("slot outside creature artifact bag")
+					}
+					rows = b.CreatureArtifacts
+				} else {
+					if slot > CreatureSlotEnd {
+						return nil, fmt.Errorf("slot outside creature bag")
+					}
+					rows = b.Creatures
+				}
+			} else if isArtifact {
+				if slot < WornArtifactSlotMin || slot > WornArtifactSlotMax {
+					return nil, fmt.Errorf("slot outside worn creature artifact slots")
+				}
+			} else if slot != WornCreatureSlot {
+				return nil, fmt.Errorf("slot outside worn creature slot")
+			}
+			for _, v := range rows {
+				if v.Slot == slot {
+					cp := v
+					return &cp, nil
+				}
+			}
+			return nil, nil
+		}
+		a, err := findCreature(r.SourceList, r.SourceSlot)
+		if err != nil {
+			return nil, err
+		}
+		z, err := findCreature(r.DestinationList, r.DestinationSlot)
+		if err != nil {
+			return nil, err
+		}
+		if a == nil && z == nil {
+			return nil, fmt.Errorf("both creature locations are empty")
+		}
+		if (a == nil && r.SourceItem != 0) || (a != nil && r.SourceItem != 0 && r.SourceItem != a.Template) || (r.DestinationItem != 0 && (z == nil || r.DestinationItem != z.Template)) {
+			return nil, fmt.Errorf("stale creature identity")
+		}
+		replaceCreature := func(list byte, slot uint16, item *BagEquipment) {
+			rows := &b.Worn
+			if list == protocol.CreatureSpace {
+				if isArtifact {
+					rows = &b.CreatureArtifacts
+				} else {
+					rows = &b.Creatures
+				}
+			}
+			kept := make([]BagEquipment, 0, len(*rows)+1)
+			for _, v := range *rows {
+				if v.Slot != slot {
+					kept = append(kept, v)
+				}
+			}
+			if item != nil {
+				v := *item
+				v.Slot = slot
+				kept = append(kept, v)
+			}
+			*rows = kept
+		}
+		replaceCreature(r.SourceList, r.SourceSlot, z)
+		replaceCreature(r.DestinationList, r.DestinationSlot, a)
+		return SaveBag(role.State, b)
+	}
+	// Insignia & Gem move path (space 0x25 <-> space 3 slot 31, or within space 0x25).
+	if r.SourceList == protocol.InsigniaSpace || r.DestinationList == protocol.InsigniaSpace ||
+		(r.SourceList == 3 && r.SourceSlot == WornInsigniaSlot) ||
+		(r.DestinationList == 3 && r.DestinationSlot == WornInsigniaSlot) {
+		if (r.SourceList != protocol.InsigniaSpace && r.SourceList != 3) || (r.DestinationList != protocol.InsigniaSpace && r.DestinationList != 3) {
+			return nil, fmt.Errorf("cannot move insignia or gem into unrelated bag")
+		}
+		if r.SourceList == protocol.InsigniaSpace && r.DestinationList == protocol.InsigniaSpace &&
+			r.SourceSlot >= GemSlotStart && r.DestinationSlot >= GemSlotStart {
+			if r.SourceSlot > GemSlotEnd || r.DestinationSlot > GemSlotEnd {
+				return nil, fmt.Errorf("slot outside flag gem inventory")
+			}
+			findGem := func(slot uint16) *BagItem {
+				for _, v := range b.Gems {
+					if v.Slot == slot {
+						cp := v
+						return &cp
+					}
+				}
+				return nil
+			}
+			a, z := findGem(r.SourceSlot), findGem(r.DestinationSlot)
+			if a == nil && z == nil {
+				return nil, fmt.Errorf("both flag gem locations are empty")
+			}
+			replaceGem := func(slot uint16, item *BagItem) {
+				kept := make([]BagItem, 0, len(b.Gems)+1)
+				for _, v := range b.Gems {
+					if v.Slot != slot {
+						kept = append(kept, v)
+					}
+				}
+				if item != nil {
+					v := *item
+					v.Slot = slot
+					kept = append(kept, v)
+				}
+				b.Gems = kept
+			}
+			replaceGem(r.SourceSlot, z)
+			replaceGem(r.DestinationSlot, a)
+			return SaveBag(role.State, b)
+		}
+		findIns := func(list byte, slot uint16) (*BagEquipment, error) {
+			rows := b.Worn
+			if list == protocol.InsigniaSpace {
+				if slot > InsigniaSlotEnd {
+					return nil, fmt.Errorf("slot outside insignia bag")
+				}
+				rows = b.Insignias
+			} else if slot != WornInsigniaSlot {
+				return nil, fmt.Errorf("slot outside worn insignia slot")
+			}
+			for _, v := range rows {
+				if v.Slot == slot {
+					cp := v
+					return &cp, nil
+				}
+			}
+			return nil, nil
+		}
+		a, err := findIns(r.SourceList, r.SourceSlot)
+		if err != nil {
+			return nil, err
+		}
+		z, err := findIns(r.DestinationList, r.DestinationSlot)
+		if err != nil {
+			return nil, err
+		}
+		if a == nil && z == nil {
+			return nil, fmt.Errorf("both insignia locations are empty")
+		}
+		if (a == nil && r.SourceItem != 0) || (a != nil && r.SourceItem != 0 && r.SourceItem != a.Template) || (r.DestinationItem != 0 && (z == nil || r.DestinationItem != z.Template)) {
+			return nil, fmt.Errorf("stale insignia identity")
+		}
+		replaceIns := func(list byte, slot uint16, item *BagEquipment) {
+			rows := &b.Worn
+			if list == protocol.InsigniaSpace {
+				rows = &b.Insignias
+			}
+			kept := make([]BagEquipment, 0, len(*rows)+1)
+			for _, v := range *rows {
+				if v.Slot != slot {
+					kept = append(kept, v)
+				}
+			}
+			if item != nil {
+				v := *item
+				v.Slot = slot
+				kept = append(kept, v)
+			}
+			*rows = kept
+		}
+		replaceIns(r.SourceList, r.SourceSlot, z)
+		replaceIns(r.DestinationList, r.DestinationSlot, a)
+		return SaveBag(role.State, b)
 	}
 	// Talisman & Rune move path:
 	//   - Talismans: space 0x2b (0..79) <-> space 3 (worn slots 33..35 = 0x21..0x23) or within 0x2b (0..79)
@@ -428,4 +645,24 @@ func TalismanPayload(state json.RawMessage) ([]byte, error) {
 		return nil, e
 	}
 	return protocol.US224TalismanRestore(b.TalismanRows())
+}
+
+// CreaturePayload encodes NOTI13 space 7 (Creature / Artifact / Creature Item Inventory / 宠物栏)
+// for character entry.
+func CreaturePayload(state json.RawMessage) ([]byte, error) {
+	b, e := ReadBag(state)
+	if e != nil {
+		return nil, e
+	}
+	return protocol.US224CreatureRestore(b.CreatureRows())
+}
+
+// InsigniaPayload encodes NOTI13 space 0x25 (Insignia & Gem Inventory / 勋章栏)
+// for character entry.
+func InsigniaPayload(state json.RawMessage) ([]byte, error) {
+	b, e := ReadBag(state)
+	if e != nil {
+		return nil, e
+	}
+	return protocol.US224InsigniaRestore(b.InsigniaRows())
 }

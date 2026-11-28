@@ -122,16 +122,21 @@ type BagItem struct {
 	UnlockAt   int64 `json:"unlock_at,omitempty"`
 }
 type Bag struct {
-	Version       string         `json:"version"`
-	Gold          uint32         `json:"gold"`
-	ExpandedSlots uint16         `json:"expanded_slots,omitempty"`
-	Items         []BagItem      `json:"items"`
-	Equipment     []BagEquipment `json:"equipment,omitempty"`
-	Worn          []BagEquipment `json:"worn,omitempty"`
-	Avatars       []BagEquipment `json:"avatars,omitempty"`
-	WornAvatars   []BagEquipment `json:"worn_avatars,omitempty"`
-	Talismans     []BagEquipment `json:"talismans,omitempty"`
-	Runes         []BagItem      `json:"runes,omitempty"`
+	Version           string         `json:"version"`
+	Gold              uint32         `json:"gold"`
+	ExpandedSlots     uint16         `json:"expanded_slots,omitempty"`
+	Items             []BagItem      `json:"items"`
+	Equipment         []BagEquipment `json:"equipment,omitempty"`
+	Worn              []BagEquipment `json:"worn,omitempty"`
+	Avatars           []BagEquipment `json:"avatars,omitempty"`
+	WornAvatars       []BagEquipment `json:"worn_avatars,omitempty"`
+	Creatures         []BagEquipment `json:"creatures,omitempty"`
+	CreatureArtifacts []BagEquipment `json:"creature_artifacts,omitempty"`
+	CreatureItems     []BagItem      `json:"creature_items,omitempty"`
+	Insignias         []BagEquipment `json:"insignias,omitempty"`
+	Gems              []BagItem      `json:"gems,omitempty"`
+	Talismans         []BagEquipment `json:"talismans,omitempty"`
+	Runes             []BagItem      `json:"runes,omitempty"`
 }
 
 // ExpandInventory upgrades the character's ordinary inventory expansion slots
@@ -201,8 +206,10 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 	for idx := range b.Worn {
 		i := b.Worn[idx]
 		validOrdinary := i.Slot >= 12 && i.Slot <= 25
+		validCreature := i.Slot == WornCreatureSlot || (i.Slot >= WornArtifactSlotMin && i.Slot <= WornArtifactSlotMax)
+		validInsignia := i.Slot == WornInsigniaSlot
 		validTalisman := i.Slot >= WornTalismanSlotMin && i.Slot <= WornTalismanSlotMax
-		if (!validOrdinary && !validTalisman) || i.Template == 0 || seen[i.Slot] {
+		if (!validOrdinary && !validCreature && !validInsignia && !validTalisman) || i.Template == 0 || seen[i.Slot] {
 			return b, fmt.Errorf("invalid saved worn equipment")
 		}
 		if validTalisman && b.Worn[idx].RuneSockets == [3]byte{} {
@@ -224,6 +231,38 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		}
 		seen[i.Slot] = true
 	}
+	seenCreature := map[uint16]bool{}
+	for _, i := range b.Creatures {
+		if i.Slot > CreatureSlotEnd || i.Template == 0 || seenCreature[i.Slot] {
+			return b, fmt.Errorf("invalid saved creature item")
+		}
+		seenCreature[i.Slot] = true
+	}
+	for _, i := range b.CreatureArtifacts {
+		if i.Slot < ArtifactSlotStart || i.Slot > ArtifactSlotEnd || i.Template == 0 || seenCreature[i.Slot] {
+			return b, fmt.Errorf("invalid saved creature artifact item")
+		}
+		seenCreature[i.Slot] = true
+	}
+	for _, i := range b.CreatureItems {
+		if i.Slot < CreatureItemSlotStart || i.Slot > CreatureItemSlotEnd || i.Template == 0 || i.Amount == 0 || seenCreature[i.Slot] {
+			return b, fmt.Errorf("invalid saved creature consumable item")
+		}
+		seenCreature[i.Slot] = true
+	}
+	seenInsignia := map[uint16]bool{}
+	for _, i := range b.Insignias {
+		if i.Slot > InsigniaSlotEnd || i.Template == 0 || seenInsignia[i.Slot] {
+			return b, fmt.Errorf("invalid saved insignia item")
+		}
+		seenInsignia[i.Slot] = true
+	}
+	for _, i := range b.Gems {
+		if i.Slot < GemSlotStart || i.Slot > GemSlotEnd || i.Template == 0 || i.Amount == 0 || seenInsignia[i.Slot] {
+			return b, fmt.Errorf("invalid saved flag gem item")
+		}
+		seenInsignia[i.Slot] = true
+	}
 	seen = map[uint16]bool{}
 	for idx := range b.Talismans {
 		i := b.Talismans[idx]
@@ -241,31 +280,42 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 		}
 		seen[i.Slot] = true
 	}
-	// Auto-migrate any talismans previously placed in the ordinary Equipment tab
-	// (space 0) into free slots in the Talisman tab (space 0x2b, slots 0..79).
+	// Auto-migrate any specialized equipment (Talismans, Creatures, Creature Artifacts,
+	// Insignias) previously placed in the ordinary Equipment tab (space 0) into their
+	// native spaces (0x2b, 7, 0x25).
 	if len(b.Equipment) > 0 {
 		var keptEquip []BagEquipment
-		var migrated []BagEquipment
+		var migTal, migCre, migArt, migIns []BagEquipment
 		for _, eq := range b.Equipment {
-			if IsTalismanTemplate(eq.Template) {
-				migrated = append(migrated, eq)
-			} else {
+			switch {
+			case IsTalismanTemplate(eq.Template):
+				migTal = append(migTal, eq)
+			case IsCreatureTemplate(eq.Template):
+				migCre = append(migCre, eq)
+			case IsCreatureArtifactTemplate(eq.Template):
+				migArt = append(migArt, eq)
+			case IsInsigniaTemplate(eq.Template):
+				migIns = append(migIns, eq)
+			default:
 				keptEquip = append(keptEquip, eq)
 			}
 		}
-		if len(migrated) > 0 {
-			sort.Slice(migrated, func(i, j int) bool { return migrated[i].Slot < migrated[j].Slot })
-			for _, eq := range migrated {
+		placeEquip := func(src []BagEquipment, dst *[]BagEquipment, occ map[uint16]bool, start, end uint16, talisman bool) {
+			if len(src) == 0 {
+				return
+			}
+			sort.Slice(src, func(i, j int) bool { return src[i].Slot < src[j].Slot })
+			for _, eq := range src {
 				placed := false
-				for slot := uint16(0); slot < TalismanSlotCount; slot++ {
-					if !seen[slot] {
-						seen[slot] = true
+				for slot := start; slot <= end; slot++ {
+					if !occ[slot] {
+						occ[slot] = true
 						eq.Slot = slot
 						eq.Durability = 0
-						if eq.RuneSockets == [3]byte{} {
+						if talisman && eq.RuneSockets == [3]byte{} {
 							eq.RuneSockets = DefaultTalismanRuneSockets
 						}
-						b.Talismans = append(b.Talismans, eq)
+						*dst = append(*dst, eq)
 						placed = true
 						break
 					}
@@ -274,31 +324,146 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 					keptEquip = append(keptEquip, eq)
 				}
 			}
-			b.Equipment = keptEquip
 		}
+		placeEquip(migTal, &b.Talismans, seen, 0, TalismanSlotCount-1, true)
+		placeEquip(migCre, &b.Creatures, seenCreature, CreatureSlotStart, CreatureSlotEnd, false)
+		placeEquip(migArt, &b.CreatureArtifacts, seenCreature, ArtifactSlotStart, ArtifactSlotEnd, false)
+		placeEquip(migIns, &b.Insignias, seenInsignia, InsigniaSlotStart, InsigniaSlotEnd, false)
+		b.Equipment = keptEquip
 	}
-	// Auto-migrate any [avatar emblem] items previously placed outside the
-	// Emblem tab (Space 0 slots 289..360) into free Emblem tab slots.
+	// Auto-migrate any specialized items previously placed in Space 0 stackable tabs
+	// (Creatures/Eggs, Artifacts, Creature Consumables, Insignias, Flag Gems, Runes,
+	// and misaligned Emblems) into their native spaces/tabs.
 	if len(b.Items) > 0 {
 		var keptItems []BagItem
-		var migratedEmblems []BagItem
+		var migCre, migArt, migIns []BagItem
+		var migCreStk, migGems, migRunes, migratedEmblems []BagItem
 		occupiedSpace0 := make(map[uint16]bool, len(b.Items)+len(b.Equipment))
 		for _, eq := range b.Equipment {
 			occupiedSpace0[eq.Slot] = true
 		}
 		for _, it := range b.Items {
-			if IsEmblemTemplate(it.Template) && (it.Slot < EmblemSlotStart || it.Slot > EmblemSlotEnd) {
+			switch {
+			case IsCreatureTemplate(it.Template):
+				migCre = append(migCre, it)
+			case IsCreatureArtifactTemplate(it.Template):
+				migArt = append(migArt, it)
+			case IsCreatureStackableTemplate(it.Template):
+				migCreStk = append(migCreStk, it)
+			case IsInsigniaTemplate(it.Template):
+				migIns = append(migIns, it)
+			case IsFlagGemTemplate(it.Template):
+				migGems = append(migGems, it)
+			case IsRuneTemplate(it.Template):
+				migRunes = append(migRunes, it)
+			case IsEmblemTemplate(it.Template) && (it.Slot < EmblemSlotStart || it.Slot > EmblemSlotEnd):
 				migratedEmblems = append(migratedEmblems, it)
-			} else {
+			default:
 				keptItems = append(keptItems, it)
 				occupiedSpace0[it.Slot] = true
 			}
 		}
+		placeItemAsEquip := func(src []BagItem, dst *[]BagEquipment, occ map[uint16]bool, start, end uint16) {
+			if len(src) == 0 {
+				return
+			}
+			sort.Slice(src, func(i, j int) bool { return src[i].Slot < src[j].Slot })
+			for _, it := range src {
+				count := it.Amount
+				if count == 0 {
+					count = 1
+				}
+				rem := uint32(0)
+				for c := uint32(0); c < count; c++ {
+					placed := false
+					for slot := start; slot <= end; slot++ {
+						if !occ[slot] {
+							occ[slot] = true
+							*dst = append(*dst, BagEquipment{
+								Slot:       slot,
+								Template:   it.Template,
+								SortLocked: it.SortLocked,
+								ItemLock:   it.ItemLock,
+								UnlockAt:   it.UnlockAt,
+							})
+							placed = true
+							break
+						}
+					}
+					if !placed {
+						rem++
+					}
+				}
+				if rem > 0 {
+					it.Amount = rem
+					keptItems = append(keptItems, it)
+				}
+			}
+		}
+		placeItemStack := func(src []BagItem, dst *[]BagItem, occ map[uint16]bool, start, end uint16, stackable bool) {
+			if len(src) == 0 {
+				return
+			}
+			sort.Slice(src, func(i, j int) bool { return src[i].Slot < src[j].Slot })
+			for _, it := range src {
+				if stackable {
+					placed := false
+					for i := range *dst {
+						cur := &(*dst)[i]
+						if cur.Template == it.Template && cur.Slot >= start && cur.Slot <= end && uint64(cur.Amount)+uint64(it.Amount) <= 1000 {
+							cur.Amount += it.Amount
+							placed = true
+							break
+						}
+					}
+					if !placed {
+						for slot := start; slot <= end; slot++ {
+							if !occ[slot] {
+								occ[slot] = true
+								it.Slot = slot
+								*dst = append(*dst, it)
+								placed = true
+								break
+							}
+						}
+					}
+					if !placed {
+						keptItems = append(keptItems, it)
+					}
+					continue
+				}
+				// Non-stackable (one per slot, e.g., Runes)
+				rem := uint32(0)
+				for c := uint32(0); c < it.Amount; c++ {
+					placed := false
+					for slot := start; slot <= end; slot++ {
+						if !occ[slot] {
+							occ[slot] = true
+							*dst = append(*dst, BagItem{Slot: slot, Template: it.Template, Amount: 1})
+							placed = true
+							break
+						}
+					}
+					if !placed {
+						rem++
+					}
+				}
+				if rem > 0 {
+					it.Amount = rem
+					keptItems = append(keptItems, it)
+				}
+			}
+		}
+		placeItemAsEquip(migCre, &b.Creatures, seenCreature, CreatureSlotStart, CreatureSlotEnd)
+		placeItemAsEquip(migArt, &b.CreatureArtifacts, seenCreature, ArtifactSlotStart, ArtifactSlotEnd)
+		placeItemAsEquip(migIns, &b.Insignias, seenInsignia, InsigniaSlotStart, InsigniaSlotEnd)
+		placeItemStack(migCreStk, &b.CreatureItems, seenCreature, CreatureItemSlotStart, CreatureItemSlotEnd, true)
+		placeItemStack(migGems, &b.Gems, seenInsignia, GemSlotStart, GemSlotEnd, true)
+		placeItemStack(migRunes, &b.Runes, seen, RuneSlotStart, RuneSlotEnd, false)
 		if len(migratedEmblems) > 0 {
 			sort.Slice(migratedEmblems, func(i, j int) bool { return migratedEmblems[i].Slot < migratedEmblems[j].Slot })
 			for _, em := range migratedEmblems {
 				placed := false
-				// Try merging into an existing emblem stack in 289..360 first.
 				for i := range keptItems {
 					cur := &keptItems[i]
 					if cur.Template == em.Template && cur.Slot >= EmblemSlotStart && cur.Slot <= EmblemSlotEnd && uint64(cur.Amount)+uint64(em.Amount) <= 1000 {
@@ -322,8 +487,8 @@ func ReadBag(state json.RawMessage) (Bag, error) {
 					keptItems = append(keptItems, em)
 				}
 			}
-			b.Items = keptItems
 		}
+		b.Items = keptItems
 	}
 	return b, nil
 }
@@ -406,6 +571,21 @@ func (b Bag) LockedItemEntries(now int64) []protocol.ItemLockEntry {
 	for _, av := range b.WornAvatars {
 		add(3, av.Slot, av.ItemLock, av.UnlockAt)
 	}
+	for _, cr := range b.Creatures {
+		add(protocol.CreatureSpace, cr.Slot, cr.ItemLock, cr.UnlockAt)
+	}
+	for _, ca := range b.CreatureArtifacts {
+		add(protocol.CreatureSpace, ca.Slot, ca.ItemLock, ca.UnlockAt)
+	}
+	for _, ci := range b.CreatureItems {
+		add(protocol.CreatureSpace, ci.Slot, ci.ItemLock, ci.UnlockAt)
+	}
+	for _, ins := range b.Insignias {
+		add(protocol.InsigniaSpace, ins.Slot, ins.ItemLock, ins.UnlockAt)
+	}
+	for _, gm := range b.Gems {
+		add(protocol.InsigniaSpace, gm.Slot, gm.ItemLock, gm.UnlockAt)
+	}
 	for _, tl := range b.Talismans {
 		add(protocol.TalismanSpace, tl.Slot, tl.ItemLock, tl.UnlockAt)
 	}
@@ -419,6 +599,187 @@ func (b Bag) LockedItemEntries(now int64) []protocol.ItemLockEntry {
 		return out[i].Slot < out[j].Slot
 	})
 	return out
+}
+
+// CreatureRows projects the character's Creature Inventory (space 7) sorted by slot:
+// creatures/eggs in 0..159, artifacts in 160..215, creature consumables in 216..271.
+func (b Bag) CreatureRows() [][protocol.CurrentItemRecordSize]byte {
+	rows := make([][protocol.CurrentItemRecordSize]byte, 0, len(b.Creatures)+len(b.CreatureArtifacts)+len(b.CreatureItems))
+	for _, c := range b.Creatures {
+		rows = append(rows, EquipmentRow(c))
+	}
+	for _, a := range b.CreatureArtifacts {
+		rows = append(rows, EquipmentRow(a))
+	}
+	for _, it := range b.CreatureItems {
+		row := protocol.OrdinaryItem(it.Slot, it.Template, it.Amount)
+		if it.SortLocked {
+			row[protocol.ItemSortLockOffset] = 1
+		}
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return uint16(rows[i][0])|uint16(rows[i][1])<<8 < uint16(rows[j][0])|uint16(rows[j][1])<<8
+	})
+	return rows
+}
+
+// AddCreatures places one or more creature/egg templates into free slots in space 7 (0..159).
+func (b Bag) AddCreatures(ids []uint32) (Bag, []uint16, error) {
+	if len(ids) == 0 {
+		return b, nil, fmt.Errorf("at least one creature template is required")
+	}
+	occupied := map[uint16]bool{}
+	for _, c := range b.Creatures {
+		occupied[c.Slot] = true
+	}
+	slots := make([]uint16, 0, len(ids))
+	for n := CreatureSlotStart; n <= CreatureSlotEnd && len(slots) < len(ids); n++ {
+		if !occupied[n] {
+			slots = append(slots, n)
+		}
+	}
+	if len(slots) < len(ids) {
+		return b, nil, fmt.Errorf("creature bag is full")
+	}
+	b.Creatures = append([]BagEquipment(nil), b.Creatures...)
+	for i, id := range ids {
+		if id == 0 {
+			return b, nil, fmt.Errorf("invalid creature template 0")
+		}
+		b.Creatures = append(b.Creatures, BagEquipment{Slot: slots[i], Template: id})
+	}
+	return b, slots, nil
+}
+
+// AddCreatureArtifacts places one or more creature artifact templates into free slots in space 7 (160..215).
+func (b Bag) AddCreatureArtifacts(ids []uint32) (Bag, []uint16, error) {
+	if len(ids) == 0 {
+		return b, nil, fmt.Errorf("at least one creature artifact template is required")
+	}
+	occupied := map[uint16]bool{}
+	for _, a := range b.CreatureArtifacts {
+		occupied[a.Slot] = true
+	}
+	slots := make([]uint16, 0, len(ids))
+	for n := ArtifactSlotStart; n <= ArtifactSlotEnd && len(slots) < len(ids); n++ {
+		if !occupied[n] {
+			slots = append(slots, n)
+		}
+	}
+	if len(slots) < len(ids) {
+		return b, nil, fmt.Errorf("creature artifact bag is full")
+	}
+	b.CreatureArtifacts = append([]BagEquipment(nil), b.CreatureArtifacts...)
+	for i, id := range ids {
+		if id == 0 {
+			return b, nil, fmt.Errorf("invalid creature artifact template 0")
+		}
+		b.CreatureArtifacts = append(b.CreatureArtifacts, BagEquipment{Slot: slots[i], Template: id})
+	}
+	return b, slots, nil
+}
+
+// AddCreatureItems places creature consumables into space 7 (216..271), merging into existing stacks up to 1000.
+func (b Bag) AddCreatureItems(id, amount uint32) (Bag, uint16, error) {
+	if id == 0 || amount == 0 {
+		return b, 0, fmt.Errorf("invalid creature consumable award")
+	}
+	limit := uint32(1000)
+	if amount > limit {
+		limit = amount
+	}
+	b.CreatureItems = append([]BagItem(nil), b.CreatureItems...)
+	occupied := map[uint16]bool{}
+	for i, it := range b.CreatureItems {
+		occupied[it.Slot] = true
+		if it.Template == id && it.Slot >= CreatureItemSlotStart && it.Slot <= CreatureItemSlotEnd && uint64(it.Amount)+uint64(amount) <= uint64(limit) {
+			b.CreatureItems[i].Amount += amount
+			return b, it.Slot, nil
+		}
+	}
+	for slot := CreatureItemSlotStart; slot <= CreatureItemSlotEnd; slot++ {
+		if !occupied[slot] {
+			b.CreatureItems = append(b.CreatureItems, BagItem{Slot: slot, Template: id, Amount: amount})
+			return b, slot, nil
+		}
+	}
+	return b, 0, fmt.Errorf("creature consumable bag is full")
+}
+
+// InsigniaRows projects the character's Insignia & Gem Inventory (space 0x25) sorted by slot:
+// insignias in 0..55, gems in 56..111.
+func (b Bag) InsigniaRows() [][protocol.CurrentItemRecordSize]byte {
+	rows := make([][protocol.CurrentItemRecordSize]byte, 0, len(b.Insignias)+len(b.Gems))
+	for _, ins := range b.Insignias {
+		rows = append(rows, EquipmentRow(ins))
+	}
+	for _, g := range b.Gems {
+		row := protocol.OrdinaryItem(g.Slot, g.Template, g.Amount)
+		if g.SortLocked {
+			row[protocol.ItemSortLockOffset] = 1
+		}
+		rows = append(rows, row)
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		return uint16(rows[i][0])|uint16(rows[i][1])<<8 < uint16(rows[j][0])|uint16(rows[j][1])<<8
+	})
+	return rows
+}
+
+// AddInsignias places one or more insignia ([flag]) templates into free slots in space 0x25 (0..55).
+func (b Bag) AddInsignias(ids []uint32) (Bag, []uint16, error) {
+	if len(ids) == 0 {
+		return b, nil, fmt.Errorf("at least one insignia template is required")
+	}
+	occupied := map[uint16]bool{}
+	for _, ins := range b.Insignias {
+		occupied[ins.Slot] = true
+	}
+	slots := make([]uint16, 0, len(ids))
+	for n := InsigniaSlotStart; n <= InsigniaSlotEnd && len(slots) < len(ids); n++ {
+		if !occupied[n] {
+			slots = append(slots, n)
+		}
+	}
+	if len(slots) < len(ids) {
+		return b, nil, fmt.Errorf("insignia bag is full")
+	}
+	b.Insignias = append([]BagEquipment(nil), b.Insignias...)
+	for i, id := range ids {
+		if id == 0 {
+			return b, nil, fmt.Errorf("invalid insignia template 0")
+		}
+		b.Insignias = append(b.Insignias, BagEquipment{Slot: slots[i], Template: id})
+	}
+	return b, slots, nil
+}
+
+// AddGems places one or more flag gem ([flag gem]) items into free slots in space 0x25 (56..111).
+func (b Bag) AddGems(id, amount uint32) (Bag, uint16, error) {
+	if id == 0 || amount == 0 {
+		return b, 0, fmt.Errorf("invalid flag gem award")
+	}
+	limit := uint32(1000)
+	if amount > limit {
+		limit = amount
+	}
+	b.Gems = append([]BagItem(nil), b.Gems...)
+	occupied := map[uint16]bool{}
+	for i, g := range b.Gems {
+		occupied[g.Slot] = true
+		if g.Template == id && g.Slot >= GemSlotStart && g.Slot <= GemSlotEnd && uint64(g.Amount)+uint64(amount) <= uint64(limit) {
+			b.Gems[i].Amount += amount
+			return b, g.Slot, nil
+		}
+	}
+	for slot := GemSlotStart; slot <= GemSlotEnd; slot++ {
+		if !occupied[slot] {
+			b.Gems = append(b.Gems, BagItem{Slot: slot, Template: id, Amount: amount})
+			return b, slot, nil
+		}
+	}
+	return b, 0, fmt.Errorf("flag gem bag is full")
 }
 
 // TalismanRows projects the character's Talisman & Rune Inventory (space 0x2b)

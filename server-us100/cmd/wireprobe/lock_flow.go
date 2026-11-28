@@ -38,7 +38,7 @@ func setSortLockWithVaults(
 		return role, nil, err
 	}
 	isVault := protocol.IsVaultSpace(req.Space)
-	if req.Space != 0 && req.Space != 1 && req.Space != protocol.TalismanSpace && !isVault {
+	if req.Space != 0 && req.Space != 1 && req.Space != protocol.CreatureSpace && req.Space != protocol.InsigniaSpace && req.Space != protocol.TalismanSpace && !isVault {
 		return role, nil, fmt.Errorf("unsupported sort lock space %d", req.Space)
 	}
 	cmdID := protocol.CmdSortUnlock
@@ -89,6 +89,49 @@ func setSortLockWithVaults(
 					b.Avatars[i].SortLocked = locked
 					found = true
 					break
+				}
+			}
+		} else if req.Space == protocol.CreatureSpace {
+			for i := range b.Creatures {
+				if b.Creatures[i].Slot == req.Slot {
+					b.Creatures[i].SortLocked = locked
+					found = true
+					break
+				}
+			}
+			if !found {
+				for i := range b.CreatureArtifacts {
+					if b.CreatureArtifacts[i].Slot == req.Slot {
+						b.CreatureArtifacts[i].SortLocked = locked
+						found = true
+						break
+					}
+				}
+			}
+			if !found {
+				for i := range b.CreatureItems {
+					if b.CreatureItems[i].Slot == req.Slot {
+						b.CreatureItems[i].SortLocked = locked
+						found = true
+						break
+					}
+				}
+			}
+		} else if req.Space == protocol.InsigniaSpace {
+			for i := range b.Insignias {
+				if b.Insignias[i].Slot == req.Slot {
+					b.Insignias[i].SortLocked = locked
+					found = true
+					break
+				}
+			}
+			if !found {
+				for i := range b.Gems {
+					if b.Gems[i].Slot == req.Slot {
+						b.Gems[i].SortLocked = locked
+						found = true
+						break
+					}
 				}
 			}
 		} else if req.Space == protocol.TalismanSpace {
@@ -168,6 +211,43 @@ func mutateBagItemLock(b *inventory.Bag, space byte, slot uint16, state byte, un
 				return true
 			}
 		}
+	case protocol.CreatureSpace:
+		for i := range b.Creatures {
+			if b.Creatures[i].Slot == slot {
+				b.Creatures[i].ItemLock = state
+				b.Creatures[i].UnlockAt = unlockAt
+				return true
+			}
+		}
+		for i := range b.CreatureArtifacts {
+			if b.CreatureArtifacts[i].Slot == slot {
+				b.CreatureArtifacts[i].ItemLock = state
+				b.CreatureArtifacts[i].UnlockAt = unlockAt
+				return true
+			}
+		}
+		for i := range b.CreatureItems {
+			if b.CreatureItems[i].Slot == slot {
+				b.CreatureItems[i].ItemLock = state
+				b.CreatureItems[i].UnlockAt = unlockAt
+				return true
+			}
+		}
+	case protocol.InsigniaSpace:
+		for i := range b.Insignias {
+			if b.Insignias[i].Slot == slot {
+				b.Insignias[i].ItemLock = state
+				b.Insignias[i].UnlockAt = unlockAt
+				return true
+			}
+		}
+		for i := range b.Gems {
+			if b.Gems[i].Slot == slot {
+				b.Gems[i].ItemLock = state
+				b.Gems[i].UnlockAt = unlockAt
+				return true
+			}
+		}
 	case protocol.TalismanSpace:
 		for i := range b.Talismans {
 			if b.Talismans[i].Slot == slot {
@@ -235,7 +315,7 @@ func handleItemLockWithVaults(
 		return role, nil, fmt.Errorf("unsupported item lock cmd %d", cmdID)
 	}
 	isVault := protocol.IsVaultSpace(space)
-	if space != 0 && space != 1 && space != 3 && space != protocol.TalismanSpace && !isVault {
+	if space != 0 && space != 1 && space != 3 && space != protocol.CreatureSpace && space != protocol.InsigniaSpace && space != protocol.TalismanSpace && !isVault {
 		return role, nil, fmt.Errorf("unsupported item lock space %d", space)
 	}
 

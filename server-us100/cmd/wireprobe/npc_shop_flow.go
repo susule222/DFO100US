@@ -383,11 +383,14 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 
 	eventKey := fmt.Sprintf("npc_buy/%d/%x", w.role.ID, sha256.Sum256(rawFrame))
 	var (
-		refuseCode uint16
-		boughtSlot uint16
-		matUpdates []protocol.NPCShopMaterialUpdate
-		afterGold  uint32
-		afterRows  [][protocol.CurrentItemRecordSize]byte
+		refuseCode  uint16
+		boughtSpace byte
+		boughtSlot  uint16
+		matUpdates  []protocol.NPCShopMaterialUpdate
+		afterGold   uint32
+		afterRows   [][protocol.CurrentItemRecordSize]byte
+		boughtRow   [protocol.CurrentItemRecordSize]byte
+		spaceRows   [][protocol.CurrentItemRecordSize]byte
 	)
 
 	saved, applied, err := w.characters.Store.CommitCharacterEvent(ctx, w.account, w.role.ID, w.role.ConfigVersion, eventKey, "us100-npc-shop-buy-v1", func(current storage.Character) (json.RawMessage, json.RawMessage, error) {
@@ -449,11 +452,82 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 			}
 		}
 
-		// 3. Deliver purchased item(s) to bag.
-		if entry.Kind == "e" {
+		// 3. Deliver purchased item(s) to their authentic inventory space & tab.
+		repeatIDs := func(id, qty uint32) []uint32 {
+			ids := make([]uint32, qty)
+			for i := range ids {
+				ids[i] = id
+			}
+			return ids
+		}
+		switch {
+		case inventory.IsCreatureTemplate(req.ItemTemplate):
+			var added []uint16
+			bag, added, err = bag.AddCreatures(repeatIDs(req.ItemTemplate, req.Quantity))
+			if err != nil || len(added) == 0 {
+				refuseCode = 10
+				return nil, nil, fmt.Errorf("add bought creature %d: %v", req.ItemTemplate, err)
+			}
+			boughtSpace, boughtSlot = protocol.CreatureSpace, added[len(added)-1]
+			spaceRows = bag.CreatureRows()
+		case inventory.IsCreatureArtifactTemplate(req.ItemTemplate):
+			var added []uint16
+			bag, added, err = bag.AddCreatureArtifacts(repeatIDs(req.ItemTemplate, req.Quantity))
+			if err != nil || len(added) == 0 {
+				refuseCode = 10
+				return nil, nil, fmt.Errorf("add bought creature artifact %d: %v", req.ItemTemplate, err)
+			}
+			boughtSpace, boughtSlot = protocol.CreatureSpace, added[len(added)-1]
+			spaceRows = bag.CreatureRows()
+		case inventory.IsCreatureStackableTemplate(req.ItemTemplate):
+			var slot uint16
+			bag, slot, err = bag.AddCreatureItems(req.ItemTemplate, req.Quantity)
+			if err != nil {
+				refuseCode = 10
+				return nil, nil, fmt.Errorf("add bought creature item %d: %v", req.ItemTemplate, err)
+			}
+			boughtSpace, boughtSlot = protocol.CreatureSpace, slot
+			spaceRows = bag.CreatureRows()
+		case inventory.IsInsigniaTemplate(req.ItemTemplate):
+			var added []uint16
+			bag, added, err = bag.AddInsignias(repeatIDs(req.ItemTemplate, req.Quantity))
+			if err != nil || len(added) == 0 {
+				refuseCode = 10
+				return nil, nil, fmt.Errorf("add bought insignia %d: %v", req.ItemTemplate, err)
+			}
+			boughtSpace, boughtSlot = protocol.InsigniaSpace, added[len(added)-1]
+			spaceRows = bag.InsigniaRows()
+		case inventory.IsFlagGemTemplate(req.ItemTemplate):
+			var slot uint16
+			bag, slot, err = bag.AddGems(req.ItemTemplate, req.Quantity)
+			if err != nil {
+				refuseCode = 10
+				return nil, nil, fmt.Errorf("add bought flag gem %d: %v", req.ItemTemplate, err)
+			}
+			boughtSpace, boughtSlot = protocol.InsigniaSpace, slot
+			spaceRows = bag.InsigniaRows()
+		case inventory.IsTalismanTemplate(req.ItemTemplate):
+			var added []uint16
+			bag, added, err = bag.AddTalismans(repeatIDs(req.ItemTemplate, req.Quantity))
+			if err != nil || len(added) == 0 {
+				refuseCode = 10
+				return nil, nil, fmt.Errorf("add bought talisman %d: %v", req.ItemTemplate, err)
+			}
+			boughtSpace, boughtSlot = protocol.TalismanSpace, added[len(added)-1]
+			spaceRows = bag.TalismanRows()
+		case inventory.IsRuneTemplate(req.ItemTemplate):
+			var added []uint16
+			bag, added, err = bag.AddRunes(req.ItemTemplate, req.Quantity)
+			if err != nil || len(added) == 0 {
+				refuseCode = 10
+				return nil, nil, fmt.Errorf("add bought rune %d: %v", req.ItemTemplate, err)
+			}
+			boughtSpace, boughtSlot = protocol.TalismanSpace, added[len(added)-1]
+			spaceRows = bag.TalismanRows()
+		case entry.Kind == "e":
 			equipSlots := w.loot.BagRules.EquipmentSlots
 			if equipSlots[0] == 0 {
-				equipSlots = [2]uint16{0, 47}
+				equipSlots = [2]uint16{9, 64}
 			}
 			var added []uint16
 			if wear != nil && wear.Catalog != nil {
@@ -465,8 +539,8 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 				refuseCode = 10
 				return nil, nil, fmt.Errorf("add bought equipment %d: %v", req.ItemTemplate, err)
 			}
-			boughtSlot = added[len(added)-1]
-		} else {
+			boughtSpace, boughtSlot = 0, added[len(added)-1]
+		default:
 			local := catalog.LootCatalog{
 				Source: w.loot.Catalog.Source,
 				Items: map[uint32]catalog.LootItem{
@@ -479,11 +553,16 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 				refuseCode = 10
 				return nil, nil, fmt.Errorf("add bought stackable %d: %v", req.ItemTemplate, err)
 			}
-			boughtSlot = slot
+			boughtSpace, boughtSlot = 0, slot
 		}
 
 		afterGold = bag.Gold
 		afterRows = bag.Rows()
+		if boughtSpace == 0 {
+			boughtRow, _ = findRowBySlot(afterRows, boughtSlot)
+		} else {
+			boughtRow, _ = findRowBySlot(spaceRows, boughtSlot)
+		}
 		nextState, err := inventory.SaveBag(current.State, bag)
 		if err != nil {
 			refuseCode = 9
@@ -518,8 +597,7 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 		_ = w.saveNPCShopLimits(entry.Limit.Scope, st)
 	}
 
-	boughtRow, ok := findRowBySlot(afterRows, boughtSlot)
-	if !ok {
+	if binary.LittleEndian.Uint32(boughtRow[2:6]) == 0 {
 		return nil, 9, fmt.Errorf("bought item slot %d missing from updated bag", boughtSlot)
 	}
 	ackPayload, err := protocol.NPCShopBuySuccess(afterGold, 0, 0, 0, boughtRow, matUpdates)
@@ -531,6 +609,11 @@ func (w *worldSession) handleNPCShopBuy(ctx context.Context, wear *inventory.Wea
 	}
 	if upd, err := protocol.US224InventoryUpdate(afterRows); err == nil {
 		out = append(out, outboundPacket{Name: "npc_shop_inventory_sync", Kind: 0, ID: 14, Payload: upd})
+	}
+	if boughtSpace != 0 && len(spaceRows) > 0 {
+		if upd, err := protocol.US224InventorySpaceUpdate(boughtSpace, spaceRows); err == nil {
+			out = append(out, outboundPacket{Name: "npc_shop_space_sync", Kind: 0, ID: 14, Payload: upd})
+		}
 	}
 	if entry.Limit != nil && entry.Limit.Max > 0 {
 		out = append(out, outboundPacket{
